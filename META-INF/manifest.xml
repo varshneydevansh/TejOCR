@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE manifest:manifest PUBLIC "-//OpenOffice.org//DTD Manifest 1.0//EN" "Manifest.dtd">
+<manifest:manifest xmlns:manifest="http://openoffice.org/2001/manifest">
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data" 
+                           manifest:full-path="Addons.xcu"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data" 
+                           manifest:full-path="description.xml"/>
+    
+    <!-- Python Service Implementation -->
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/tejocr_service.py"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/__init__.py"/>
+    <!-- Add other python files here as they are created, e.g.: -->
+    <!-- 
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/tejocr_dialogs.py"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/tejocr_engine.py"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/tejocr_output.py"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/uno_utils.py"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.uno-python-script" 
+                           manifest:full-path="python/tejocr/constants.py"/> 
+    -->
+
+    <!-- Icons -->
+    <!-- 
+    <manifest:file-entry manifest:media-type="image/png" 
+                           manifest:full-path="icons/tejocr_icon_16.png"/>
+    <manifest:file-entry manifest:media-type="image/png" 
+                           manifest:full-path="icons/tejocr_icon_26.png"/>
+    -->
+    
+    <!-- Dialog XDL files (if any yet) -->
+    <!-- 
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-definition" 
+                           manifest:full-path="dialogs/tejocr_options_dialog.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-definition" 
+                           manifest:full-path="dialogs/tejocr_settings_dialog.xdl"/>
+    -->
+
+    <!-- Localization files (if using .properties directly, .po/.mo are compiled differently) -->
+    <!-- 
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data" 
+                           manifest:full-path="l10n/en/tejocr.properties"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.configuration-data" 
+                           manifest:full-path="l10n/es/tejocr.properties"/>
+    ... etc ...
+    -->
+
+</manifest:manifest> 

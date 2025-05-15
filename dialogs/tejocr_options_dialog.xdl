@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD Dialog V1.0//EN" "dialog.dtd">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCROptionsDialog" dlg:left="102" dlg:top="66" dlg:width="300" dlg:height="320" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR Options">
+    <dlg:bulletinboard>
+        <!-- Language Selection -->
+        <dlg:fixedline dlg:id="LanguageLabel" dlg:left="6" dlg:top="8" dlg:width="60" dlg:height="10" dlg:value="~Language:"/>
+        <dlg:combobox dlg:id="LanguageDropdown" dlg:left="70" dlg:top="6" dlg:width="150" dlg:height="13" dlg:dropdown="true" dlg:tabstop="true" dlg:value=""/>
+        <dlg:button dlg:id="RefreshLanguagesButton" dlg:left="225" dlg:top="6" dlg:width="70" dlg:height="14" dlg:value="~Refresh" dlg:tabstop="true"/>
+
+        <!-- Output Mode -->
+        <dlg:groupbox dlg:id="OutputModeGroup" dlg:left="6" dlg:top="30" dlg:width="288" dlg:height="60" dlg:value="~Output Mode">
+            <dlg:bulletinboard>
+                <dlg:radiobutton dlg:id="OutputAtCursorRadio" dlg:left="10" dlg:top="12" dlg:width="120" dlg:height="10" dlg:value="Insert at ~Cursor" dlg:tabstop="true" dlg:checked="true"/>
+                <dlg:radiobutton dlg:id="OutputNewTextboxRadio" dlg:left="10" dlg:top="26" dlg:width="120" dlg:height="10" dlg:value="New ~Text Box" dlg:tabstop="true"/>
+                <dlg:radiobutton dlg:id="OutputReplaceImageRadio" dlg:left="150" dlg:top="12" dlg:width="120" dlg:height="10" dlg:value="~Replace Image" dlg:tabstop="true"/>
+                <dlg:radiobutton dlg:id="OutputToClipboardRadio" dlg:left="150" dlg:top="26" dlg:width="120" dlg:height="10" dlg:value="Copy to ~Clipboard" dlg:tabstop="true"/>
+            </dlg:bulletinboard>
+        </dlg:groupbox>
+
+        <!-- Advanced Options (Tabbed or Collapsible) -->
+        <!-- Using a GroupBox for simplicity, could be a TabControl -->
+        <dlg:groupbox dlg:id="AdvancedOptionsGroup" dlg:left="6" dlg:top="95" dlg:width="288" dlg:height="155" dlg:value="~Advanced OCR Options">
+            <dlg:bulletinboard>
+                <dlg:fixedline dlg:id="PSMLabel" dlg:left="10" dlg:top="12" dlg:width="100" dlg:height="10" dlg:value="Page Segmentation ~Mode:"/>
+                <dlg:combobox dlg:id="PSMDropdown" dlg:left="120" dlg:top="10" dlg:width="160" dlg:height="13" dlg:dropdown="true" dlg:tabstop="true"/>
+                
+                <dlg:fixedline dlg:id="OEMLabel" dlg:left="10" dlg:top="32" dlg:width="100" dlg:height="10" dlg:value="OCR Engine M~ode:"/>
+                <dlg:combobox dlg:id="OEMDropdown" dlg:left="120" dlg:top="30" dlg:width="160" dlg:height="13" dlg:dropdown="true" dlg:tabstop="true"/>
+
+                <dlg:fixedline dlg:id="PreprocessingLabel" dlg:left="10" dlg:top="55" dlg:width="100" dlg:height="10" dlg:value="Basic Preprocessing:"/>
+                <dlg:checkbox dlg:id="GrayscaleCheckbox" dlg:left="20" dlg:top="70" dlg:width="100" dlg:height="10" dlg:value="Convert to ~Grayscale" dlg:tabstop="true"/>
+                <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:left "20" dlg:top="85" dlg:width="100" dlg:height="10" dlg:value="~Binarize Image (Otsu)" dlg:tabstop="true"/>
+                
+                <dlg:fixedline dlg:id="NoteLabel" dlg:left="10" dlg:top="105" dlg:width="270" dlg:height="30" dlg:value="Note: Preprocessing options are applied before sending the image to Tesseract. They may or may not improve results depending on the image."/>
+            </dlg:bulletinboard>
+        </dlg:groupbox>
+        
+        <!-- Status Label -->
+        <dlg:fixedline dlg:id="StatusLabel" dlg:left="10" dlg:top="255" dlg:width="280" dlg:height="20" dlg:value="Ready" dlg:border="1" />
+        
+        <!-- Buttons -->
+        <dlg:button dlg:id="RunOCRButton" dlg:left="110" dlg:top="280" dlg:width="60" dlg:height="14" dlg:value="~Run OCR" dlg:default="true" dlg:tabstop="true" dlg:ok_button="true"/>
+        <dlg:button dlg:id="CancelButton" dlg:left="180" dlg:top="280" dlg:width="60" dlg:height="14" dlg:value="~Cancel" dlg:tabstop="true" dlg:cancel_button="true"/>
+        <dlg:button dlg:id="HelpButton" dlg:left="250" dlg:top="280" dlg:width="40" dlg:height="14" dlg:value="~Help" dlg:tabstop="true"/>
+
+    </dlg:bulletinboard>
+</dlg:window> 

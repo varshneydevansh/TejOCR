@@ -4,7 +4,7 @@
 <!-- © 2025 Devansh (Author of TejOCR) -->
 
 <div align="center">
-  <img src="icons/main_logo.png" alt="TejOCR Logo" width="200"/>
+  <img src="icons/main_logo.png" alt="TejOCR Logo" width="360" style="margin-bottom: -20px;"/>
 </div>
 
 # TejOCR – Modern OCR Extension for LibreOffice

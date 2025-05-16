@@ -14,6 +14,8 @@ from com.sun.star.task import XJobExecutor
 
 from . import uno_utils
 from . import constants
+from .tejocr_engine import perform_ocr
+
 # We will import tejocr_engine when needed for OCR tasks
 
 # Attempt to import pytesseract for language listing, but don't fail if not present yet
@@ -140,7 +142,7 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
 
 # --- OCR Options Dialog Handler ---
 class OptionsDialogHandler(BaseDialogHandler):
-    def __init__(self, ctx, ocr_source_type="file"): # ocr_source_type: "file" or "selected"
+    def __init__(self, ctx, ocr_source_type="file", image_path=None): # ocr_source_type: "file" or "selected"
         # The dialog URL will point to an XDL file. Path needs to be resolvable by LO.
         # Example: "vnd.sun.star.script:TejOCR.xdl$OptionsDialog?location=user"
         # For now, we use a placeholder that assumes it's in the extension package.
@@ -151,8 +153,10 @@ class OptionsDialogHandler(BaseDialogHandler):
         dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path)
         super().__init__(ctx, dialog_file_url)
         self.ocr_source_type = ocr_source_type
+        self.image_path = image_path # Store image_path if provided (for 'file' source)
         self.selected_options = {}
         self.available_languages_map = {} # To store code -> display name mapping
+        self.recognized_text = None # To store the OCR result
 
     def _init_controls(self):
         """Initialize controls and attach listeners for the OCR Options dialog."""
@@ -294,43 +298,115 @@ class OptionsDialogHandler(BaseDialogHandler):
         return None
 
     def _handle_ok_action(self):
-        """Called when 'Run OCR' is pressed. Gather selected options."""
-        # lang_dropdown = self.get_control("LanguageDropdown")
-        # selected_lang_text = lang_dropdown.getSelectedItem()
-        # selected_lang_code = selected_lang_text.split('(')[-1].split(')')[0] # Extract code like 'eng'
-        # self.selected_options['lang'] = selected_lang_code
-        # uno_utils.set_setting(constants.CFG_KEY_LAST_SELECTED_LANG, selected_lang_code, self.ctx)
+        """Handles the OK/Run OCR action. Retrieves options, executes OCR, and saves settings."""
+        # print("OptionsDialogHandler: _handle_ok_action called")
+        # Step 1: Retrieve and save selected options
+        lang_dropdown = self.get_control("LanguageDropdown")
+        selected_lang_display_name = lang_dropdown.getSelectedItem()
+        selected_lang_code = self._get_selected_dropdown_key(selected_lang_display_name, self.available_languages_map)
+        if not selected_lang_code: # Fallback if key not found (should not happen with proper map)
+            selected_lang_code = lang_dropdown.getSelectedItem() # Use raw item if no key
 
-        # radio_group_output = self.get_control("OutputModeRadioGroup") # Assuming a group box or similar
-        # self.selected_options['output_mode'] = ... # Get selected radio button value
-        # uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, self.selected_options['output_mode'], self.ctx)
+        psm_dropdown = self.get_control("PSMDropdown")
+        selected_psm_display = psm_dropdown.getSelectedItem()
+        selected_psm_val = self._get_selected_dropdown_key(selected_psm_display, constants.TESSERACT_PSM_MODES)
 
-        # self.selected_options['psm'] = self.get_control("PSMDropdown").getSelectedItemPos() # Or get value
-        # self.selected_options['oem'] = self.get_control("OEMDropdown").getSelectedItemPos() # Or get value
-        # self.selected_options['grayscale'] = self.get_control("GrayscaleCheckbox").getState() == 1
-        # self.selected_options['binarize'] = self.get_control("BinarizeCheckbox").getState() == 1
+        oem_dropdown = self.get_control("OEMDropdown")
+        selected_oem_display = oem_dropdown.getSelectedItem()
+        selected_oem_val = self._get_selected_dropdown_key(selected_oem_display, constants.TESSERACT_OEM_MODES)
+
+        output_mode = constants.DEFAULT_OUTPUT_MODE # Default
+        if self.get_control("OutputAtCursorRadio").getState(): output_mode = constants.OUTPUT_MODE_CURSOR
+        elif self.get_control("OutputNewTextboxRadio").getState(): output_mode = constants.OUTPUT_MODE_TEXTBOX
+        elif self.get_control("OutputReplaceImageRadio").getState(): output_mode = constants.OUTPUT_MODE_REPLACE
+        elif self.get_control("OutputToClipboardRadio").getState(): output_mode = constants.OUTPUT_MODE_CLIPBOARD
         
-        # For now, just log
-        print(f"OptionsDialogHandler: OK pressed. OCR source: {self.ocr_source_type}. Options would be gathered here.")
-        self.selected_options = {"lang": "eng", "output_mode": constants.OUTPUT_MODE_CURSOR, "psm": "3", "oem": "3", "grayscale":False, "binarize":False}
-        # Actually run OCR (this will be a call to tejocr_engine)
-        # self._execute_ocr_job() 
+        grayscale = self.get_control("GrayscaleCheckbox").getState()
+        binarize = self.get_control("BinarizeCheckbox").getState()
+
+        self.selected_options = {
+            "lang": selected_lang_code,
+            "psm": selected_psm_val,
+            "oem": selected_oem_val,
+            "output_mode": output_mode,
+            "grayscale": grayscale,
+            "binarize": binarize
+        }
+        # print(f"Selected options: {self.selected_options}")
+
+        # Save these options for next time (except output mode, which is more session-specific)
+        if selected_lang_code:
+            uno_utils.set_setting(constants.CFG_KEY_LAST_SELECTED_LANG, selected_lang_code, self.ctx)
+        if selected_psm_val is not None: # PSM can be integer 0
+            uno_utils.set_setting("LastPSMMode", str(selected_psm_val), self.ctx) # Store as string
+        if selected_oem_val is not None: # OEM can be integer 0
+            uno_utils.set_setting("LastOEMMode", str(selected_oem_val), self.ctx) # Store as string
+        uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, output_mode, self.ctx)
+        uno_utils.set_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, grayscale, self.ctx)
+        uno_utils.set_setting(constants.CFG_KEY_DEFAULT_BINARIZE, binarize, self.ctx)
+
+        # Step 2: Execute OCR Job
+        ocr_successful = self._execute_ocr_job()
+        
+        # Return True to close dialog if OCR was successful, False to keep it open if error
+        return ocr_successful
 
     def _execute_ocr_job(self):
-        """Placeholder for executing the OCR job. This would involve tejocr_engine."""
-        # status_label = self.get_control("StatusLabel")
-        # if status_label: status_label.setText("Processing...")
-        # try:
-        #     from . import tejocr_engine
-        #     # result = tejocr_engine.perform_ocr(self.ctx, self.parent_frame, self.ocr_source_type, self.selected_options)
-        #     # if result:
-        #     #     if status_label: status_label.setText(result.get("message", "Success!"))
-        #     # else:
-        #     #     if status_label: status_label.setText("OCR failed. Check logs.")
-        # except Exception as e:
-        #     if status_label: status_label.setText(f"Error: {e}")
-        #     uno_utils.show_message_box("OCR Error", f"An exception occurred: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
-        print("OptionsDialogHandler: _execute_ocr_job would call the OCR engine.")
+        """Executes the OCR process based on current dialog settings."""
+        status_label = self.get_control("StatusLabel")
+        def status_cb(message):
+            if status_label:
+                status_label.setText(str(message))
+            # print(f"OCR Status: {message}") # For debugging if UI doesn't update
+
+        status_cb("Preparing OCR...")
+        self.recognized_text = None # Reset previous result
+
+        # self.selected_options should be populated by _handle_ok_action before this is called.
+        if not self.selected_options:
+            status_cb("Error: OCR options not properly passed. Please close and retry.")
+            # This indicates a programming error if this state is reached.
+            uno_utils.show_message_box("Internal Error", "OCR options were not available. Please report this bug.", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+            return False
+            
+        current_ocr_options = self.selected_options.copy() # Use the already populated options
+
+        # image_path_or_selection_opts: For 'file', it's self.image_path.
+        # For 'selected', tejocr_engine._get_image_from_selection uses the frame, so path can be None.
+        image_arg = self.image_path if self.ocr_source_type == "file" else None
+        
+        # Log for debugging
+        # print(f"Calling perform_ocr with: source_type='{self.ocr_source_type}', image_arg='{image_arg}', options={current_ocr_options}")
+
+        try:
+            result = perform_ocr(
+                ctx=self.ctx,
+                frame=self.parent_frame, # Use parent_frame of dialog
+                source_type=self.ocr_source_type,
+                image_path_or_selection_options=image_arg,
+                ocr_options=current_ocr_options,
+                status_callback=status_cb
+            )
+
+            if result and result.get("success"):
+                self.recognized_text = result.get("text")
+                status_cb(f"OCR successful. Text length: {len(self.recognized_text or '')}")
+                # print(f"Recognized text: {self.recognized_text[:100]}...") # Debug
+                return True
+            else:
+                error_msg = result.get("message", "OCR failed. Unknown error.")
+                status_cb(f"Error: {error_msg}")
+                uno_utils.show_message_box("OCR Error", error_msg, "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+                return False
+        except Exception as e:
+            # This catches exceptions within perform_ocr if not handled there, or issues calling it.
+            error_msg = f"Critical error during OCR: {e}"
+            status_cb(error_msg)
+            # print(error_msg) # Debug
+            import traceback
+            traceback.print_exc()
+            uno_utils.show_message_box("OCR Execution Error", error_msg, "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+            return False
 
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
@@ -406,19 +482,34 @@ class SettingsDialogHandler(BaseDialogHandler):
 
 
 # --- Global functions to show dialogs (called from tejocr_service.py) ---
-def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type):
-    """Creates and shows the OCR Options dialog."""
-    try:
-        # Ensure os.path.dirname works as expected even when run from within LO context
-        # For bundled extensions, __file__ should give a path inside the .oxt
-        handler = OptionsDialogHandler(ctx, ocr_source_type)
-        if handler._create_dialog(parent_frame):
-            if handler.execute():
-                return handler.selected_options
-            handler.dispose()
-    except Exception as e:
-        uno_utils.show_message_box("Dialog Error", f"Cannot show OCR Options dialog: {e}\nURL attempted: {handler.dialog_url if 'handler' in locals() else 'Unknown'}", "errorbox", parent_frame=parent_frame, ctx=ctx)
-    return None
+def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None):
+    """Creates, configures, and shows the OCR Options dialog."""
+    # print(f"show_ocr_options_dialog called with: source_type='{ocr_source_type}', image_path='{image_path}'")
+    dialog_handler = OptionsDialogHandler(ctx, ocr_source_type=ocr_source_type, image_path=image_path)
+    
+    # Set the parent frame for the dialog (important for modality and message boxes)
+    # dialog_handler.parent_frame = parent_frame # This is now handled in _create_dialog
+
+    if not dialog_handler._create_dialog(parent_frame): # Pass parent_frame here
+        # Error creating dialog, message already shown by _create_dialog
+        return None, None # Indicate failure
+
+    # Execute the dialog
+    success = dialog_handler.execute() # This will show the dialog and block
+
+    recognized_text = None
+    selected_output_mode = None
+
+    if success: # This means "Run OCR" was clicked and OCR was successful
+        recognized_text = dialog_handler.recognized_text
+        selected_output_mode = dialog_handler.selected_options.get("output_mode")
+        # print(f"Dialog closed OK. Text: '{recognized_text[:50] if recognized_text else 'None'}...', Output: {selected_output_mode}")
+    else:
+        # print("Dialog was cancelled or OCR failed.")
+        pass # Dialog was cancelled or an error occurred during OCR
+
+    dialog_handler.dispose() # Clean up the dialog
+    return recognized_text, selected_output_mode
 
 def show_settings_dialog(ctx, parent_frame):
     """Creates and shows the Settings dialog."""

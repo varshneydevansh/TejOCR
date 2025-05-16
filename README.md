@@ -3,7 +3,11 @@
 <!-- file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
 <!-- © 2025 Devansh (Author of TejOCR) -->
 
-# 🔶 TejOCR – Modern OCR Extension for LibreOffice
+<div align="center">
+  <img src="main_logo.png" alt="TejOCR Logo" width="200"/>
+</div>
+
+# TejOCR – Modern OCR Extension for LibreOffice
 
 **TejOCR** is a modern, lightweight, and user-friendly OCR (Optical Character Recognition) extension for LibreOffice Writer. Powered by [Tesseract OCR](https://github.com/tesseract-ocr/tesseract), it allows you to extract editable text from images embedded in your documents or imported externally — all from within LibreOffice.
 
@@ -134,4 +138,5 @@ cd TejOCR
 ## 📧 Contact
 
 *   Maintainer: **Devansh Varshney**
-*   GitHub: [varshneydevansh](https://github.com/varshneydevansh) 
+*   GitHub: [varshneydevansh](https://github.com/varshneydevansh)
+*   Twitter: [@varshneydevansh](https://x.com/varshneydevansh)

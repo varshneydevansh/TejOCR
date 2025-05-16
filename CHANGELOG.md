@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Initial project scaffolding: directory structure, core Python files (`tejocr_service.py`, `tejocr_dialogs.py`, `tejocr_engine.py`, `uno_utils.py`, `constants.py`), configuration files (`manifest.xml`, `Addons.xcu`, `description.xml`), and documentation (`LICENSE`, `README.md`, `CHANGELOG.md`).
+- Implemented OCR options dialog (`tejocr_options_dialog.xdl` and `OptionsDialogHandler`) with language, PSM, OEM selection, preprocessing options, and persistence of last-used settings.
+- Integrated `tejocr_engine.py` with `tejocr_dialogs.py` to perform OCR based on dialog choices, including image extraction from selection and file, preprocessing, and Tesseract calls.
+- Basic Tesseract path detection and version checking.
+- Added `TASKS.md` for detailed feature tracking.
+
 ### Added
 - Initial project structure for TejOCR.
 - Basic `tejocr_service.py` with XDispatchProvider and XServiceInfo implementations.
@@ -19,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `description.xml` and `META-INF/manifest.xml` for extension metadata.
 - `LICENSE` file (MPL-2.0).
 - `README.md` with project overview, features, and setup instructions.
-- `CHANGELOG.md` to track changes.
 - Placeholder `l10n` directory structure for internationalization.
 
 ### Changed

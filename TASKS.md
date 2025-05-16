@@ -21,7 +21,7 @@ This file tracks the progress of features and components for the TejOCR LibreOff
     -   [x] "Refresh Languages" button.
     -   [x] Integration with `tejocr_engine.py` to run OCR.
     -   [x] Status label updates during OCR.
--   [ ] **OCR Output Handling (`tejocr_output.py`)**: **(Not Started)**
+-   [x] **OCR Output Handling (`tejocr_output.py`)**: **(Partially Complete)**
     -   [ ] Implement "Insert at Cursor".
     -   [ ] Implement "Insert into New Text Box".
     -   [ ] Implement "Replace Image with Text".
@@ -31,14 +31,14 @@ This file tracks the progress of features and components for the TejOCR LibreOff
     -   [x] Dispatch URLs for "OCR Selected", "OCR from File", "Settings".
     -   [x] Context-sensitive toolbar action.
     -   [x] Calling `tejocr_dialogs.show_ocr_options_dialog`.
-    -   [ ] Connect to `tejocr_output.py` for handling OCR results. *(Partially done, needs output module)*
--   [ ] **Settings Dialog (`tejocr_dialogs.py`, `tejocr_settings_dialog.xdl`)**:
-    -   [ ] XDL dialog definition for settings. **(Not Started)**
-    -   [ ] Full implementation of `SettingsDialogHandler`.
-        -   [ ] Load/save Tesseract path.
-        -   [ ] Implement Tesseract path browsing.
-        -   [ ] Implement Tesseract path testing.
-        -   [ ] Load/save other default settings (e.g., default language, preprocessing options).
+    -   [x] Connect to `tejocr_output.py` for handling OCR results.
+-   [ ] **Settings Dialog (`tejocr_dialogs.py`, `tejocr_settings_dialog.xdl`)**: **(Largely Complete)**
+    -   [x] XDL dialog definition for settings created (`dialogs/tejocr_settings_dialog.xdl`).
+    -   [x] Full implementation of `SettingsDialogHandler` in `python/tejocr/tejocr_dialogs.py`.
+        -   [x] Load/save Tesseract path.
+        -   [x] Implement Tesseract path browsing.
+        -   [x] Implement Tesseract path testing.
+        -   [x] Load/save other default settings (default language, preprocessing options).
 -   [x] **UNO Utilities (`uno_utils.py`)**:
     -   [x] Helpers for service access, UI messages.
     -   [x] Selection checking (`is_graphic_object_selected`).
@@ -75,16 +75,18 @@ This file tracks the progress of features and components for the TejOCR LibreOff
 ## Icons & Visuals
 
 -   [x] **`icons/` directory**: Created.
--   [ ] **Icon Creation**:
-    -   [ ] Create `tejocr_icon_16.png` from `main_logo.png`. **(Not Started - Manual Task)**
-    -   [ ] Create `tejocr_icon_16.svg` (optional, if desired). **(Not Started - Manual Task)**
-    -   [ ] Create `tejocr_icon_26.png` from `main_logo.png`. **(Not Started - Manual Task)**
-    -   [ ] Create `tejocr_icon_26.svg` (optional, if desired). **(Not Started - Manual Task)**
+-   [x] **Icon Usage (PNG)**:
+    -   [x] `icons/tejocr_icon_16.png` is referenced in `Addons.xcu` for the toolbar.
+    -   [x] `icons/tejocr_icon_26.png` is referenced in `description.xml` for the extension icon.
+-   [ ] **Optional Icon Creation (Manual Tasks)**:
+    -   [ ] Create `tejocr_icon_16.svg` (optional, if desired). *(Manual Task)*
+    -   [ ] Create `tejocr_icon_26.svg` (optional, if desired). *(Manual Task)*
+    -   [x] Create `tejocr_icon_26_hc.png` (high-contrast version for `description.xml`, if desired). *(Manual Task - User Provided)*
 -   [x] **Visual Identity**: Orange/saffron/yellow for icons, standard dialogs. (Decision made).
 
 ## Logging
 
--   [ ] **File-based Logging**: Implement robust logging using Python's `logging` module, replacing/supplementing `print` statements. **(Not Started)**
+-   [x] **File-based Logging**: Implement robust logging using Python's `logging` module, replacing/supplementing `print` statements. **(Complete)**
 
 ## Testing
 

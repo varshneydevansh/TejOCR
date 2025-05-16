@@ -14,6 +14,10 @@ from com.sun.star.beans import PropertyValue
 from . import uno_utils
 from . import constants
 from . import tejocr_dialogs # Import the dialogs module
+from . import tejocr_output # Import the output module
+
+# Initialize logger for this module
+logger = uno_utils.get_logger("TejOCR.Service")
 
 # Constants for dispatch URLs (centralize for easier management)
 DISPATCH_URL_OCR_SELECTED = "uno:org.libreoffice.TejOCR.OCRSelectedImage"
@@ -30,6 +34,10 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
     def __init__(self, ctx, *args):
         self.ctx = ctx
         self.frame = None
+        # It's better to initialize logger here if ctx is available early
+        # or ensure get_logger handles ctx=None gracefully for initial calls.
+        # The current get_logger in uno_utils has a fallback if ctx isn't available for pathing.
+        logger.info("TejOCRService initialized.")
 
     # XInitialization
     def initialize(self, args):
@@ -72,7 +80,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         if not self.frame:
             self.frame = uno_utils.get_current_frame(self.ctx)
             if not self.frame:
-                uno_utils.show_message_box("TejOCR Error", "Cannot perform action: No active document window.", "errorbox", ctx=self.ctx)
+                # uno_utils.show_message_box("TejOCR Error", "Cannot perform action: No active document window.", "errorbox", ctx=self.ctx)
+                logger.error("Cannot perform action: No active document window.")
+                # Showing a message box here might be redundant if the action itself relies on an active window.
                 return
 
         if URL.Protocol == "uno:":
@@ -100,24 +110,64 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                                        "infobox", parent_frame=self.frame, ctx=self.ctx)
             return
         
-        selected_ocr_options = tejocr_dialogs.show_ocr_options_dialog(self.ctx, self.frame, "selected")
-        if selected_ocr_options:
-            # This is where the call to the OCR engine would happen with selected_ocr_options
-            print(f"TejOCR Service: OCR to be performed on selected image with options: {selected_ocr_options}")
-            # For now, just a message. Later, call tejocr_engine.py
-            uno_utils.show_message_box("OCR Triggered (Selected)", 
-                                       f"OCR would now run on the selected image.\nOptions: {selected_ocr_options}", 
-                                       "infobox", parent_frame=self.frame, ctx=self.ctx)
+        # show_ocr_options_dialog now returns (recognized_text, selected_output_mode)
+        recognized_text, selected_output_mode = tejocr_dialogs.show_ocr_options_dialog(self.ctx, self.frame, "selected")
+        
+        if recognized_text is not None and selected_output_mode is not None:
+            # OCR was successful and dialog was not cancelled
+            logger.info(f"OCR successful on selected image. Output mode: {selected_output_mode}. Text length: {len(recognized_text)}")
+            tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
+        else:
+            # Dialog was cancelled or OCR failed (message already shown by dialog/engine)
+            logger.info("OCR on selected image cancelled or failed.")
 
     def _handle_ocr_image_from_file(self):
-        selected_ocr_options = tejocr_dialogs.show_ocr_options_dialog(self.ctx, self.frame, "file")
-        if selected_ocr_options:
-            # This is where the call to the OCR engine would happen with selected_ocr_options
-            print(f"TejOCR Service: OCR to be performed on image from file with options: {selected_ocr_options}")
-            # For now, just a message. Later, call tejocr_engine.py
-            uno_utils.show_message_box("OCR Triggered (File)", 
-                                       f"OCR would now run on an image from file.\nOptions: {selected_ocr_options}", 
-                                       "infobox", parent_frame=self.frame, ctx=self.ctx)
+        # File selection will be handled by the dialog or a preceding step if we choose to implement a native file picker here first.
+        # For now, tejocr_dialogs.show_ocr_options_dialog might need an image_path if source is 'file'.
+        # This part needs clarification: show_ocr_options_dialog expects an image_path for "file" type.
+        # We need a file picker here.
+
+        file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
+        if not file_picker:
+            # uno_utils.show_message_box("Error", "Could not create file picker service.", "errorbox", parent_frame=self.frame, ctx=self.ctx)
+            logger.error("Could not create file picker service for OCR from file.")
+            return
+
+        # Setup file picker
+        # Using constants.SUPPORTED_IMAGE_FORMATS_DESC and constants.SUPPORTED_IMAGE_FORMATS_EXT
+        filters = []
+        for desc, exts_str in constants.IMAGE_FORMAT_FILTERS.items():
+            filters.append((desc, exts_str))
+        
+        # Add an "All supported" filter first
+        all_supported_exts = ";".join([exts.split(';')[0] for desc, exts in filters]) # Take primary extension for display
+        file_picker.appendFilter("All Supported Images", ";".join([exts for desc, exts in filters]))
+        for desc, exts in filters:
+            file_picker.appendFilter(desc, exts)
+        
+        file_picker.setDefaultName("image.png")
+        # file_picker.setTitle("Select Image for OCR") # Title is usually set by LO
+        file_picker.setMultiSelectionMode(False)
+
+        if file_picker.execute() == 1: # 1 for OK
+            files = file_picker.getFiles()
+            if files and len(files) > 0:
+                image_file_path = unohelper.fileUrlToSystemPath(files[0])
+                logger.info(f"Image selected from file: {image_file_path}")
+                
+                recognized_text, selected_output_mode = tejocr_dialogs.show_ocr_options_dialog(
+                    self.ctx, self.frame, "file", image_path=image_file_path
+                )
+                
+                if recognized_text is not None and selected_output_mode is not None:
+                    logger.info(f"OCR successful on file '{image_file_path}'. Output: {selected_output_mode}. Text len: {len(recognized_text)}")
+                    tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
+                else:
+                    logger.info(f"OCR on file '{image_file_path}' cancelled or failed.")
+            else:
+                logger.info("No file selected from picker for OCR from file.")
+        else:
+            logger.info("File picker was cancelled for OCR from file.")
 
     def _handle_settings(self):
         tejocr_dialogs.show_settings_dialog(self.ctx, self.frame)
@@ -149,21 +199,27 @@ g_ImplementationHelper.addImplementation(
 
 # For debugging purposes if run directly (not how LO uses it)
 if __name__ == "__main__":
-    print("This script is intended to be run by LibreOffice's Python UNO bridge.")
-    print(f"Implementation Name: {IMPLEMENTATION_NAME}")
-    print(f"Supported Service Name: {SERVICE_NAME}")
+    # This only runs if the script is executed directly, not when LO imports it.
+    # Setup a basic console logger for __main__ block if needed for direct testing of mocks.
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    main_logger = logging.getLogger("TejOCR.Service.__main__")
+    main_logger.info("This script is intended to be run by LibreOffice's Python UNO bridge.")
+    main_logger.info(f"Implementation Name: {IMPLEMENTATION_NAME}")
+    main_logger.info(f"Supported Service Name: {SERVICE_NAME}")
     # The mock objects below are for extremely basic local testing and won't cover UNO interactions.
     class MockUnoStruct:
         def __init__(self, name="", **kwargs):
             self.Name = name
             self.__dict__.update(kwargs)
+            # main_logger.debug(f"MockUnoStruct created: {name}, {kwargs}")
 
     class MockUnoContext:
         def getServiceManager(self):
-            print("MockContext: getServiceManager called")
+            main_logger.debug("MockContext: getServiceManager called")
             return self 
         def createInstanceWithContext(self, name, ctx):
-            print(f"MockContext: createInstanceWithContext for {name}")
+            main_logger.debug(f"MockContext: createInstanceWithContext for {name}")
             if name == "com.sun.star.awt.Toolkit":
                 return MockToolkit()
             if name == "com.sun.star.frame.Desktop":
@@ -175,53 +231,53 @@ if __name__ == "__main__":
     
     class MockDesktop:
         def getCurrentFrame(self):
-            print("MockDesktop: getCurrentFrame called")
+            main_logger.debug("MockDesktop: getCurrentFrame called")
             return MockFrame()
 
     class MockFrame:
         def getContainerWindow(self):
-            print("MockFrame: getContainerWindow called")
+            main_logger.debug("MockFrame: getContainerWindow called")
             return self # Mocking peer provider
         def getPeer(self):
-            print("MockFrame: getPeer called - returning None as it needs a real window")
+            main_logger.debug("MockFrame: getPeer called - returning None as it needs a real window")
             return None # No real peer in this mock
         def getController(self):
-            print("MockFrame: getController called")
+            main_logger.debug("MockFrame: getController called")
             return self # Mocking controller
         def getSelection(self):
-            print("MockFrame: getSelection called - returning None")
+            main_logger.debug("MockFrame: getSelection called - returning None")
             return None # No real selection
 
     class MockToolkit:
         def createMessageBox(self, parent, type, buttons, title, message):
-            print(f"MockMessageBox: Title='{title}', Message='{message}', Type='{type}', Buttons='{buttons}'")
+            main_logger.info(f"MockMessageBox: Title='{title}', Message='{message}', Type='{type}', Buttons='{buttons}'")
             return MockMessageBoxInstance()
 
     class MockMessageBoxInstance:
         def execute(self):
-            print("MockMessageBoxInstance: execute()")
+            main_logger.debug("MockMessageBoxInstance: execute()")
             return 0
     
     class MockDialogProvider:
         def createDialog(self, url):
-            print(f"MockDialogProvider: createDialog called with {url}")
+            main_logger.debug(f"MockDialogProvider: createDialog called with {url}")
             # Return a mock dialog that can be executed
             return MockDialog()
 
     class MockDialog:
         def execute(self):
-            print("MockDialog: execute() called")
+            main_logger.debug("MockDialog: execute() called")
             return 1 # Simulate OK
         def dispose(self):
-            print("MockDialog: dispose() called")
+            main_logger.debug("MockDialog: dispose() called")
         def getPeer(self):
-            # print("MockDialog: getPeer() called")
+            # main_logger.debug("MockDialog: getPeer() called")
             return self # Needs to return something that has setParent
         def setParent(self, parent_peer):
-            # print(f"MockDialog: setParent() called with {parent_peer}")
+            # main_logger.debug(f"MockDialog: setParent() called with {parent_peer}")
             pass
         def getControl(self, name):
-            print(f"MockDialog: getControl('{name}') called - returning mock control")
+            main_logger.debug(f"MockDialog: getControl('{name}') called - returning mock control")
             return MockControl(name)
 
     class MockControl:

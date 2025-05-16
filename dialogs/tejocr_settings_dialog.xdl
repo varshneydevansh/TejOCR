@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" dlg:id="TejOCRSettingsDialog" dlg:title="TejOCR Settings" dlg: ინფორმაცი="true">
+    <dlg:bulletinboard>
+        <!-- Tesseract Path Section -->
+        <dlg:label dlg:id="PathLabel" dlg:value="Tesseract OCR Executable Path:" dlg:x="1cm" dlg:y="1cm" dlg:width="6cm" dlg:height="0.5cm"/>
+        <dlg:textfield dlg:id="TesseractPathTextField" dlg:x="1cm" dlg:y="1.6cm" dlg:width="10cm" dlg:height="0.6cm"/>
+        <dlg:button dlg:id="BrowseButton" dlg:value="Browse..." dlg:x="11.2cm" dlg:y="1.6cm" dlg:width="2.5cm" dlg:height="0.6cm"/>
+        <dlg:button dlg:id="TestTesseractButton" dlg:value="Test Path" dlg:x="13.9cm" dlg:y="1.6cm" dlg:width="2.5cm" dlg:height="0.6cm"/>
+        <dlg:label dlg:id="PathStatusLabel" dlg:value="" dlg:x="1cm" dlg:y="2.3cm" dlg:width="15cm" dlg:height="0.5cm"/>
+
+        <!-- Default OCR Language Section -->
+        <dlg:label dlg:id="DefaultLangLabel" dlg:value="Default OCR Language:" dlg:x="1cm" dlg:y="3.5cm" dlg:width="6cm" dlg:height="0.5cm"/>
+        <dlg:combobox dlg:id="DefaultLanguageDropdown" dlg:x="1cm" dlg:y="4.1cm" dlg:width="7cm" dlg:height="0.6cm" dlg:dropdown="true"/>
+        <dlg:button dlg:id="RefreshLanguagesButtonSettings" dlg:value="Refresh List" dlg:x="8.2cm" dlg:y="4.1cm" dlg:width="2.5cm" dlg:height="0.6cm"/>
+
+
+        <!-- Default Preprocessing Section -->
+        <dlg:groupbox dlg:id="PreprocessingGroupBox" dlg:value="Default Preprocessing Options" dlg:x="1cm" dlg:y="5.5cm" dlg:width="15.5cm" dlg:height="3cm">
+            <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:value="Grayscale" dlg:x="1.5cm" dlg:y="6.2cm" dlg:width="5cm" dlg:height="0.5cm"/>
+            <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:value="Binarize (Simple)" dlg:x="1.5cm" dlg:y="7cm" dlg:width="5cm" dlg:height="0.5cm"/>
+            <!-- Add more preprocessing options here if needed -->
+        </dlg:groupbox>
+        
+        <!-- Status / Info line at bottom -->
+        <dlg:label dlg:id="SettingsStatusLabel" dlg:value="Settings are saved per user." dlg:x="1cm" dlg:y="9cm" dlg:width="15cm" dlg:height="0.5cm"/>
+
+        <!-- Standard Buttons -->
+        <dlg:button dlg:id="SaveButton" dlg:value="Save" dlg:ok_button="true" dlg:x="9.5cm" dlg:y="10cm" dlg:width="2cm" dlg:height="0.6cm"/>
+        <dlg:button dlg:id="CancelButton" dlg:value="Cancel" dlg:cancel_button="true" dlg:x="11.7cm" dlg:y="10cm" dlg:width="2cm" dlg:height="0.6cm"/>
+        <dlg:button dlg:id="HelpButtonSettings" dlg:value="Help" dlg:x="13.9cm" dlg:y="10cm" dlg:width="2cm" dlg:height="0.6cm"/>
+    </dlg:bulletinboard>
+</dlg:window> 

@@ -15,6 +15,9 @@ import shutil # For shutil.which & tesseract path checking
 from . import uno_utils
 from . import constants
 
+# Initialize logger for this module
+logger = uno_utils.get_logger("TejOCR.Engine")
+
 # Attempt to import pytesseract and Pillow, but handle if not available initially
 PYTESSERACT_AVAILABLE = False
 PILLOW_AVAILABLE = False
@@ -23,13 +26,13 @@ try:
     import pytesseract
     PYTESSERACT_AVAILABLE = True
 except ImportError:
-    print("TejOCR Engine: pytesseract library not found. OCR functionality will be disabled.")
+    logger.warning("Pytesseract library not found. OCR functionality will be disabled.")
 
 try:
     from PIL import Image, ImageOps, ImageFilter
     PILLOW_AVAILABLE = True
 except ImportError:
-    print("TejOCR Engine: Pillow (PIL) library not found. Advanced image preprocessing will be disabled.")
+    logger.warning("Pillow (PIL) library not found. Advanced image preprocessing will be disabled.")
 
 
 def _get_temp_image_path(suffix=".png"):
@@ -45,7 +48,7 @@ def _export_graphic_to_file(xgraphic, file_path, mime_type="image/png"):
     try:
         provider = uno_utils.create_instance("com.sun.star.graphic.GraphicProvider")
         if not provider:
-            print("Error: Could not create GraphicProvider service.")
+            logger.error("Could not create GraphicProvider service for image export.")
             return False
         
         # Store properties
@@ -61,7 +64,7 @@ def _export_graphic_to_file(xgraphic, file_path, mime_type="image/png"):
         provider.storeGraphic(xgraphic, properties)
         return True
     except Exception as e:
-        print(f"Error exporting graphic to {file_path}: {e}")
+        logger.error(f"Error exporting graphic to {file_path}: {e}", exc_info=True)
         uno_utils.show_message_box("Image Export Error", f"Failed to export image for OCR: {e}", "errorbox")
         return False
 
@@ -118,7 +121,7 @@ def _preprocess_image(image_path, grayscale=False, binarize_method=None):
     """
     if not PILLOW_AVAILABLE:
         if grayscale or binarize_method:
-            print("Pillow not available, skipping preprocessing.")
+            logger.info("Pillow not available, skipping preprocessing.")
         return image_path # Cannot preprocess
 
     try:
@@ -158,18 +161,20 @@ def _preprocess_image(image_path, grayscale=False, binarize_method=None):
             return image_path
 
     except Exception as e:
-        print(f"Error during image preprocessing: {e}")
+        logger.error(f"Error during image preprocessing for '{image_path}': {e}", exc_info=True)
         return image_path # Return original path if preprocessing fails
 
 def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False):
     """Checks if Tesseract is available at the given path or via auto-detection."""
     if not PYTESSERACT_AVAILABLE:
+        logger.error("Pytesseract library not installed. Cannot check Tesseract path.")
         uno_utils.show_message_box("Pytesseract Missing", "The 'pytesseract' Python library is not installed. TejOCR cannot function without it.", "errorbox", parent_frame=parent_frame, ctx=ctx)
         return False
 
     tess_exec = uno_utils.find_tesseract_executable(tesseract_path, ctx) # Pass ctx for potential messages
     
     if not tess_exec:
+        logger.warning("Tesseract executable not found via find_tesseract_executable.")
         uno_utils.show_message_box("Tesseract Not Found", 
                                  "Tesseract OCR executable was not found at the specified path or in system PATH. Please configure the path in TejOCR Settings.", 
                                  "errorbox", parent_frame=parent_frame, ctx=ctx)
@@ -181,12 +186,15 @@ def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_succe
     try:
         version = pytesseract.get_tesseract_version()
         if show_success:
+            logger.info(f"Tesseract version {version} found at {tess_exec}.")
             uno_utils.show_message_box("Tesseract Found", f"Tesseract OCR (Version {version}) found and working at:\n{tess_exec}", "infobox", parent_frame=parent_frame, ctx=ctx)
         return True
     except pytesseract.TesseractNotFoundError:
+        logger.warning(f"Pytesseract TesseractNotFoundError for path: {tess_exec}")
         uno_utils.show_message_box("Tesseract Not Found", f"Pytesseract could not find Tesseract at {tess_exec} despite the file existing. Check permissions or Tesseract installation.", "errorbox", parent_frame=parent_frame, ctx=ctx)
         return False
     except Exception as e:
+        logger.error(f"Error testing Tesseract at {tess_exec}: {e}", exc_info=True)
         uno_utils.show_message_box("Tesseract Error", f"Error while testing Tesseract at {tess_exec}:\n{e}", "errorbox", parent_frame=parent_frame, ctx=ctx)
         return False
     finally:
@@ -202,15 +210,23 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
     Returns a dict: {"success": True/False, "text": "recognized_text" or None, "message": "status_message"}
     """
     if not PYTESSERACT_AVAILABLE:
+        logger.error("perform_ocr called but Pytesseract library not installed.")
         return {"success": False, "text": None, "message": "Pytesseract library not installed."}
 
     if status_callback: status_callback("Initializing OCR...")
+    logger.info(f"Performing OCR: source='{source_type}', options={ocr_options}")
 
     tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, ctx)
     if not check_tesseract_path(tess_path_cfg, ctx, frame):
+        logger.warning("Tesseract path check failed during perform_ocr.")
         return {"success": False, "text": None, "message": "Tesseract not found or not working. Please check settings."}
     
-    pytesseract.pytesseract.tesseract_cmd = uno_utils.find_tesseract_executable(tess_path_cfg) # Set it globally for this run
+    # Ensure tesseract_cmd is set for this pytesseract session
+    effective_tess_path = uno_utils.find_tesseract_executable(tess_path_cfg)
+    if not effective_tess_path: # Should have been caught by check_tesseract_path, but double check
+        logger.error("Effective Tesseract path could not be determined even after check_tesseract_path passed.")
+        return {"success": False, "text": None, "message": "Critical error: Tesseract path inconsistency."}
+    pytesseract.pytesseract.tesseract_cmd = effective_tess_path
 
     temp_image_to_ocr = None
     original_image_path_for_cleanup = None
@@ -218,19 +234,25 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
     try:
         if source_type == 'file':
             if not image_path_or_selection_options or not os.path.isfile(str(image_path_or_selection_options)):
+                logger.error(f"Invalid image file path for OCR: {image_path_or_selection_options}")
                 return {"success": False, "text": None, "message": "Invalid image file path provided."}
-            temp_image_to_ocr = str(image_path_or_selection_options) # Use user's file directly for now for preprocessing
-            # If we always want to preprocess on a copy, we should copy it first.
+            temp_image_to_ocr = str(image_path_or_selection_options)
+            logger.info(f"OCR source is file: {temp_image_to_ocr}")
         elif source_type == 'selected':
             if status_callback: status_callback("Extracting selected image...")
+            logger.info("OCR source is selected image. Attempting extraction.")
             temp_image_to_ocr = _get_image_from_selection(frame, ctx)
             if not temp_image_to_ocr:
+                logger.warning("Failed to extract image from selection for OCR.")
                 return {"success": False, "text": None, "message": "Failed to extract image from selection."}
             original_image_path_for_cleanup = temp_image_to_ocr # Mark for cleanup after preprocessing
+            logger.info(f"Selected image exported to temp file: {temp_image_to_ocr}")
         else:
+            logger.error(f"Invalid OCR source type: {source_type}")
             return {"success": False, "text": None, "message": "Invalid OCR source type."}
 
         if status_callback: status_callback("Preprocessing image (if enabled)...")
+        logger.info(f"Preprocessing image '{temp_image_to_ocr}' with options: grayscale={ocr_options.get('grayscale')}, binarize={ocr_options.get('binarize')}")
         processed_image_path = _preprocess_image(temp_image_to_ocr, 
                                                ocr_options.get('grayscale', False), 
                                                'otsu' if ocr_options.get('binarize', False) else None)
@@ -238,14 +260,19 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
         # If preprocessing created a new file and the original was a temp file, clean up original.
         if original_image_path_for_cleanup and processed_image_path != original_image_path_for_cleanup and \
            original_image_path_for_cleanup.startswith(tempfile.gettempdir()):
+            logger.debug(f"Cleaning up original temp image: {original_image_path_for_cleanup}")
             try: os.remove(original_image_path_for_cleanup)
-            except OSError: pass
+            except OSError as e_rem_orig:
+                 logger.warning(f"Could not remove original temp image '{original_image_path_for_cleanup}': {e_rem_orig}")
+                 pass
 
         final_image_for_ocr = processed_image_path
+        logger.info(f"Image for Tesseract: {final_image_for_ocr}")
 
         if status_callback: status_callback(f"Performing OCR (Lang: {ocr_options.get('lang')})...")
         
         custom_config = f"--oem {ocr_options.get('oem', constants.DEFAULT_OEM_MODE)} --psm {ocr_options.get('psm', constants.DEFAULT_PSM_MODE)}"
+        logger.info(f"Tesseract config: lang='{ocr_options.get('lang')}', {custom_config}")
         
         # Check for low DPI (placeholder, actual DPI check from image file is more complex)
         # For now, assume if preprocessing is done, Pillow might have handled it to some extent.
@@ -258,41 +285,56 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
                                            lang=ocr_options.get('lang', constants.DEFAULT_OCR_LANGUAGE),
                                            config=custom_config)
         
+        logger.info(f"Tesseract image_to_string successful. Output length: {len(text)}")
         if status_callback: status_callback("OCR Complete.")
         return {"success": True, "text": text, "message": "OCR successful."}
 
     except pytesseract.TesseractNotFoundError:
         msg = "Tesseract is not installed or not in your PATH. Please check settings."
+        logger.error(f"TesseractNotFoundError during OCR: {msg} (Effective path used: {effective_tess_path})")
         if status_callback: status_callback(f"Error: {msg}")
         return {"success": False, "text": None, "message": msg}
     except pytesseract.TesseractError as tess_err:
         msg = f"Tesseract error: {str(tess_err)[:200]}..."
+        logger.error(f"TesseractError during OCR: {msg}", exc_info=True)
         if status_callback: status_callback(f"Error: {msg}")
         return {"success": False, "text": None, "message": msg}
     except FileNotFoundError:
         msg = "Image file not found for OCR (it may have been a temporary file that was removed prematurely)."
+        logger.error(f"FileNotFoundError during OCR. Expected image at: {final_image_for_ocr if 'final_image_for_ocr' in locals() else 'Unknown'}", exc_info=True)
         if status_callback: status_callback(f"Error: {msg}")
         return {"success": False, "text": None, "message": msg}
     except Exception as e:
         import traceback
-        print(f"Generic error in perform_ocr: {e}\n{traceback.format_exc()}")
+        logger.error(f"Generic error in perform_ocr: {e}", exc_info=True)
+        # print(f"Generic error in perform_ocr: {e}\n{traceback.format_exc()}") # Replaced by logger
         msg = f"An unexpected error occurred during OCR: {str(e)[:200]}..."
         if status_callback: status_callback(f"Error: {msg}")
         return {"success": False, "text": None, "message": msg}
     finally:
         # Clean up the final processed image if it was a temporary file
         if 'final_image_for_ocr' in locals() and final_image_for_ocr and final_image_for_ocr.startswith(tempfile.gettempdir()):
+            logger.debug(f"Cleaning up processed temp image: {final_image_for_ocr}")
             try: os.remove(final_image_for_ocr)
-            except OSError: pass
+            except OSError as e_rem_final:
+                 logger.warning(f"Could not remove processed temp image '{final_image_for_ocr}': {e_rem_final}")
+                 pass
         # Ensure original temp file for selection is cleaned if not already handled and different from final
         if original_image_path_for_cleanup and os.path.exists(original_image_path_for_cleanup) and \
            original_image_path_for_cleanup != locals().get('final_image_for_ocr') and \
            original_image_path_for_cleanup.startswith(tempfile.gettempdir()):
+            logger.debug(f"Cleaning up original temp image (final pass): {original_image_path_for_cleanup}")
             try: os.remove(original_image_path_for_cleanup)
-            except OSError: pass 
+            except OSError as e_rem_orig_final:
+                 logger.warning(f"Could not remove original temp image (final pass) '{original_image_path_for_cleanup}': {e_rem_orig_final}")
+                 pass 
 
 if __name__ == "__main__":
-    print("tejocr_engine.py: For testing, run relevant functions with mock objects or from within LibreOffice.")
+    # This only runs if the script is executed directly.
+    import logging
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    main_logger = logging.getLogger("TejOCR.Engine.__main__")
+    main_logger.info("tejocr_engine.py: For testing, run relevant functions with mock objects or from within LibreOffice.")
     # Example (requires Tesseract installed and in PATH, and Pillow for preprocessing)
     # mock_options = {
     #     'lang': 'eng',
@@ -310,25 +352,25 @@ if __name__ == "__main__":
     #         d.text((10,10), "Hello World from TejOCR Test", fill=(255,255,0))
     #         dummy_image_path = os.path.join(tempfile.gettempdir(), "tejocr_dummy_test.png")
     #         img.save(dummy_image_path)
-    #         print(f"Created dummy image: {dummy_image_path}")
+    #         main_logger.info(f"Created dummy image: {dummy_image_path}")
             
     #         # Test check_tesseract_path
-    #         # print("\nChecking Tesseract path...")
+    #         # main_logger.info("\nChecking Tesseract path...")
     #         # check_tesseract_path(None, show_success=True) # Auto-detect
 
-    #         # print("\nPerforming OCR on dummy image...")
-    #         # result = perform_ocr(None, None, 'file', dummy_image_path, mock_options, status_callback=print)
-    #         # print(f"OCR Result: {result}")
+    #         # main_logger.info("\nPerforming OCR on dummy image...")
+    #         # result = perform_ocr(None, None, 'file', dummy_image_path, mock_options, status_callback=main_logger.info)
+    #         # main_logger.info(f"OCR Result: {result}")
             
     #         if os.path.exists(dummy_image_path):
     #             os.remove(dummy_image_path)
     #     except Exception as e:
-    #         print(f"Error in __main__ test: {e}")
+    #         main_logger.error(f"Error in __main__ test: {e}", exc_info=True)
     # else:
-    #     print("Pillow not available, cannot run full __main__ test.")
+    #     main_logger.warning("Pillow not available, cannot run full __main__ test.")
 
     if not PYTESSERACT_AVAILABLE:
-        print("Pytesseract not available. Cannot run test for check_tesseract_path.")
+        main_logger.warning("Pytesseract not available. Cannot run test for check_tesseract_path.")
     else:
-        print("Testing check_tesseract_path (will try to find Tesseract in PATH)...")
+        main_logger.info("Testing check_tesseract_path (will try to find Tesseract in PATH)...")
         check_tesseract_path(None, show_success=True) 

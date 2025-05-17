@@ -48,10 +48,10 @@ try:
     print("DEBUG: tejocr_service.py: uno_utils imported.")
     from tejocr import constants
     print("DEBUG: tejocr_service.py: constants imported.")
-    from tejocr import tejocr_dialogs
-    print("DEBUG: tejocr_service.py: tejocr_dialogs imported.")
-    from tejocr import tejocr_output
-    print("DEBUG: tejocr_service.py: tejocr_output imported.")
+    # from tejocr import tejocr_dialogs # DEFERRED
+    # print("DEBUG: tejocr_service.py: tejocr_dialogs imported.") # DEFERRED
+    # from tejocr import tejocr_output # DEFERRED
+    # print("DEBUG: tejocr_service.py: tejocr_output imported.") # DEFERRED
     from tejocr import locale_setup
     print("DEBUG: tejocr_service.py: locale_setup imported.")
     print("DEBUG: tejocr_service.py: All 'from tejocr import ...' imports successful.")
@@ -89,6 +89,27 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
     def __init__(self, ctx, *args):
         self.ctx = ctx
         self.frame = None
+        # --- DEFERRED IMPORTS ---
+        # Import modules that depend on a fully initialized UNO environment here
+        try:
+            print("DEBUG: TejOCRService __init__: Attempting deferred imports...")
+            from tejocr import tejocr_dialogs
+            self.tejocr_dialogs = tejocr_dialogs
+            print("DEBUG: TejOCRService __init__: tejocr_dialogs imported and assigned.")
+            from tejocr import tejocr_output
+            self.tejocr_output = tejocr_output
+            print("DEBUG: TejOCRService __init__: tejocr_output imported and assigned.")
+            print("DEBUG: TejOCRService __init__: Deferred imports successful.")
+        except ImportError as e_imp_deferred:
+            print(f"DEBUG: TejOCRService __init__: IMPORT ERROR during deferred imports: {e_imp_deferred}")
+            if logger: logger.critical(f"Failed to import core modules (dialogs, output) in __init__: {e_imp_deferred}", exc_info=True)
+            # Depending on severity, you might re-raise or disable functionality
+            raise # Re-raise for now, as these are critical
+        except Exception as e_gen_deferred:
+            print(f"DEBUG: TejOCRService __init__: GENERAL ERROR during deferred imports: {e_gen_deferred}")
+            if logger: logger.critical(f"Unexpected error during deferred imports in __init__: {e_gen_deferred}", exc_info=True)
+            raise # Re-raise
+
         if logger: logger.info("TejOCRService __init__ called.") # Use the logger if available
 
     def initialize(self, args):
@@ -168,9 +189,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                                        "No suitable graphic object is currently selected. Please select an image.", 
                                        "infobox", parent_frame=self.frame, ctx=self.ctx)
             return
-        recognized_text, selected_output_mode = tejocr_dialogs.show_ocr_options_dialog(self.ctx, self.frame, "selected")
+        recognized_text, selected_output_mode = self.tejocr_dialogs.show_ocr_options_dialog(self.ctx, self.frame, "selected")
         if recognized_text is not None and selected_output_mode is not None:
-            tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
+            self.tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
         else:
             if logger: logger.info("OCR on selected image cancelled or failed from dialog.")
 
@@ -183,46 +204,58 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             if logger: logger.error("Could not create file picker service for OCR from file.")
             return
 
+        # Initialize filters list
         filters = []
-        # Ensure constants.IMAGE_FORMAT_FILTERS is accessible and correct
-        # It should be a dict like {"PNG Images": "*.png", "JPEG Images": "*.jpg;*.jpeg"}
-        # My constants.py had SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER as a single string.
-        # Let's adapt to a more structured constants.IMAGE_FORMAT_FILTERS
-        # For now, using the single string filter:
+        # Check for a structured IMAGE_FORMAT_FILTERS (dictionary)
         if hasattr(constants, "IMAGE_FORMAT_FILTERS") and isinstance(constants.IMAGE_FORMAT_FILTERS, dict):
-             for desc, exts_str in constants.IMAGE_FORMAT_FILTERS.items():
+            all_exts_list = []
+            for desc, exts_str in constants.IMAGE_FORMAT_FILTERS.items():
                 filters.append((desc, exts_str))
-             all_supported_exts_str = ";".join([exts for desc, exts in filters])
-             file_picker.appendFilter("All Supported Images (" + all_supported_exts_str + ")", all_supported_exts_str)
-             for desc, exts in filters:
-                file_picker.appendFilter(desc, exts)
-        else: # Fallback to the single string filter
+                all_exts_list.extend(ext.strip() for ext in exts_str.split(';') if ext.strip())
+            
+            if all_exts_list:
+                unique_exts_str = ";".join(sorted(list(set(all_exts_list))))
+                file_picker.appendFilter(f"All Supported Images ({unique_exts_str})", unique_exts_str)
+            
+            for desc, exts_str in filters: # Add individual filters
+                file_picker.appendFilter(desc, exts_str)
+        
+        # Fallback to SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER (single string) if the structured one isn't good
+        elif hasattr(constants, "SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER") and constants.SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER:
             file_picker.appendFilter("Supported Images", constants.SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER)
+        else:
+            # Default fallback if no constants are defined for filters
+            file_picker.appendFilter("All Files (*.*)", "*.*")
+            if logger: logger.warning("No image filters defined in constants.py, using 'All Files'.")
 
 
-        file_picker.setDefaultName("image.png")
-        file_picker.setMultiSelectionMode(False)
+        file_picker.setTitle("Select Image File for OCR")
+        # Set initial directory (optional, could be last used path or default pictures folder)
+        # current_dir_url = unohelper.systemPathToFileUrl(os.path.expanduser("~")) # Example: User's home
+        # file_picker.setDisplayDirectory(current_dir_url)
 
-        if file_picker.execute() == 1:
+        if file_picker.execute() == 1: # OK is 1, Cancel is 0
             files = file_picker.getFiles()
             if files and len(files) > 0:
                 image_file_path = unohelper.fileUrlToSystemPath(files[0])
                 if logger: logger.info(f"Image selected from file: {image_file_path}")
-                recognized_text, selected_output_mode = tejocr_dialogs.show_ocr_options_dialog(
+                recognized_text, selected_output_mode = self.tejocr_dialogs.show_ocr_options_dialog(
                     self.ctx, self.frame, "file", image_path=image_file_path
                 )
                 if recognized_text is not None and selected_output_mode is not None:
-                    tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
+                    self.tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
                 else:
                     if logger: logger.info(f"OCR on file '{image_file_path}' cancelled or failed from dialog.")
+            else:
+                if logger: logger.info("File picker dialog closed without selecting a file.")
         else:
-            if logger: logger.info("File picker was cancelled for OCR from file.")
+            if logger: logger.info("File picker dialog was cancelled.")
 
 
     def _handle_settings(self):
         if logger: logger.info("Handling Settings")
         # ... (ensure tejocr_dialogs is imported correctly)
-        tejocr_dialogs.show_settings_dialog(self.ctx, self.frame)
+        self.tejocr_dialogs.show_settings_dialog(self.ctx, self.frame)
         
     def addStatusListener(self, Listener, URL):
         # This needs to be efficient. Only update if truly necessary.

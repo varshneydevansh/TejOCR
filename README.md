@@ -7,125 +7,179 @@
   <img src="icons/main_logo.png" alt="TejOCR Logo" width="360" style="margin-bottom: -20px;"/>
 </div>
 
-# TejOCR – Modern OCR Extension for LibreOffice
+# TejOCR – OCR Extension for LibreOffice Writer
 
-**TejOCR** is a modern, lightweight, and user-friendly OCR (Optical Character Recognition) extension for LibreOffice Writer. Powered by [Tesseract OCR](https://github.com/tesseract-ocr/tesseract), it allows you to extract editable text from images embedded in your documents or imported externally — all from within LibreOffice.
+**TejOCR** is a modern, lightweight OCR (Optical Character Recognition) extension for LibreOffice Writer. It allows you to extract text from images embedded in your documents or imported from the file system.
 
 > ✨ "Tej" means light in Sanskrit – and just like light reveals, TejOCR reveals text hidden in images.
 
----
+## ✨ Features
 
-## 🧠 Features
+- **OCR from Selected Images**: Extract text from images embedded in your Writer document
+- **OCR from File**: Process images from your file system
+- **Multiple Output Options**:
+  - Insert text at cursor position
+  - Create a new text box with recognized text
+  - Replace the selected image with the recognized text
+  - Copy the recognized text to clipboard
+- **Configurable Settings**:
+  - Tesseract path configuration
+  - Default language selection
+  - Preprocessing options (grayscale, binarize)
+- **Cross-platform**: Works on Windows, macOS, and Linux
+- **Internationalization**: Support for English, Spanish, French, German, Chinese (Simplified), and Hindi
 
-- 🖼️ OCR any image (embedded or external) inside LibreOffice Writer
-- 🤖 Powered by Tesseract with LSTM-based ML models
-- 🌈 Clean, modern UI (dialogs use standard LibreOffice look & feel, icons provide branding)
-- 🌍 Multilingual OCR support
-- 📦 Cross-platform (macOS, Linux, Windows)
-- 🧩 Packaged as a `.oxt` LibreOffice extension
-- 🔐 Open Source (MPL-2.0)
+## 📋 Requirements
 
----
+- LibreOffice 7.3 or later
+- Tesseract OCR (4.x or 5.x) installed on your system
+- Python 3.x (as available in LibreOffice)
 
-## 🚀 Getting Started
+### Installing Tesseract OCR
 
-### 📥 Installation
+TejOCR requires Tesseract OCR to be installed on your system:
 
-1.  Download the latest `TejOCR.oxt` release from the [Releases page](https://github.com/varshneydevansh/TejOCR/releases) (link to be updated once releases exist).
-2.  Open **LibreOffice Writer**.
-3.  Go to `Tools` → `Extension Manager…` → `Add…` and select the downloaded `TejOCR.oxt` file.
-4.  Restart LibreOffice to complete the installation.
+**Windows:**
+1. Download the installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)
+2. Run the installer and note the installation path
+3. Add Tesseract to your PATH or specify the path in TejOCR settings
 
-### 🔍 Usage
-
-1.  **To OCR a selected image:**
-    *   Select an image within your LibreOffice Writer document.
-    *   Go to `Tools` → `TejOCR` → `OCR Selected Image` or click the **TejOCR** toolbar icon.
-2.  **To OCR an image from a file:**
-    *   Go to `Tools` → `TejOCR` → `OCR Image from File...` (or click the toolbar icon if no image is selected).
-3.  In the **TejOCR Options** dialog that appears:
-    *   Confirm/select the OCR language.
-    *   Choose your desired output mode (Insert at Cursor, New Text Box, Replace Image, Copy to Clipboard).
-    *   Adjust advanced options (PSM, OEM, preprocessing) if needed.
-    *   Click "Run OCR".
-4.  Extracted text will be processed according to your selected output mode.
-
-### ⚙️ Settings
-
-Access `Tools` → `TejOCR` → `Settings...` to:
-
-*   Configure the path to your Tesseract OCR installation (if not auto-detected).
-*   Set a default OCR language.
-*   (Optional) Set default preprocessing options.
-
----
-
-## 🔧 Requirements
-
-*   **LibreOffice:** Version 7.3 or newer.
-*   **Python:** Version 3.8 or newer (usually bundled with LibreOffice 7.3+).
-*   **Tesseract OCR:** Version 4.x or 5.x. **This must be installed separately by the user.**
-    *   Ensure Tesseract is in your system's PATH or configure the path in TejOCR's settings.
-    *   Language data files (e.g., `eng.traineddata`) for Tesseract must be installed for the languages you intend to use.
-
-#### Tesseract Installation Examples:
-
+**macOS:**
 ```bash
-# macOS (using Homebrew)
+# Using Homebrew
 brew install tesseract
-brew install tesseract-lang # For all language packs, or install specific ones
-
-# Ubuntu/Debian
-sudo apt update
-sudo apt install tesseract-ocr
-sudo apt install tesseract-ocr-eng # For English, replace 'eng' with other language codes as needed (e.g., tesseract-ocr-hin for Hindi)
-
-# Windows
-# Download the installer from: https://github.com/UB-Mannheim/tesseract/wiki
-# During installation, ensure you select the desired language packs.
 ```
 
-*   **pytesseract Python library:** TejOCR uses this to communicate with Tesseract. If packaging issues arise with LO's internal Python, users might need to install it manually into LO's Python environment or ensure their system Python (if used by LO) has it. (More specific guidance will be provided if this becomes a common issue).
-*   **Pillow Python library:** Used for image preprocessing. Similar to pytesseract, this might require manual installation in specific scenarios.
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt install tesseract-ocr
+```
 
----
+## 📥 Installation
 
-## 📸 Screenshots (Placeholder)
+1. Download the latest `.oxt` package from the [Releases](https://github.com/varshneydevansh/TejOCR/releases) page
+2. In LibreOffice, go to **Tools → Extension Manager**
+3. Click **Add** and select the downloaded `.oxt` file
+4. Restart LibreOffice
 
-*(Screenshots will be added once the UI is developed)*
+## 🚀 Usage
 
-| TejOCR Options Dialog                     | TejOCR Settings Dialog                    |
-| :---------------------------------------- | :-------------------------------------- |
-| `![TejOCR Options](./screenshots/options_dialog.png)` (To be added) | `![TejOCR Settings](./screenshots/settings_dialog.png)` (To be added) |
+### OCR Selected Image
 
----
+1. Insert or select an image in your LibreOffice Writer document
+2. Go to **Tools → TejOCR → OCR Selected Image** (or use the toolbar button)
+3. Choose your OCR options (language, output mode, etc.)
+4. Click **Run OCR**
+5. The recognized text will be processed according to your chosen output mode
+
+### OCR from File
+
+1. Go to **Tools → TejOCR → OCR Image from File**
+2. Select an image file from your computer
+3. Choose your OCR options
+4. Click **Run OCR**
+5. The recognized text will be processed according to your chosen output mode
+
+### Settings
+
+Configure TejOCR by going to **Tools → TejOCR → Settings**:
+- Set the path to Tesseract OCR executable
+- Test if Tesseract is correctly installed
+- Set default language and preprocessing options
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+TejOCR/
+├── META-INF/
+│   └── manifest.xml
+├── Addons.xcu
+├── description.xml
+├── python/
+│   └── tejocr/
+│       ├── __init__.py
+│       ├── tejocr_service.py     # Main entry (XDispatchProvider)
+│       ├── tejocr_dialogs.py     # Dialog lifecycle logic & event handlers
+│       ├── tejocr_engine.py      # OCR processing, Tesseract interaction
+│       ├── tejocr_output.py      # Text insertion, replacement, clipboard logic
+│       ├── uno_utils.py          # Reusable UNO helpers
+│       ├── constants.py          # Configuration constants
+│       └── locale_setup.py       # Internationalization support
+├── dialogs/
+│   ├── tejocr_options_dialog.xdl
+│   └── tejocr_settings_dialog.xdl
+├── icons/
+│   ├── tejocr_16.png
+│   ├── tejocr_26.png
+│   └── tejocr_26_hc.png
+├── l10n/                       # Localization files
+│   ├── en/
+│   ├── es/
+│   └── ...
+├── build.py                    # Build script for packaging
+├── generate_icons.py           # Icon generation utility
+├── generate_translations.py    # Translation template generator
+├── LICENSE
+├── README.md
+└── CHANGELOG.md
+```
+
+### Building from Source
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/varshneydevansh/TejOCR.git
+   cd TejOCR
+   ```
+
+2. Generate icons (requires Pillow):
+   ```bash
+   pip install Pillow
+   python generate_icons.py /path/to/source/image.png
+   ```
+
+3. Generate translation templates (requires GNU gettext):
+   ```bash
+   python generate_translations.py
+   ```
+
+4. Build the `.oxt` extension package:
+   ```bash
+   python build.py
+   ```
+
+The extension package will be created as `TejOCR-{version}.oxt` in the project root directory.
+
+### Development Tools
+
+- **build.py**: Packages the extension as an `.oxt` file, ensuring proper encoding and file structure
+- **generate_icons.py**: Creates properly sized icons from a source image
+- **generate_translations.py**: Extracts translatable strings and generates `.pot`/`.po` files
 
 ## 📜 License
 
-This project is licensed under the **Mozilla Public License 2.0 (MPL-2.0)**.
-See the [LICENSE](./LICENSE) file for full details.
+This project is licensed under the Mozilla Public License 2.0 (MPL-2.0).
+See the [LICENSE](LICENSE) file for details.
 
----
+## 🤝 Contributing
 
-## 🙌 Acknowledgments
+Contributions are welcome! Feel free to:
 
-*   The [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) project and its contributors.
-*   The LibreOffice community and developers of the UNO API.
-*   The `pytesseract` and `Pillow` library developers.
-*   Icons and logo concept by Devansh Varshney.
+- Report bugs
+- Suggest features
+- Improve documentation
+- Submit pull requests
 
----
+Please ensure your changes adhere to the project's code style and include tests where appropriate.
 
-## ❤️ Contributing
+## 🙏 Acknowledgements
 
-Contributions, bug reports, and feature requests are welcome! Please feel free to open an issue or submit a pull request on the [GitHub repository](https://github.com/varshneydevansh/TejOCR).
-
-```bash
-# Clone for development
-git clone https://github.com/varshneydevansh/TejOCR.git
-cd TejOCR
-# Further development instructions to be added (e.g., how to build/package .oxt)
-```
+- The incredible LibreOffice project and community
+- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) for the powerful OCR engine
+- [pytesseract](https://github.com/madmaze/pytesseract) for the Python wrapper
+- All contributors and users of this extension
 
 ---
 

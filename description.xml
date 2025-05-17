@@ -3,58 +3,54 @@
              xmlns:d="http://openoffice.org/extensions/description/2006"
              xmlns:xlink="http://www.w3.org/1999/xlink">
 
-    <version value="0.1.0" />
     <identifier value="org.libreoffice.TejOCR" />
-    
+    <version value="0.1.0" />
+
     <display-name>
-        <name lang="en">TejOCR</name>
-        <!-- Add other languages as needed -->
-        <name lang="es">TejOCR</name>
-        <name lang="fr">TejOCR</name>
-        <name lang="de">TejOCR</name>
+        <name lang="en-US">TejOCR</name>
+        <name lang="hi-IN">तेजओसीआर</name>
+        <name lang="es-ES">TejOCR</name>
+        <name lang="fr-FR">TejOCR</name>
+        <name lang="de-DE">TejOCR</name>
         <name lang="zh-CN">TejOCR</name>
-        <name lang="hi">तेजओसीआर</name> 
     </display-name>
-    
+
     <platform value="all" />
 
+    <!--
     <dependencies>
         <OpenOffice.org-minimal-version value="7.3" d:name="LibreOffice 7.3"/>
     </dependencies>
+    -->
 
     <publisher>
-        <name lang="en" xlink:href="https://github.com/varshneydevansh">Devansh Varshney</name>
-        <!-- Add other languages if translation of publisher name is desired -->
+        <name lang="en-US" xlink:href="https://github.com/varshneydevansh">Devansh Varshney</name>
     </publisher>
 
     <release-notes>
-        <src xlink:href="https://raw.githubusercontent.com/varshneydevansh/TejOCR/main/CHANGELOG.md" lang="en" />
-        <!-- Potentially add links to changelogs in other languages if available -->
+        <src xlink:href="CHANGELOG.md" lang="en-US" />
     </release-notes>
 
     <registration>
-        <simple-license accept-by="user" default-license-id="en" suppress-on-update="true" >
-            <license-text xlink:href="LICENSE" lang="en" license-id="en" />
-            <!-- Add license text for other languages if you provide translated licenses -->
+        <simple-license accept-by="user" default-license-id="en-US01" suppress-on-update="true" >
+            <license-text xlink:href="LICENSE" lang="en-US" license-id="en-US01" />
         </simple-license>
     </registration>
 
     <icon>
-        <default xlink:href="icons/tejocr_icon_26.png" />
-        <high-contrast xlink:href="icons/tejocr_icon_26_hc.png" /> <!-- Optional: High contrast version -->
+        <default xlink:href="icons/tejocr_26.png" />
+        <high-contrast xlink:href="icons/tejocr_26_hc.png" />
     </icon>
 
     <!-- Optional: Update information -->
-    <!-- 
+    <!--
     <update-information>
         <src xlink:href="https://your-update-server.com/update.rdf" />
     </update-information>
     -->
 
-    <!-- Optional: Extension description for the Extension Manager -->
     <extension-description>
-        <src xlink:href="README.md" lang="en" />
-        <!-- Provide descriptions in other languages as <src xlink:href="README_es.md" lang="es" /> -->
+        <src xlink:href="README.md" lang="en-US" />
     </extension-description>
 
-</description> 
+</description>

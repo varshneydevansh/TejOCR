@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
@@ -12,9 +13,9 @@ import os
 from com.sun.star.awt import XActionListener, XItemListener, MessageBoxType
 from com.sun.star.task import XJobExecutor
 
-from . import uno_utils
-from . import constants
-from .tejocr_engine import perform_ocr, check_tesseract_path
+from tejocr import uno_utils
+from tejocr import constants
+from tejocr import tejocr_engine
 
 # Initialize logger for this module
 logger = uno_utils.get_logger("TejOCR.Dialogs")
@@ -158,8 +159,14 @@ class OptionsDialogHandler(BaseDialogHandler):
         # Typically, dialogs are stored in a 'dialogs' subdirectory of the extension.
         # The path would be relative to the extension's root.
         dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_options_dialog.xdl")
-        dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path)
-        super().__init__(ctx, dialog_file_url)
+        # Attempt to construct URL relative to where LO scripts are found if possible
+        # This might need to be: "private:dialogs/tejocr_options_dialog.xdl"
+        # Or a more robust way to get extension root.
+        # For now, keeping systemPathToFileUrl as it might work if __file__ is within the OXT structure.
+        dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path) 
+        # A more robust way to get the dialog URL if it's packaged:
+        # self.dialog_url = uno_utils.get_extension_resource_url(ctx, "dialogs/tejocr_options_dialog.xdl")
+        super().__init__(ctx, dialog_file_url) 
         self.ocr_source_type = ocr_source_type
         self.image_path = image_path # Store image_path if provided (for 'file' source)
         self.selected_options = {}
@@ -309,129 +316,106 @@ class OptionsDialogHandler(BaseDialogHandler):
         return None
 
     def _handle_ok_action(self):
-        """Handles the OK/Run OCR action. Retrieves options, executes OCR, and saves settings."""
-        # print("OptionsDialogHandler: _handle_ok_action called")
-        logger.info("OptionsDialog: OK/Run OCR action initiated.")
-        # Step 1: Retrieve and save selected options
+        """Collects selected options and prepares for OCR. Returns True if ready, False otherwise."""
+        self.selected_options = {}
+        # ... (collect all options: language, psm, oem, output_mode, preprocessing)
+        # Language
         lang_dropdown = self.get_control("LanguageDropdown")
-        selected_lang_display_name = lang_dropdown.getSelectedItem()
-        selected_lang_code = self._get_selected_dropdown_key(selected_lang_display_name, self.available_languages_map)
-        if not selected_lang_code: # Fallback if key not found (should not happen with proper map)
-            selected_lang_code = lang_dropdown.getSelectedItem() # Use raw item if no key
+        if lang_dropdown:
+            selected_lang_display = lang_dropdown.getSelectedItem()
+            # Find code from display name (self.available_languages_map stores code -> display name)
+            # Invert map for lookup or iterate
+            inverted_lang_map = {v: k for k, v in self.available_languages_map.items()}
+            self.selected_options["lang"] = inverted_lang_map.get(selected_lang_display, constants.DEFAULT_TESSERACT_LANG)
+        else:
+            self.selected_options["lang"] = constants.DEFAULT_TESSERACT_LANG
+        
+        # Output Mode
+        output_mode_dropdown = self.get_control("OutputModeDropdown")
+        if output_mode_dropdown:
+            selected_output_mode_display = output_mode_dropdown.getSelectedItem()
+            # Assuming constants.OUTPUT_MODES maps display name to internal key
+            self.selected_options["output_mode"] = constants.OUTPUT_MODES.get(selected_output_mode_display, constants.DEFAULT_OUTPUT_MODE)
+        else:
+            self.selected_options["output_mode"] = constants.DEFAULT_OUTPUT_MODE
 
+        # PSM
         psm_dropdown = self.get_control("PSMDropdown")
-        selected_psm_display = psm_dropdown.getSelectedItem()
-        selected_psm_val = self._get_selected_dropdown_key(selected_psm_display, constants.TESSERACT_PSM_MODES)
+        if psm_dropdown:
+            selected_psm_display = psm_dropdown.getSelectedItem()
+            # Find key from display name (assuming constants.TESSERACT_PSM_MODES maps int key to display string)
+            # Need to invert or iterate
+            inverted_psm_map = {v: k for k, v in constants.TESSERACT_PSM_MODES.items()}
+            self.selected_options["psm"] = inverted_psm_map.get(selected_psm_display, constants.DEFAULT_TESSERACT_PSM)
+        else:
+            self.selected_options["psm"] = constants.DEFAULT_TESSERACT_PSM
 
+        # OEM
         oem_dropdown = self.get_control("OEMDropdown")
-        selected_oem_display = oem_dropdown.getSelectedItem()
-        selected_oem_val = self._get_selected_dropdown_key(selected_oem_display, constants.TESSERACT_OEM_MODES)
+        if oem_dropdown:
+            selected_oem_display = oem_dropdown.getSelectedItem()
+            inverted_oem_map = {v: k for k, v in constants.TESSERACT_OEM_MODES.items()}
+            self.selected_options["oem"] = inverted_oem_map.get(selected_oem_display, constants.DEFAULT_TESSERACT_OEM)
+        else:
+            self.selected_options["oem"] = constants.DEFAULT_TESSERACT_OEM
 
-        output_mode = constants.DEFAULT_OUTPUT_MODE # Default
-        if self.get_control("OutputAtCursorRadio").getState(): output_mode = constants.OUTPUT_MODE_CURSOR
-        elif self.get_control("OutputNewTextboxRadio").getState(): output_mode = constants.OUTPUT_MODE_TEXTBOX
-        elif self.get_control("OutputReplaceImageRadio").getState(): output_mode = constants.OUTPUT_MODE_REPLACE
-        elif self.get_control("OutputToClipboardRadio").getState(): output_mode = constants.OUTPUT_MODE_CLIPBOARD
-        
-        grayscale = self.get_control("GrayscaleCheckbox").getState()
-        binarize = self.get_control("BinarizeCheckbox").getState()
+        # Preprocessing
+        self.selected_options["grayscale"] = bool(self.get_control("GrayscaleCheckbox").getState())
+        self.selected_options["binarize"] = bool(self.get_control("BinarizeCheckbox").getState())
 
-        self.selected_options = {
-            "lang": selected_lang_code,
-            "psm": selected_psm_val,
-            "oem": selected_oem_val,
-            "output_mode": output_mode,
-            "grayscale": grayscale,
-            "binarize": binarize
-        }
-        logger.debug(f"Selected OCR options: {self.selected_options}")
+        logger.info(f"OCR Options selected: {self.selected_options}")
 
-        # Save these options for next time (except output mode, which is more session-specific)
-        if selected_lang_code:
-            uno_utils.set_setting(constants.CFG_KEY_LAST_SELECTED_LANG, selected_lang_code, self.ctx)
-        if selected_psm_val is not None: # PSM can be integer 0
-            uno_utils.set_setting("LastPSMMode", str(selected_psm_val), self.ctx) # Store as string
-        if selected_oem_val is not None: # OEM can be integer 0
-            uno_utils.set_setting("LastOEMMode", str(selected_oem_val), self.ctx) # Store as string
-        uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, output_mode, self.ctx)
-        uno_utils.set_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, grayscale, self.ctx)
-        uno_utils.set_setting(constants.CFG_KEY_DEFAULT_BINARIZE, binarize, self.ctx)
+        # Save last used options (excluding output mode, as it's often context-dependent)
+        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_DEFAULT_LANG, self.selected_options["lang"])
+        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_DEFAULT_PSM, str(self.selected_options["psm"])) # Ensure string for config
+        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_DEFAULT_OEM, str(self.selected_options["oem"])) # Ensure string for config
+        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_PREPROCESSING_GRAYSCALE, self.selected_options["grayscale"])
+        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_PREPROCESSING_BINARIZE, self.selected_options["binarize"])
 
-        # Step 2: Execute OCR Job
-        ocr_successful = self._execute_ocr_job()
-        
-        # Return True to close dialog if OCR was successful, False to keep it open if error
-        return ocr_successful
-
-    def _execute_ocr_job(self):
-        """Executes the OCR process based on current dialog settings."""
+        # Set status to processing
         status_label = self.get_control("StatusLabel")
-        def status_cb(message):
-            if status_label:
-                status_label.setText(str(message))
-            # print(f"OCR Status: {message}") # For debugging if UI doesn't update
-
-        status_cb("Preparing OCR...")
-        self.recognized_text = None # Reset previous result
-
-        # self.selected_options should be populated by _handle_ok_action before this is called.
-        if not self.selected_options:
-            logger.error("OCR options not properly passed to _execute_ocr_job. This is an internal error.")
-            status_cb("Error: OCR options not properly passed. Please close and retry.")
-            # This indicates a programming error if this state is reached.
-            uno_utils.show_message_box("Internal Error", "OCR options were not available. Please report this bug.", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
-            return False
-            
-        current_ocr_options = self.selected_options.copy() # Use the already populated options
-
-        # image_path_or_selection_opts: For 'file', it's self.image_path.
-        # For 'selected', tejocr_engine._get_image_from_selection uses the frame, so path can be None.
-        image_arg = self.image_path if self.ocr_source_type == "file" else None
+        if status_label: status_label.setText("Processing OCR...")
         
-        # Log for debugging
-        # print(f"Calling perform_ocr with: source_type='{self.ocr_source_type}', image_arg='{image_arg}', options={current_ocr_options}")
-        logger.info(f"Calling perform_ocr: source_type='{self.ocr_source_type}', image_arg='{image_arg is not None}', options={current_ocr_options}")
-
+        # Perform OCR in a separate thread or ensure dialog remains responsive
+        # For simplicity here, we call it directly. Consider XJobExecutor for long tasks.
         try:
-            result = perform_ocr(
+            ocr_result = tejocr_engine.perform_ocr(
                 ctx=self.ctx,
-                frame=self.parent_frame, # Use parent_frame of dialog
                 source_type=self.ocr_source_type,
-                image_path_or_selection_options=image_arg,
-                ocr_options=current_ocr_options,
-                status_callback=status_cb
+                image_path_or_obj=self.image_path, # This should be the image path for file, or image object for selection
+                lang=self.selected_options["lang"],
+                psm=self.selected_options["psm"],
+                oem=self.selected_options["oem"],
+                preprocess_options={
+                    "grayscale": self.selected_options["grayscale"],
+                    "binarize": self.selected_options["binarize"]
+                },
+                status_callback=lambda msg: status_label.setText(msg) if status_label else None
             )
-
-            if result and result.get("success"):
-                self.recognized_text = result.get("text")
-                status_cb(f"OCR successful. Text length: {len(self.recognized_text or '')}")
-                # print(f"Recognized text: {self.recognized_text[:100]}...") # Debug
-                logger.info(f"OCR successful. Recognized text length: {len(self.recognized_text or '')}")
-                return True
+            self.recognized_text = ocr_result
+            if ocr_result is None: # OCR failed or was cancelled by engine logic
+                if status_label: status_label.setText("OCR failed or no text found.")
+                # Message box already shown by perform_ocr typically
+                return False # Keep dialog open
             else:
-                error_msg = result.get("message", "OCR failed. Unknown error.")
-                logger.warning(f"OCR failed. Message: {error_msg}")
-                status_cb(f"Error: {error_msg}")
-                uno_utils.show_message_box("OCR Error", error_msg, "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
-                return False
+                if status_label: status_label.setText(f"OCR successful. {len(ocr_result)} chars.")
+                return True # OCR successful, proceed to close dialog and use text
+
         except Exception as e:
-            # This catches exceptions within perform_ocr if not handled there, or issues calling it.
-            error_msg = f"Critical error during OCR: {e}"
-            logger.error(f"Critical error in _execute_ocr_job: {e}", exc_info=True)
-            status_cb(error_msg)
-            # print(error_msg) # Debug
-            import traceback
-            # traceback.print_exc() # Replaced by logger exc_info
-            uno_utils.show_message_box("OCR Execution Error", error_msg, "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
-            return False
+            logger.error(f"Exception during perform_ocr from dialog: {e}", exc_info=True)
+            uno_utils.show_message_box("OCR Error", f"An unexpected error occurred during OCR: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+            if status_label: status_label.setText("Error during OCR.")
+            return False # Keep dialog open
 
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx):
         dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_settings_dialog.xdl")
         dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path)
+        # self.dialog_url = uno_utils.get_extension_resource_url(ctx, "dialogs/tejocr_settings_dialog.xdl")
         super().__init__(ctx, dialog_file_url)
         self.initial_settings = {} # To store settings when dialog opens to check for changes
+        self.available_languages_map_settings = {} # Separate map for settings dialog
 
     def _init_controls(self):
         """Initialize controls and attach listeners for the Settings dialog."""
@@ -571,32 +555,16 @@ class SettingsDialogHandler(BaseDialogHandler):
                 self._test_tesseract_path() # Automatically test new path
 
     def _test_tesseract_path(self):
-        """Tests the configured Tesseract path and updates PathStatusLabel."""
         path_field = self.get_control("TesseractPathTextField")
-        path_status_label = self.get_control("PathStatusLabel")
-        tess_path = path_field.getText()
+        tess_path = path_field.getText().strip()
+        status_label = self.get_control("TesseractTestStatusLabel")
         
-        if not path_status_label: return
-
-        path_status_label.setText("Testing...")
-        logger.info(f"Testing Tesseract path: {tess_path}")
-        if check_tesseract_path(tess_path, self.ctx, self.parent_frame, show_success=False): # show_success=False, message handled here
-            version = "Unknown" # Placeholder
-            try: # Try to get version to display
-                original_cmd = pytesseract.pytesseract.tesseract_cmd
-                effective_tess_exec = uno_utils.find_tesseract_executable(tess_path) or tess_path # Use the one it would find
-                pytesseract.pytesseract.tesseract_cmd = effective_tess_exec
-                version = str(pytesseract.get_tesseract_version())
-                pytesseract.pytesseract.tesseract_cmd = original_cmd
-                path_status_label.setText(f"Success! Tesseract version {version} found at this path.")
-                logger.info(f"Tesseract path test success. Version {version} at {effective_tess_exec}")
-            except Exception as e_ver:
-                path_status_label.setText(f"Success! Tesseract found, but version check failed: {e_ver}")
-                logger.warning(f"Tesseract path test success, but version check failed: {e_ver}", exc_info=True)
+        is_valid, message = tejocr_engine.check_tesseract_path(tess_path, self.ctx)
+        
+        if is_valid:
+            status_label.setText(f"✅ Valid: {message}")
         else:
-            # check_tesseract_path shows its own error dialog, so just update label here
-            path_status_label.setText("Test failed. See error message. Check Tesseract installation and path.")
-            logger.warning(f"Tesseract path test failed for: {tess_path}")
+            status_label.setText(f"❌ Invalid: {message}")
 
     def _handle_ok_action(self):
         """Save settings if they have changed."""

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
@@ -11,7 +12,10 @@ import unohelper
 import os
 import tempfile
 import shutil # For shutil.which
-from . import constants # For configuration node path
+from tejocr import constants # For configuration node path
+from tejocr import locale_setup
+
+_ = locale_setup.get_translator().gettext
 
 # --- UNO Service Creation & Access ---
 SMGR = None
@@ -27,12 +31,12 @@ def _get_service_manager(ctx=None):
                     "com.sun.star.bridge.UnoUrlResolver", uno.getComponentContext())
                 SMGR = resolver.resolve("uno:socket,host=localhost,port=2002;urp;StarOffice.ServiceManager")
                 if SMGR is None:
-                    raise Exception("Failed to resolve ServiceManager via UnoUrlResolver")
+                    raise Exception(_("Failed to resolve ServiceManager via UnoUrlResolver"))
             except Exception as e:
                 # Fallback for scripts not running in a context that can resolve like above
                 # (e.g. macro context where ctx is passed directly)
                 # This path is less likely to be hit if ctx is always provided where needed.
-                print(f"_get_service_manager: Error getting default context/SM via resolver: {e}. Requires ctx.")
+                print(f"_get_service_manager: {_('Error getting default context/SM via resolver:')} {e}. {_('Requires ctx.')}")
                 # In a real extension, ctx should always be available from __init__ or initialize
                 # If this error occurs, it means a function needing SMGR was called without ctx.
                 return None # Cannot proceed without a context in this case
@@ -65,7 +69,7 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
         try:
             ctx = uno.getComponentContext()
         except Exception:
-            print(f"show_message_box: No ctx provided and uno.getComponentContext() failed. Cannot show: {title} - {message}")
+            print(f"show_message_box: {_('No ctx provided and uno.getComponentContext() failed. Cannot show:')} {title} - {message}")
             return None # Cannot show message box without context
 
     parent_peer = None
@@ -94,7 +98,7 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
     try:
         toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
         if not toolkit:
-            print(f"show_message_box: Failed to create Toolkit. Cannot show: {title} - {message}")
+            print(f"show_message_box: {_('Failed to create Toolkit. Cannot show:')} {title} - {message}")
             return None
             
         # Buttons: 1 for OK. For querybox, might be (e.g.) com.sun.star.awt.MessageBoxButtons.BUTTONS_YES_NO_CANCEL
@@ -104,9 +108,9 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
         box = toolkit.createMessageBox(parent_peer, msg_type, buttons, str(title), str(message))
         return box.execute()
     except Exception as e:
-        print(f"Error showing message box '{title}': {e}")
+        print(f"{_('Error showing message box')} '{title}': {e}")
         # Fallback to console if UI fails catastrophically
-        print(f"MESSAGE BOX FALLBACK: {title} - {message}")
+        print(f"{_('MESSAGE BOX FALLBACK:')} {title} - {message}")
         return None
 
 def get_current_frame(ctx):
@@ -116,7 +120,7 @@ def get_current_frame(ctx):
         if desktop:
             return desktop.getCurrentFrame()
     except Exception as e:
-        print(f"Error getting current frame: {e}")
+        print(f"{_('Error getting current frame:')} {e}")
     return None
 
 def is_graphic_object_selected(frame, ctx):
@@ -160,7 +164,7 @@ def _get_config_provider(ctx):
 def _get_config_access(node_path, ctx, updatable=False):
     cp = _get_config_provider(ctx)
     if not cp:
-        show_message_box("Configuration Error", "Cannot access ConfigurationProvider.", "errorbox", ctx=ctx)
+        show_message_box(_("Configuration Error"), _("Cannot access ConfigurationProvider."), "errorbox", ctx=ctx)
         return None
     try:
         node_props = uno.createUnoStruct("com.sun.star.beans.PropertyValue")
@@ -170,7 +174,7 @@ def _get_config_access(node_path, ctx, updatable=False):
         service_name = "com.sun.star.configuration.ConfigurationUpdateAccess" if updatable else "com.sun.star.configuration.ConfigurationAccess"
         return cp.createInstanceWithArguments(service_name, params)
     except Exception as e:
-        show_message_box("Configuration Error", f"Cannot access configuration node {node_path}: {e}", "errorbox", ctx=ctx)
+        show_message_box(_("Configuration Error"), _("Cannot access configuration node {node_path}: {e}").format(node_path=node_path), "errorbox", ctx=ctx)
         return None
 
 def get_setting(key, default_value, ctx, node=constants.CFG_NODE_SETTINGS):
@@ -195,7 +199,7 @@ def set_setting(key, value, ctx, node=constants.CFG_NODE_SETTINGS):
             config_update_access.commitChanges()
             return True
         except Exception as e:
-            show_message_box("Configuration Error", f"Cannot write setting '{key}' to '{full_node_path}': {e}", "errorbox", ctx=ctx)
+            show_message_box(_("Configuration Error"), _("Cannot write setting '{key}' to '{full_node_path}': {e}").format(key=key, full_node_path=full_node_path), "errorbox", ctx=ctx)
             return False
     return False
 
@@ -222,14 +226,14 @@ def create_temp_file(suffix=".tmp", prefix="tejocr_tmp_", dir=None):
         os.close(fd) # Close the file handle, we just need the path
         return path
     except Exception as e:
-        print(f"Error creating temporary file: {e}")
+        print(f"{_('Error creating temporary file:')} {e}")
         # Fallback if specific dir fails, try default temp location
         try:
             fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
             os.close(fd)
             return path
         except Exception as e_fallback:
-            print(f"Fallback temporary file creation also failed: {e_fallback}")
+            print(f"{_('Fallback temporary file creation also failed:')} {e_fallback}")
             return None
 
 def find_tesseract_executable(configured_path="", ctx=None):
@@ -241,8 +245,9 @@ def find_tesseract_executable(configured_path="", ctx=None):
     if configured_path and os.path.isfile(configured_path) and os.access(configured_path, os.X_OK):
         return configured_path
     elif configured_path: # Path was configured but not valid
-        if ctx: show_message_box("Tesseract Path", f"Configured Tesseract path is not a valid executable: {configured_path}", "warningbox", ctx=ctx)
-        else: print(f"Warning: Configured Tesseract path is not valid: {configured_path}")
+        msg = _("Configured Tesseract path is not a valid executable: {path}").format(path=configured_path)
+        if ctx: show_message_box(_("Tesseract Path"), msg, "warningbox", ctx=ctx)
+        else: print(f"Warning: {msg}")
 
     # 2. Check common names in system PATH
     common_names = ["tesseract"]
@@ -328,7 +333,7 @@ def get_logger(name="TejOCR"):
                     os.makedirs(log_dir, exist_ok=True)
                 log_file_path = os.path.join(log_dir, constants.LOG_FILE_NAME)
             except Exception as e_logpath:
-                print(f"Error determining log path: {e_logpath}. Using default temp dir.")
+                print(f"{_('Error determining log path:')} {e_logpath}. {_('Using default temp dir.')}")
                 log_file_path = os.path.join(get_user_temp_dir(), constants.LOG_FILE_NAME)
 
             handler = logging.FileHandler(log_file_path, encoding='utf-8')
@@ -345,36 +350,36 @@ def get_logger(name="TejOCR"):
 
 if __name__ == "__main__":
     # This part is for basic, non-UNO testing of some utils
-    print("uno_utils.py: For testing non-UNO functions or with mock UNO context.")
+    print(_("uno_utils.py: For testing non-UNO functions or with mock UNO context."))
     
     # Test find_tesseract_executable
-    print("\nTesting Tesseract executable finder:")
+    print(_("\nTesting Tesseract executable finder:"))
     tess_path = find_tesseract_executable()
     if tess_path:
-        print(f"  Found Tesseract at: {tess_path}")
+        print(f"  {_('Found Tesseract at:')} {tess_path}")
     else:
-        print("  Tesseract not found in PATH or common locations.")
+        print(_("  Tesseract not found in PATH or common locations."))
     # Test with a dummy configured path
     find_tesseract_executable("/dummy/path/to/tesseract") 
 
     # Test temp file creation
-    print("\nTesting temp file creation:")
+    print(_("\nTesting temp file creation:"))
     tmp_file = create_temp_file(suffix=".txt", prefix="test_util_")
     if tmp_file and os.path.exists(tmp_file):
-        print(f"  Created temp file: {tmp_file}")
+        print(f"  {_('Created temp file:')} {tmp_file}")
         os.remove(tmp_file)
-        print(f"  Removed temp file: {tmp_file}")
+        print(f"  {_('Removed temp file:')} {tmp_file}")
     else:
-        print(f"  Failed to create temp file or it does not exist: {tmp_file}")
+        print(f"  {_('Failed to create temp file or it does not exist:')} {tmp_file}")
 
     # Test logger (basic, will log to temp dir)
-    print("\nTesting logger initialization (will log to a file in temp dir):")
+    print(_("\nTesting logger initialization (will log to a file in temp dir):"))
     logger = get_logger("TejOCR.TestUtil")
     logger.info("This is an informational message from uno_utils self-test.")
     logger.warning("This is a warning message from uno_utils self-test.")
     logger.error("This is an error message from uno_utils self-test.")
-    print(f"  Logger test messages sent. Check log file for 'TejOCR.TestUtil' entries.")
+    print(_("  Logger test messages sent. Check log file for 'TejOCR.TestUtil' entries."))
 
     # Cannot test UNO-dependent functions (create_instance, show_message_box, config, etc.)
     # without a running LibreOffice instance and proper context.
-    print("\nUNO-dependent functions require a LibreOffice environment to test.") 
+    print(_("\nUNO-dependent functions require a LibreOffice environment to test.")) 

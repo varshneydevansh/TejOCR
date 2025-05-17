@@ -1,32 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" dlg:id="TejOCRSettingsDialog" dlg:title="TejOCR Settings" dlg: ინფორმაცი="true">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSettingsDialog" dlg:title="TejOCR Settings" dlg:closeable="true" dlg:closeonescape="true">
     <dlg:bulletinboard>
-        <!-- Tesseract Path Section -->
-        <dlg:label dlg:id="PathLabel" dlg:value="Tesseract OCR Executable Path:" dlg:x="1cm" dlg:y="1cm" dlg:width="6cm" dlg:height="0.5cm"/>
-        <dlg:textfield dlg:id="TesseractPathTextField" dlg:x="1cm" dlg:y="1.6cm" dlg:width="10cm" dlg:height="0.6cm"/>
-        <dlg:button dlg:id="BrowseButton" dlg:value="Browse..." dlg:x="11.2cm" dlg:y="1.6cm" dlg:width="2.5cm" dlg:height="0.6cm"/>
-        <dlg:button dlg:id="TestTesseractButton" dlg:value="Test Path" dlg:x="13.9cm" dlg:y="1.6cm" dlg:width="2.5cm" dlg:height="0.6cm"/>
-        <dlg:label dlg:id="PathStatusLabel" dlg:value="" dlg:x="1cm" dlg:y="2.3cm" dlg:width="15cm" dlg:height="0.5cm"/>
-
-        <!-- Default OCR Language Section -->
-        <dlg:label dlg:id="DefaultLangLabel" dlg:value="Default OCR Language:" dlg:x="1cm" dlg:y="3.5cm" dlg:width="6cm" dlg:height="0.5cm"/>
-        <dlg:combobox dlg:id="DefaultLanguageDropdown" dlg:x="1cm" dlg:y="4.1cm" dlg:width="7cm" dlg:height="0.6cm" dlg:dropdown="true"/>
-        <dlg:button dlg:id="RefreshLanguagesButtonSettings" dlg:value="Refresh List" dlg:x="8.2cm" dlg:y="4.1cm" dlg:width="2.5cm" dlg:height="0.6cm"/>
-
-
-        <!-- Default Preprocessing Section -->
-        <dlg:groupbox dlg:id="PreprocessingGroupBox" dlg:value="Default Preprocessing Options" dlg:x="1cm" dlg:y="5.5cm" dlg:width="15.5cm" dlg:height="3cm">
-            <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:value="Grayscale" dlg:x="1.5cm" dlg:y="6.2cm" dlg:width="5cm" dlg:height="0.5cm"/>
-            <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:value="Binarize (Simple)" dlg:x="1.5cm" dlg:y="7cm" dlg:width="5cm" dlg:height="0.5cm"/>
-            <!-- Add more preprocessing options here if needed -->
-        </dlg:groupbox>
+        <!-- Tesseract Configuration Section -->
+        <dlg:label dlg:id="TesseractPathLabel" dlg:label="Tesseract OCR Executable Path:" dlg:height="12" dlg:width="150" dlg:pos-x="10" dlg:pos-y="12"/>
+        <dlg:textfield dlg:id="TesseractPathTextField" dlg:height="14" dlg:width="280" dlg:pos-x="10" dlg:pos-y="26"/>
+        <dlg:button dlg:id="BrowseButton" dlg:label="Browse..." dlg:height="14" dlg:width="50" dlg:pos-x="300" dlg:pos-y="26"/>
         
-        <!-- Status / Info line at bottom -->
-        <dlg:label dlg:id="SettingsStatusLabel" dlg:value="Settings are saved per user." dlg:x="1cm" dlg:y="9cm" dlg:width="15cm" dlg:height="0.5cm"/>
+        <dlg:button dlg:id="TestTesseractButton" dlg:label="Test Path" dlg:height="14" dlg:width="60" dlg:pos-x="10" dlg:pos-y="48"/>
+        <dlg:fixedtext dlg:id="PathStatusLabel" dlg:label="Path status will appear here." dlg:height="12" dlg:width="280" dlg:pos-x="80" dlg:pos-y="50"/>
 
-        <!-- Standard Buttons -->
-        <dlg:button dlg:id="SaveButton" dlg:value="Save" dlg:ok_button="true" dlg:x="9.5cm" dlg:y="10cm" dlg:width="2cm" dlg:height="0.6cm"/>
-        <dlg:button dlg:id="CancelButton" dlg:value="Cancel" dlg:cancel_button="true" dlg:x="11.7cm" dlg:y="10cm" dlg:width="2cm" dlg:height="0.6cm"/>
-        <dlg:button dlg:id="HelpButtonSettings" dlg:value="Help" dlg:x="13.9cm" dlg:y="10cm" dlg:width="2cm" dlg:height="0.6cm"/>
+        <!-- Default OCR Options Section -->
+        <dlg:label dlg:id="DefaultOptionsLabel" dlg:label="Default OCR Options:" dlg:height="12" dlg:width="150" dlg:pos-x="10" dlg:pos-y="78"/>
+        
+        <dlg:label dlg:id="DefaultLanguageLabel" dlg:label="Default Language:" dlg:height="12" dlg:width="100" dlg:pos-x="15" dlg:pos-y="94"/>
+        <dlg:listbox dlg:id="DefaultLanguageDropdown" dlg:height="14" dlg:width="150" dlg:pos-x="120" dlg:pos-y="92" dlg:dropdown="true"/>
+        <dlg:button dlg:id="RefreshLanguagesButtonSettings" dlg:label="Refresh List" dlg:height="14" dlg:width="70" dlg:pos-x="280" dlg:pos-y="92"/>
+
+        <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:label="Default to Grayscale Preprocessing" dlg:height="12" dlg:width="200" dlg:pos-x="15" dlg:pos-y="118"/>
+        <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:label="Default to Binarize Preprocessing (Otsu)" dlg:height="12" dlg:width="200" dlg:pos-x="15" dlg:pos-y="134"/>
+        
+        <!-- General Status & Action Buttons -->
+        <dlg:fixedtext dlg:id="SettingsStatusLabel" dlg:label="" dlg:height="12" dlg:width="340" dlg:pos-x="10" dlg:pos-y="160"/>
+        
+        <dlg:line dlg:id="SeparatorLine" dlg:height="8" dlg:width="360" dlg:pos-x="0" dlg:pos-y="175" dlg:orientation="horizontal"/>
+
+        <dlg:button dlg:id="HelpButtonSettings" dlg:label="Help" dlg:height="14" dlg:width="50" dlg:pos-x="10" dlg:pos-y="188" dlg:helpid="help_settings_dialog"/>
+        <dlg:button dlg:id="SaveButton" dlg:label="Save" dlg:height="14" dlg:width="50" dlg:pos-x="240" dlg:pos-y="188" dlg:default="true"/>
+        <dlg:button dlg:id="CancelButton" dlg:label="Cancel" dlg:height="14" dlg:width="50" dlg:pos-x="300" dlg:pos-y="188"/>
+        
     </dlg:bulletinboard>
+    <script:scripts/>
 </dlg:window> 

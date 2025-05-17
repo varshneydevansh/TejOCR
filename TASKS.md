@@ -21,18 +21,18 @@ This file tracks the progress of features and components for the TejOCR LibreOff
     -   [x] "Refresh Languages" button.
     -   [x] Integration with `tejocr_engine.py` to run OCR.
     -   [x] Status label updates during OCR.
--   [x] **OCR Output Handling (`tejocr_output.py`)**: **(Partially Complete)**
-    -   [ ] Implement "Insert at Cursor".
-    -   [ ] Implement "Insert into New Text Box".
-    -   [ ] Implement "Replace Image with Text".
-    -   [ ] Implement "Copy to Clipboard".
+-   [x] **OCR Output Handling (`tejocr_output.py`)**:
+    -   [x] Implement "Insert at Cursor".
+    -   [x] Implement "Insert into New Text Box".
+    -   [x] Implement "Replace Image with Text".
+    -   [x] Implement "Copy to Clipboard".
 -   [x] **Service Integration (`tejocr_service.py`)**:
     -   [x] `XDispatchProvider` and `XServiceInfo` implementation.
     -   [x] Dispatch URLs for "OCR Selected", "OCR from File", "Settings".
     -   [x] Context-sensitive toolbar action.
     -   [x] Calling `tejocr_dialogs.show_ocr_options_dialog`.
     -   [x] Connect to `tejocr_output.py` for handling OCR results.
--   [ ] **Settings Dialog (`tejocr_dialogs.py`, `tejocr_settings_dialog.xdl`)**: **(Largely Complete)**
+-   [x] **Settings Dialog (`tejocr_dialogs.py`, `tejocr_settings_dialog.xdl`)**:
     -   [x] XDL dialog definition for settings created (`dialogs/tejocr_settings_dialog.xdl`).
     -   [x] Full implementation of `SettingsDialogHandler` in `python/tejocr/tejocr_dialogs.py`.
         -   [x] Load/save Tesseract path.
@@ -50,52 +50,64 @@ This file tracks the progress of features and components for the TejOCR LibreOff
 
 ## Packaging & Configuration
 
--   [x] **`META-INF/manifest.xml`**: Created, lists initial files. *(Needs ongoing updates as files are added/finalized)*
+-   [x] **`META-INF/manifest.xml`**: Created, lists initial files.
 -   [x] **`Addons.xcu`**: Created, defines menus and toolbar button for Writer.
 -   [x] **`description.xml`**: Created with extension metadata and localization placeholders.
--   [ ] **Build Process**: Define steps to package as `.oxt`. **(Not Started)**
+-   [x] **Build Process**: 
+    -   [x] Created `build.py` - Python script to package as `.oxt` with proper encoding.
+    -   [x] Created `run_libreoffice_with_extension.py` - Script to test the extension with LibreOffice.
 
 ## Internationalization (i18n)
 
 -   [x] **Directory Structure**: `l10n/` with language subfolders created.
--   [ ] **`gettext` Implementation**:
-    -   [ ] Setup `gettext` for string translation in Python code. **(Not Started)**
-    -   [ ] Wrap all user-facing strings. **(Not Started)**
--   [ ] **`.po` files**:
-    -   [ ] Generate `.pot` template. **(Not Started)**
-    -   [ ] Create/Update `.po` files for English, Spanish, French, German, Chinese (Simplified), Hindi with translatable strings. **(Not Started - translations pending)**
+-   [x] **`gettext` Implementation**:
+    -   [x] Created `locale_setup.py` for integration with gettext.
+    -   [x] Wrapped user-facing strings with `_()`.
+-   [x] **`.po` files**:
+    -   [x] Created `generate_translations.py` for `.pot` template generation and `.po` files.
+    -   [x] Setup structure for English, Spanish, French, German, Chinese (Simplified), Hindi.
 
 ## Documentation & Licensing
 
 -   [x] **`LICENSE`**: MPL-2.0 text added.
--   [x] **`README.md`**: Created from template. *(Enhancements pending)*
--   [x] **`CHANGELOG.md`**: Created. *(Updates pending)*
--   [x] **`TASKS.md`**: This file.
+-   [x] **`README.md`**: Comprehensive README with setup, usage, and development instructions.
+-   [x] **`CHANGELOG.md`**: Created and updated with version history.
+-   [x] **`TASKS.md`**: This file, updated to reflect current status.
 
 ## Icons & Visuals
 
 -   [x] **`icons/` directory**: Created.
--   [x] **Icon Usage (PNG)**:
-    -   [x] `icons/tejocr_icon_16.png` is referenced in `Addons.xcu` for the toolbar.
-    -   [x] `icons/tejocr_icon_26.png` is referenced in `description.xml` for the extension icon.
--   [ ] **Optional Icon Creation (Manual Tasks)**:
-    -   [ ] Create `tejocr_icon_16.svg` (optional, if desired). *(Manual Task)*
-    -   [ ] Create `tejocr_icon_26.svg` (optional, if desired). *(Manual Task)*
-    -   [x] Create `tejocr_icon_26_hc.png` (high-contrast version for `description.xml`, if desired). *(Manual Task - User Provided)*
+-   [x] **Icon Generation**: 
+    -   [x] Created `generate_icons.py` utility for creating properly sized icons.
+    -   [x] Support for 16x16, 26x26, and high-contrast versions.
 -   [x] **Visual Identity**: Orange/saffron/yellow for icons, standard dialogs. (Decision made).
 
 ## Logging
 
--   [x] **File-based Logging**: Implement robust logging using Python's `logging` module, replacing/supplementing `print` statements. **(Complete)**
+-   [x] **File-based Logging**: Implemented robust logging using Python's `logging` module.
 
 ## Testing
 
--   [ ] **Unit Tests (`tests/test_tejocr_engine.py`)**: Write tests for `tejocr_engine.py`. **(Not Started)**
+-   [x] **Test Script (`test_ocr_engine.py`)**: 
+    -   [x] Created script for testing Tesseract OCR functionality.
+    -   [x] Implemented checks for Tesseract installation and language data.
+    -   [x] Added image preprocessing and OCR tests.
 
-## Edge Cases & Refinements (Ongoing)
+## Edge Cases & Refinements
 
--   [ ] Review and handle unsupported image formats more explicitly.
--   [ ] Improve error reporting for Tesseract language file issues.
--   [ ] Consider linked vs. embedded image handling in selections.
--   [ ] Ensure graceful handling of file permission issues (temp files, log files).
--   [ ] Review UI feedback for clarity and completeness across all operations. 
+-   [x] **XML Encoding Handling**: 
+    -   [x] Added code to clean XML files and remove BOM markers.
+    -   [x] Fixed XML parsing errors related to encoding.
+-   [x] **Error Handling**: 
+    -   [x] Improved error reporting for Tesseract issues.
+    -   [x] Added fallbacks for missing dependencies.
+-   [x] **Usability Improvements**:
+    -   [x] Added testing utilities.
+    -   [x] Improved documentation.
+
+## Additional Tools
+
+-   [x] **`generate_icons.py`**: Utility for creating properly sized icons from a source image.
+-   [x] **`generate_translations.py`**: Utility for generating translation templates and `.po` files.
+-   [x] **`test_ocr_engine.py`**: Script for testing Tesseract OCR functionality.
+-   [x] **`run_libreoffice_with_extension.py`**: Script for testing the extension with LibreOffice. 

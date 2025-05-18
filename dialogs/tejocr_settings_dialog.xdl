@@ -7,7 +7,7 @@
         <dlg:button dlg:id="BrowseButton" dlg:label="Browse..." dlg:height="14" dlg:width="50" dlg:pos-x="300" dlg:pos-y="26"/>
         
         <dlg:button dlg:id="TestTesseractButton" dlg:label="Test Path" dlg:height="14" dlg:width="60" dlg:pos-x="10" dlg:pos-y="48"/>
-        <dlg:fixedtext dlg:id="PathStatusLabel" dlg:label="Path status will appear here." dlg:height="12" dlg:width="280" dlg:pos-x="80" dlg:pos-y="50"/>
+        <dlg:fixedtext dlg:id="TesseractTestStatusLabel" dlg:label="Path status will appear here." dlg:height="12" dlg:width="280" dlg:pos-x="80" dlg:pos-y="50"/>
 
         <!-- Default OCR Options Section -->
         <dlg:label dlg:id="DefaultOptionsLabel" dlg:label="Default OCR Options:" dlg:height="12" dlg:width="150" dlg:pos-x="10" dlg:pos-y="78"/>

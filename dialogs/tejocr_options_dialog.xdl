@@ -29,7 +29,7 @@
 
                 <dlg:fixedline dlg:id="PreprocessingLabel" dlg:left="10" dlg:top="55" dlg:width="100" dlg:height="10" dlg:value="Basic Preprocessing:"/>
                 <dlg:checkbox dlg:id="GrayscaleCheckbox" dlg:left="20" dlg:top="70" dlg:width="100" dlg:height="10" dlg:value="Convert to ~Grayscale" dlg:tabstop="true"/>
-                <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:left "20" dlg:top="85" dlg:width="100" dlg:height="10" dlg:value="~Binarize Image (Otsu)" dlg:tabstop="true"/>
+                <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:left="20" dlg:top="85" dlg:width="100" dlg:height="10" dlg:value="~Binarize Image (Otsu)" dlg:tabstop="true"/>
                 
                 <dlg:fixedline dlg:id="NoteLabel" dlg:left="10" dlg:top="105" dlg:width="270" dlg:height="30" dlg:value="Note: Preprocessing options are applied before sending the image to Tesseract. They may or may not improve results depending on the image."/>
             </dlg:bulletinboard>

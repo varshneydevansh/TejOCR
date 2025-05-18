@@ -24,10 +24,10 @@ except ImportError:
 
 def find_libreoffice_executable():
     system = platform.system()
-    dev_build_path_mac = "/Users/devanshvarshney/lode/dev/libreoffice/instdir/LibreOfficeDev.app/Contents/MacOS/soffice"
+    dev_build_path_mac = "/Users/devanshvarshney/lode/dev/libreoffice/instdir/LibreOffice.app/Contents/MacOS/soffice"
     common_paths = []
     if system == "Darwin":
-        common_paths = [dev_build_path_mac, "/Applications/LibreOfficeDev.app/Contents/MacOS/soffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice"]
+        common_paths = [dev_build_path_mac, "/Applications/LibreOffice.app/Contents/MacOS/soffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice"]
     # Add other OS paths if needed
 
     for path_candidate in common_paths:

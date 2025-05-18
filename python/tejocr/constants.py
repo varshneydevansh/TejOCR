@@ -63,9 +63,36 @@ OUTPUT_MODE_CLIPBOARD = "to_clipboard"
 DEFAULT_OUTPUT_MODE = OUTPUT_MODE_CURSOR
 
 # --- Image Formats ---
-SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER = "*.png;*.jpg;*.jpeg;*.tiff;*.tif;*.bmp;*.webp"
-SUPPORTED_IMAGE_MIMETYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"]
-TEMP_IMAGE_FORMAT = "PNG" # Format for temporarily saving images for Tesseract
+# Used for file dialog filters. Should be a semicolon-separated string of wildcards.
+IMAGE_FILE_DIALOG_FILTER = "*.png;*.jpg;*.jpeg;*.tiff;*.tif;*.bmp;*.gif;*.webp"
+
+# List of wildcards for internal checks if needed, derived from the above string.
+IMAGE_WILDCARDS = [f.strip() for f in IMAGE_FILE_DIALOG_FILTER.split(';') if f.strip()]
+
+# MIME types corresponding to the above wildcards, for clipboard or other type checks.
+# This mapping might need to be more robust or comprehensive based on specific needs.
+IMAGE_MIMETYPES = {
+    "*.png": "image/png",
+    "*.jpg": "image/jpeg",
+    "*.jpeg": "image/jpeg",
+    "*.tiff": "image/tiff",
+    "*.tif": "image/tiff",
+    "*.bmp": "image/bmp",
+    "*.gif": "image/gif",
+    "*.webp": "image/webp"
+}
+
+# Fallback/general list of supported MIME types if direct mapping isn't used.
+SUPPORTED_IMAGE_MIMETYPES_LIST = list(set(IMAGE_MIMETYPES.values()))
+
+# Format for temporarily saving/converting images for Tesseract if needed.
+TEMP_IMAGE_FORMAT_FOR_TESSERACT = "PNG" # PNG is lossless and widely supported.
+
+# --- Deprecated / To be reviewed ---
+# SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER = "*.png;*.jpg;*.jpeg;*.tiff;*.tif;*.bmp;*.webp" # Replaced by IMAGE_FILE_DIALOG_FILTER
+# SUPPORTED_IMAGE_MIMETYPES = ["image/png", "image/jpeg", "image/tiff", "image/bmp", "image/webp"] # Replaced by SUPPORTED_IMAGE_MIMETYPES_LIST
+# TEMP_IMAGE_FORMAT = "PNG" # Replaced by TEMP_IMAGE_FORMAT_FOR_TESSERACT
+
 
 # --- Logging ---
 LOG_FILE_NAME = "tejocr.log"

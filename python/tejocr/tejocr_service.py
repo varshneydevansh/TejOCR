@@ -11,6 +11,7 @@ print("DEBUG: tejocr_service.py: Script execution started (top level)")
 
 import sys
 import os
+import datetime
 
 # --- Python Path Modification for OXT Structure: python/tejocr ---
 # This ensures that the 'python' directory (which contains the 'tejocr' package)
@@ -84,6 +85,20 @@ DISPATCH_URL_TOOLBAR_ACTION = "uno:org.libreoffice.TejOCR.ToolbarAction"
 IMPLEMENTATION_NAME = "org.libreoffice.TejOCR.PythonService.TejOCRService"
 SERVICE_NAME = "com.sun.star.frame.ProtocolHandler"
 
+# Constants for the Tesseract missing/configuration prompt
+TESSERACT_INSTALL_GUIDE_URL = "https://tesseract-ocr.github.io/tessdoc/Installation.html"
+# Standard UNO MessageBoxResults (values might vary slightly by platform/LO version but names are standard)
+MB_RESULT_OK = 1 # Typically OK or first button
+MB_RESULT_YES = 2 # Typically "Yes" or first custom button if mapped to Yes/No/Cancel
+MB_RESULT_NO = 3  # Typically "No" or second custom button
+MB_RESULT_CANCEL = 4 # Typically "Cancel" or third custom button / close
+# For a 3-button (Yes/No/Cancel) setup like "Open Settings" / "Guide" / "Cancel",
+# YES might be "Open Settings", NO might be "Guide". We need to map them carefully.
+# Let's define our own logical constants for clarity in the handler.
+USER_CHOICE_OPEN_SETTINGS = MB_RESULT_YES # Map "Open Settings" to what YES button returns
+USER_CHOICE_OPEN_GUIDE = MB_RESULT_NO    # Map "Open Guide" to what NO button returns
+USER_CHOICE_CANCEL_PROMPT = MB_RESULT_CANCEL # Map "Cancel" to what CANCEL button returns
+
 
 class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, XInitialization):
     def __init__(self, ctx, *args):
@@ -112,6 +127,105 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
         if logger: logger.info("TejOCRService __init__ called.") # Use the logger if available
 
+    def _ensure_tesseract_is_ready_and_run(self, actual_action_callable, requires_select_image_variant=False):
+        """
+        Checks if Tesseract is configured and working. If not, prompts the user.
+        If ready, executes the actual_action_callable.
+        requires_select_image_variant is a boolean, if True, the prompt will mention selecting an image.
+        """
+        from tejocr import tejocr_engine # Import here as it's used by this method
+
+        tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, self.ctx)
+        
+        # Perform the check without letting check_tesseract_path show its own GUI errors,
+        # as we want to show a more specific prompt.
+        if tejocr_engine.check_tesseract_path(tess_path_cfg, self.ctx, self.frame, show_success=False, show_gui_errors=False):
+            if logger: logger.debug("Tesseract check passed in _ensure_tesseract_is_ready_and_run.")
+            actual_action_callable() # Tesseract is ready, run the original action
+            return
+
+        if logger: logger.warning("Tesseract check failed in _ensure_tesseract_is_ready_and_run. Prompting user.")
+
+        import platform
+        os_name = platform.system()
+        install_hint = ""
+        if os_name == "Darwin": # macOS
+            install_hint = _("On macOS, a common way to install Tesseract is using Homebrew: brew install tesseract")
+        elif os_name == "Windows":
+            install_hint = _("On Windows, you can find installers on the Tesseract GitHub page (search for 'UB Mannheim Tesseract').")
+        elif os_name == "Linux":
+            install_hint = _("On Linux, you can usually install Tesseract using your distribution's package manager (e.g., sudo apt install tesseract-ocr).")
+        else:
+            install_hint = _("Please refer to the Tesseract OCR documentation for installation instructions specific to your operating system.")
+
+        title = _("TejOCR - Tesseract OCR Required")
+        
+        message_parts = [
+            _("TejOCR requires Tesseract OCR to function."),
+            _("Tesseract was not found at the configured path or in your system's PATH."),
+            install_hint,
+            _("What would you like to do?")
+        ]
+        message = "\\n\\n".join(filter(None, message_parts)) # Join with double newline, remove empty parts
+
+        # We need 3 buttons: "Open Settings", "Installation Guide", "Cancel"
+        # Using BUTTONS_YES_NO_CANCEL:
+        # YES = Open Settings
+        # NO = Installation Guide
+        # CANCEL = Cancel
+        # We'll need to define button labels if the API doesn't directly allow it for standard Yes/No/Cancel.
+        # The standard show_message_box will use default "Yes", "No", "Cancel" labels.
+        # For better UX, a custom dialog is better, but let's try with standard buttons first.
+        # TODO: Enhance with custom button labels if possible, or a simple custom dialog.
+        # For now, the prompt text should make it clear what Yes/No mean.
+
+        # Re-phrasing message to align with Yes/No/Cancel buttons:
+        message_for_yes_no_cancel = _(
+            "Tesseract OCR is required but not found or not configured.\\n\\n"
+            "{os_install_hint}\\n\\n"
+            "Open TejOCR Settings to specify the Tesseract path? (Choose Yes)\\n"
+            "Open the Tesseract installation guide in your browser? (Choose No)\\n"
+            "Cancel the current operation? (Choose Cancel)"
+        ).format(os_install_hint=install_hint)
+
+        buttons_yes_no_cancel = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_YES_NO_CANCEL")
+        
+        # Ensure self.frame is available for the message box
+        if not self.frame:
+            self.frame = uno_utils.get_current_frame(self.ctx)
+
+        choice = uno_utils.show_message_box(
+            title,
+            message_for_yes_no_cancel,
+            type="querybox",
+            buttons=buttons_yes_no_cancel,
+            parent_frame=self.frame,
+            ctx=self.ctx
+        )
+
+        if choice == MB_RESULT_YES: # User chose "Yes" (Open Settings)
+            logger.info("User chose to open settings from Tesseract missing prompt.")
+            self._handle_settings()
+        elif choice == MB_RESULT_NO: # User chose "No" (Open Installation Guide)
+            logger.info("User chose to open Tesseract installation guide.")
+            try:
+                import webbrowser
+                webbrowser.open(TESSERACT_INSTALL_GUIDE_URL, new=2) # new=2: open in new tab if possible
+            except Exception as e_wb:
+                logger.error(f"Failed to open web browser for Tesseract guide: {e_wb}")
+                uno_utils.show_message_box(
+                    _("Error"),
+                    _("Could not open the web browser. Please manually visit: {url}").format(url=TESSERACT_INSTALL_GUIDE_URL),
+                    type="errorbox", parent_frame=self.frame, ctx=self.ctx
+                )
+        elif choice == MB_RESULT_CANCEL: # User chose "Cancel"
+            logger.info("User cancelled from Tesseract missing prompt.")
+            # Optionally, show a small confirmation that the action was cancelled
+            # uno_utils.show_message_box(_("Action Cancelled"), _("The OCR operation was cancelled because Tesseract is not available."), type="infobox", parent_frame=self.frame, ctx=self.ctx)
+        else:
+            logger.info(f"Tesseract missing prompt closed with unexpected choice: {choice}")
+            # Treat unknown as cancel
+            
     def initialize(self, args):
         if logger: logger.info("TejOCRService initializing...")
         if args:
@@ -167,19 +281,24 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             path = URL.Path # This is the part after "uno:"
             
             if path == DISPATCH_URL_TOOLBAR_ACTION[4:]:
+                # Toolbar action checks if an image is selected to decide which OCR to run
                 is_image_selected = uno_utils.is_graphic_object_selected(self.frame, self.ctx)
                 if is_image_selected:
-                    self._handle_ocr_selected_image()
+                    # self._handle_ocr_selected_image()
+                    self._ensure_tesseract_is_ready_and_run(self._handle_ocr_selected_image)
                 else:
-                    self._handle_ocr_image_from_file()
+                    # self._handle_ocr_image_from_file()
+                    self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file)
                 return
 
             if path == DISPATCH_URL_OCR_SELECTED[4:]:
-                self._handle_ocr_selected_image()
+                # self._handle_ocr_selected_image()
+                self._ensure_tesseract_is_ready_and_run(self._handle_ocr_selected_image)
             elif path == DISPATCH_URL_OCR_FROM_FILE[4:]:
-                self._handle_ocr_image_from_file()
+                # self._handle_ocr_image_from_file()
+                self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file)
             elif path == DISPATCH_URL_SETTINGS[4:]:
-                self._handle_settings()
+                self._handle_settings() # Settings should not have the Tesseract pre-check
     
     def _handle_ocr_selected_image(self):
         if logger: logger.info("Handling OCR Selected Image")
@@ -197,64 +316,66 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
 
     def _handle_ocr_image_from_file(self):
-        if logger: logger.info("Handling OCR Image from File")
-        # ... (rest of your _handle_ocr_image_from_file method, ensure tejocr_dialogs and constants are imported correctly)
-        file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
-        if not file_picker:
-            if logger: logger.error("Could not create file picker service for OCR from file.")
-            return
+        if logger: logger.info("Handling OCR from file...")
+        try:
+            file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
+            if not file_picker:
+                uno_utils.show_message_box(_("Error"), _("Could not create file picker service."), "errorbox", parent_frame=self.frame, ctx=self.ctx)
+                return
 
-        # Initialize filters list
-        filters = []
-        # Check for a structured IMAGE_FORMAT_FILTERS (dictionary)
-        if hasattr(constants, "IMAGE_FORMAT_FILTERS") and isinstance(constants.IMAGE_FORMAT_FILTERS, dict):
-            all_exts_list = []
-            for desc, exts_str in constants.IMAGE_FORMAT_FILTERS.items():
-                filters.append((desc, exts_str))
-                all_exts_list.extend(ext.strip() for ext in exts_str.split(';') if ext.strip())
-            
-            if all_exts_list:
-                unique_exts_str = ";".join(sorted(list(set(all_exts_list))))
-                file_picker.appendFilter(f"All Supported Images ({unique_exts_str})", unique_exts_str)
-            
-            for desc, exts_str in filters: # Add individual filters
-                file_picker.appendFilter(desc, exts_str)
-        
-        # Fallback to SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER (single string) if the structured one isn't good
-        elif hasattr(constants, "SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER") and constants.SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER:
-            file_picker.appendFilter("Supported Images", constants.SUPPORTED_IMAGE_FORMATS_DIALOG_FILTER)
-        else:
-            # Default fallback if no constants are defined for filters
-            file_picker.appendFilter("All Files (*.*)", "*.*")
-            if logger: logger.warning("No image filters defined in constants.py, using 'All Files'.")
+            # Use the new constant for image file filters
+            file_picker.appendFilter(_("All Supported Image Files"), constants.IMAGE_FILE_DIALOG_FILTER)
+            # It's good practice to set a default filter that is also the one appended.
+            file_picker.setCurrentFilter(_("All Supported Image Files"))
+            # Also add an "All Files" filter as a fallback
+            file_picker.appendFilter(_("All Files"), "*.*");
 
+            # Set title for the dialog
+            file_picker.setTitle(_("Select Image File for OCR"))
 
-        file_picker.setTitle("Select Image File for OCR")
-        # Set initial directory (optional, could be last used path or default pictures folder)
-        # current_dir_url = unohelper.systemPathToFileUrl(os.path.expanduser("~")) # Example: User's home
-        # file_picker.setDisplayDirectory(current_dir_url)
+            if file_picker.execute() == 1: # OK button
+                files = file_picker.getFiles()
+                if files and len(files) > 0:
+                    image_path_url = files[0]
+                    image_path_system = unohelper.fileUrlToSystemPath(image_path_url)
+                    if logger: logger.info(f"Image selected for OCR: {image_path_system}")
 
-        if file_picker.execute() == 1: # OK is 1, Cancel is 0
-            files = file_picker.getFiles()
-            if files and len(files) > 0:
-                image_file_path = unohelper.fileUrlToSystemPath(files[0])
-                if logger: logger.info(f"Image selected from file: {image_file_path}")
-                recognized_text, selected_output_mode = self.tejocr_dialogs.show_ocr_options_dialog(
-                    self.ctx, self.frame, "file", image_path=image_file_path
-                )
-                if recognized_text is not None and selected_output_mode is not None:
-                    self.tejocr_output.handle_ocr_output(self.ctx, self.frame, recognized_text, selected_output_mode)
-                else:
-                    if logger: logger.info(f"OCR on file '{image_file_path}' cancelled or failed from dialog.")
+                    # Now use the Options Dialog
+                    # Pass self.frame to the dialog show function
+                    # Ensure tejocr_dialogs is imported and available as self.tejocr_dialogs
+                    if not hasattr(self, 'tejocr_dialogs') or not self.tejocr_dialogs:
+                        logger.error("tejocr_dialogs module not available in service.")
+                        uno_utils.show_message_box(_("Error"), _("Dialog module not loaded."), "errorbox", parent_frame=self.frame, ctx=self.ctx)
+                        return
+
+                    recognized_text, output_mode = self.tejocr_dialogs.show_ocr_options_dialog(
+                        self.ctx,
+                        self.frame,
+                        ocr_source_type="file",
+                        image_path=image_path_system
+                    )
+
+                    if recognized_text is not None and output_mode:
+                        if logger: logger.info(f"OCR successful from file. Output mode: {output_mode}. Text length: {len(recognized_text)}")
+                        # Ensure tejocr_output is imported and available as self.tejocr_output
+                        if not hasattr(self, 'tejocr_output') or not self.tejocr_output:
+                            logger.error("tejocr_output module not available in service.")
+                            uno_utils.show_message_box(_("Error"), _("Output module not loaded."), "errorbox", parent_frame=self.frame, ctx=self.ctx)
+                            return
+                        self.tejocr_output.process_ocr_result(self.ctx, self.frame, recognized_text, output_mode, image_path_system, None)
+                    else:
+                        if logger: logger.info("OCR from file was cancelled or failed in options dialog.")
             else:
-                if logger: logger.info("File picker dialog closed without selecting a file.")
-        else:
-            if logger: logger.info("File picker dialog was cancelled.")
+                if logger: logger.info("File selection for OCR was cancelled by user.")
+
+        except Exception as e:
+            if logger: logger.error(f"Error in _handle_ocr_image_from_file: {e}", exc_info=True)
+            uno_utils.show_message_box(_("Error"), _("An unexpected error occurred while selecting image for OCR: {error_message}").format(error_message=str(e)), "errorbox", parent_frame=self.frame, ctx=self.ctx)
 
 
     def _handle_settings(self):
         if logger: logger.info("Handling Settings")
-        # ... (ensure tejocr_dialogs is imported correctly)
+        # This action should always proceed without a Tesseract pre-check.
         self.tejocr_dialogs.show_settings_dialog(self.ctx, self.frame)
         
     def addStatusListener(self, Listener, URL):
@@ -281,17 +402,49 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
 # LibreOffice Python script framework requires a global entry point
 try:
+    print(f"DEBUG: tejocr_service.py: About to create ImplementationHelper...")
     g_ImplementationHelper = unohelper.ImplementationHelper()
+    print(f"DEBUG: tejocr_service.py: Successfully created ImplementationHelper: {g_ImplementationHelper}")
+    
+    print(f"DEBUG: tejocr_service.py: Adding TejOCRService implementation (IMPLEMENTATION_NAME={IMPLEMENTATION_NAME}, SERVICE_NAME={SERVICE_NAME})")
     g_ImplementationHelper.addImplementation(
         TejOCRService,
         IMPLEMENTATION_NAME,
         (SERVICE_NAME,), 
     )
-    print(f"DEBUG: tejocr_service.py: Implementation '{IMPLEMENTATION_NAME}' added to helper.")
-except Exception as e_impl:
-    print(f"DEBUG: tejocr_service.py: ERROR adding implementation to helper: {e_impl}")
+    print(f"DEBUG: tejocr_service.py: Service implementation '{IMPLEMENTATION_NAME}' added to helper for service '{SERVICE_NAME}'.")
+    
+    # Add an explicit verification that the service was registered
+    try:
+        print(f"DEBUG: tejocr_service.py: Verifying g_ImplementationHelper contains our implementation...")
+        implementations = g_ImplementationHelper.getImplementations()
+        implementation_names = [impl[0] for impl in implementations]
+        if IMPLEMENTATION_NAME in implementation_names:
+            print(f"DEBUG: tejocr_service.py: VERIFICATION SUCCESS: Implementation '{IMPLEMENTATION_NAME}' found in the helper.")
+        else:
+            print(f"DEBUG: tejocr_service.py: VERIFICATION FAILED: Implementation '{IMPLEMENTATION_NAME}' NOT found in helper! Available: {implementation_names}")
+    except Exception as e_verify:
+        print(f"DEBUG: tejocr_service.py: VERIFICATION ERROR: Failed to check implementations: {e_verify}")
+        
+except Exception as e_script_global:
+    # This is a last-resort catch for any error during the script's global execution phase (outside class methods)
+    # If an error occurs here, the extension likely won't load at all.
+    # A simple print might go to a console if LO is started that way, or to stderr.
+    # For more visibility during development, one might write to a temp file.
+    print(f"CRITICAL ERROR in tejocr_service.py global scope: {e_script_global}")
     import traceback
-    print(traceback.format_exc())
+    traceback.print_exc()
+    # Optionally, try to log to a file if basic file operations are possible
+    try:
+        temp_error_log_path = os.path.join(os.path.expanduser("~"), "tejocr_critical_error.log")
+        with open(temp_error_log_path, "a") as f:
+            f.write(f"Timestamp: {datetime.datetime.now()}\n")
+            f.write(f"CRITICAL ERROR in tejocr_service.py global scope: {e_script_global}\n")
+            traceback.print_exc(file=f)
+            f.write("--- End of Error ---\n")
+    except:
+        pass # Ignore if even this fails
+    # DO NOT raise here if g_ImplementationHelper might not exist or if this script is part of registration
+    # Instead, ensure the problem is logged or visible for debugging.
 
-# ... (rest of your __main__ block if any for direct testing, which won't run in LO) ...
-print("DEBUG: tejocr_service.py: Script execution finished (bottom level).")
+print("DEBUG: tejocr_service.py: Script execution reached end of file (after g_ImplementationHelper). Service should be ready for use.")

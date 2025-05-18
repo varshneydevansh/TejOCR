@@ -168,20 +168,28 @@ def _preprocess_image(image_path, grayscale=False, binarize_method=None):
         logger.error(f"Error during image preprocessing for '{image_path}': {e}", exc_info=True)
         return image_path # Return original path if preprocessing fails
 
-def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False):
+def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False, show_gui_errors=True):
     """Checks if Tesseract is available at the given path or via auto-detection."""
     if not PYTESSERACT_AVAILABLE:
         logger.error("Pytesseract library not installed. Cannot check Tesseract path.")
-        uno_utils.show_message_box(_("Pytesseract Missing"), _("The 'pytesseract' Python library is not installed. TejOCR cannot function without it."), "errorbox", parent_frame=parent_frame, ctx=ctx) # i18n
+        if show_gui_errors: # Control GUI error display
+            uno_utils.show_message_box(
+                _("Pytesseract Missing"),
+                _("The 'pytesseract' Python library is not installed. TejOCR cannot function without it."),
+                type="errorbox", parent_frame=parent_frame, ctx=ctx
+            )
         return False
 
-    tess_exec = uno_utils.find_tesseract_executable(tesseract_path, ctx) # Pass ctx for potential messages
-    
+    tess_exec = uno_utils.find_tesseract_executable(tesseract_path, ctx)
+
     if not tess_exec:
         logger.warning("Tesseract executable not found via find_tesseract_executable.")
-        uno_utils.show_message_box(_("Tesseract Not Found"), 
-                                 _("Tesseract OCR executable was not found at the specified path or in system PATH. Please configure the path in TejOCR Settings."), 
-                                 "errorbox", parent_frame=parent_frame, ctx=ctx) # i18n
+        if show_gui_errors: # Control GUI error display
+            uno_utils.show_message_box(
+                _("Tesseract Not Found"),
+                _("Tesseract OCR executable was not found at the specified path or in system PATH. Please configure the path in TejOCR Settings."),
+                type="errorbox", parent_frame=parent_frame, ctx=ctx
+            )
         return False
 
     # Try running tesseract --version
@@ -189,20 +197,35 @@ def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_succe
     pytesseract.pytesseract.tesseract_cmd = tess_exec
     try:
         version = pytesseract.get_tesseract_version()
+        # The show_success flag is independent of show_gui_errors for positive confirmation
         if show_success:
             logger.info(f"Tesseract version {version} found at {tess_exec}.")
-            uno_utils.show_message_box(_("Tesseract Found"), _("Tesseract OCR (Version {version}) found and working at:\n{path}").format(version=version, path=tess_exec), "infobox", parent_frame=parent_frame, ctx=ctx) # i18n
+            uno_utils.show_message_box(
+                _("Tesseract Found"),
+                _("Tesseract OCR (Version {version}) found and working at:\n{path}").format(version=version, path=tess_exec),
+                type="infobox", parent_frame=parent_frame, ctx=ctx
+            )
         return True
     except pytesseract.TesseractNotFoundError:
         logger.warning(f"Pytesseract TesseractNotFoundError for path: {tess_exec}")
-        uno_utils.show_message_box(_("Tesseract Not Found"), _("Pytesseract could not find Tesseract at {path} despite the file existing. Check permissions or Tesseract installation.").format(path=tess_exec), "errorbox", parent_frame=parent_frame, ctx=ctx) # i18n
+        if show_gui_errors: # Control GUI error display
+            uno_utils.show_message_box(
+                _("Tesseract Not Found"),
+                _("Pytesseract could not find Tesseract at {path} despite the file existing. Check permissions or Tesseract installation.").format(path=tess_exec),
+                type="errorbox", parent_frame=parent_frame, ctx=ctx
+            )
         return False
     except Exception as e:
-        logger.error(f"Error testing Tesseract at {tess_exec}: {e}", exc_info=True)
-        uno_utils.show_message_box(_("Tesseract Error"), _("Error while testing Tesseract at {path}:\n{error}").format(path=tess_exec, error=e), "errorbox", parent_frame=parent_frame, ctx=ctx) # i18n
+        logger.error(f"Error during Tesseract version check with path {tess_exec}: {e}", exc_info=True)
+        if show_gui_errors: # Control GUI error display
+            uno_utils.show_message_box(
+                _("Tesseract Error"),
+                _("An unexpected error occurred while verifying Tesseract at {path}: {error}").format(path=tess_exec, error=e),
+                type="errorbox", parent_frame=parent_frame, ctx=ctx
+            )
         return False
     finally:
-        pytesseract.pytesseract.tesseract_cmd = original_cmd # Restore
+        pytesseract.pytesseract.tesseract_cmd = original_cmd
 
 
 def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_options, status_callback=None):

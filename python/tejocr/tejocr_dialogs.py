@@ -158,15 +158,17 @@ class OptionsDialogHandler(BaseDialogHandler):
         # The actual URL construction might need adjustment based on how LO Python extensions resolve resources.
         # Typically, dialogs are stored in a 'dialogs' subdirectory of the extension.
         # The path would be relative to the extension's root.
-        dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_options_dialog.xdl")
+        # dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_options_dialog.xdl")
         # Attempt to construct URL relative to where LO scripts are found if possible
         # This might need to be: "private:dialogs/tejocr_options_dialog.xdl"
         # Or a more robust way to get extension root.
         # For now, keeping systemPathToFileUrl as it might work if __file__ is within the OXT structure.
-        dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path) 
+        # dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path) 
         # A more robust way to get the dialog URL if it's packaged:
         # self.dialog_url = uno_utils.get_extension_resource_url(ctx, "dialogs/tejocr_options_dialog.xdl")
-        super().__init__(ctx, dialog_file_url) 
+        # Corrected URL for packaged extensions:
+        dialog_url = "private:dialogs/tejocr_options_dialog.xdl"
+        super().__init__(ctx, dialog_url)
         self.ocr_source_type = ocr_source_type
         self.image_path = image_path # Store image_path if provided (for 'file' source)
         self.selected_options = {}
@@ -232,10 +234,19 @@ class OptionsDialogHandler(BaseDialogHandler):
             constants.OUTPUT_MODE_REPLACE: "OutputReplaceImageRadio",
             constants.OUTPUT_MODE_CLIPBOARD: "OutputToClipboardRadio"
         }
+        found_selected = False
         for mode_value, control_id in controls.items():
             control = self.get_control(control_id)
             if control:
-                control.setState(mode_value == last_mode)
+                is_selected = (str(mode_value) == str(last_mode))
+                control.setState(is_selected)
+                if is_selected:
+                    found_selected = True
+
+        if not found_selected:
+            cursor_radio = self.get_control(controls[constants.OUTPUT_MODE_CURSOR])
+            if cursor_radio:
+                cursor_radio.setState(True)
 
     def _load_preprocessing_options(self):
         grayscale = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, constants.DEFAULT_PREPROC_GRAYSCALE, self.ctx)
@@ -326,18 +337,26 @@ class OptionsDialogHandler(BaseDialogHandler):
             # Find code from display name (self.available_languages_map stores code -> display name)
             # Invert map for lookup or iterate
             inverted_lang_map = {v: k for k, v in self.available_languages_map.items()}
-            self.selected_options["lang"] = inverted_lang_map.get(selected_lang_display, constants.DEFAULT_TESSERACT_LANG)
+            self.selected_options["lang"] = inverted_lang_map.get(selected_lang_display, constants.DEFAULT_OCR_LANGUAGE)
         else:
-            self.selected_options["lang"] = constants.DEFAULT_TESSERACT_LANG
+            self.selected_options["lang"] = constants.DEFAULT_OCR_LANGUAGE
         
-        # Output Mode
-        output_mode_dropdown = self.get_control("OutputModeDropdown")
-        if output_mode_dropdown:
-            selected_output_mode_display = output_mode_dropdown.getSelectedItem()
-            # Assuming constants.OUTPUT_MODES maps display name to internal key
-            self.selected_options["output_mode"] = constants.OUTPUT_MODES.get(selected_output_mode_display, constants.DEFAULT_OUTPUT_MODE)
-        else:
-            self.selected_options["output_mode"] = constants.DEFAULT_OUTPUT_MODE
+        # Output Mode - Updated to use radio buttons
+        output_modes_map = {
+            "OutputAtCursorRadio": constants.OUTPUT_MODE_CURSOR,
+            "OutputNewTextboxRadio": constants.OUTPUT_MODE_TEXTBOX,
+            "OutputReplaceImageRadio": constants.OUTPUT_MODE_REPLACE,
+            "OutputToClipboardRadio": constants.OUTPUT_MODE_CLIPBOARD
+        }
+        self.selected_options["output_mode"] = constants.DEFAULT_OUTPUT_MODE # Default
+        for control_id, mode_value in output_modes_map.items():
+            control = self.get_control(control_id)
+            if control and control.getState():
+                self.selected_options["output_mode"] = mode_value
+                break
+        
+        # Save the selected output mode for next time
+        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_KEY_LAST_OUTPUT_MODE, self.selected_options["output_mode"])
 
         # PSM
         psm_dropdown = self.get_control("PSMDropdown")
@@ -410,10 +429,12 @@ class OptionsDialogHandler(BaseDialogHandler):
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx):
-        dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_settings_dialog.xdl")
-        dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path)
+        # dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_settings_dialog.xdl")
+        # dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path)
         # self.dialog_url = uno_utils.get_extension_resource_url(ctx, "dialogs/tejocr_settings_dialog.xdl")
-        super().__init__(ctx, dialog_file_url)
+        # Corrected URL for packaged extensions:
+        dialog_url = "private:dialogs/tejocr_settings_dialog.xdl"
+        super().__init__(ctx, dialog_url)
         self.initial_settings = {} # To store settings when dialog opens to check for changes
         self.available_languages_map_settings = {} # Separate map for settings dialog
 
@@ -559,12 +580,24 @@ class SettingsDialogHandler(BaseDialogHandler):
         tess_path = path_field.getText().strip()
         status_label = self.get_control("TesseractTestStatusLabel")
         
-        is_valid, message = tejocr_engine.check_tesseract_path(tess_path, self.ctx)
+        is_valid, message = tejocr_engine.check_tesseract_path(tess_path, self.ctx, show_gui_errors=False)
         
-        if is_valid:
-            status_label.setText(f"✅ Valid: {message}")
+        if status_label:
+            if is_valid:
+                status_label.setText(f"✅ Valid: {message if message else 'Tesseract found and seems OK.'}")
+            else:
+                status_label.setText(f"❌ Invalid: {message if message else 'Tesseract not found or version check failed.'}")
         else:
-            status_label.setText(f"❌ Invalid: {message}")
+            logger.warning("TesseractTestStatusLabel not found in Settings Dialog. Cannot display test status.")
+            uno_utils.show_message_box(
+                "Tesseract Test",
+                f"Path: {tess_path}
+Status: {'Valid' if is_valid else 'Invalid'}
+Details: {message}",
+                "infobox" if is_valid else "warningbox",
+                parent_frame=self.parent_frame,
+                ctx=self.ctx
+            )
 
     def _handle_ok_action(self):
         """Save settings if they have changed."""

@@ -8,8 +8,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TejOCR 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/varshneydevansh/TejOCR/issues\n"
-"POT-Creation-Date: 2025-05-17 22:48+0530\n"
-"PO-Revision-Date: 2025-05-17 22:48+0530\n"
+"POT-Creation-Date: 2025-05-18 11:53+0530\n"
+"PO-Revision-Date: 2025-05-18 11:53+0530\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: zh_CN\n"
@@ -21,7 +21,9 @@ msgstr ""
 #: python/tejocr/tejocr_output.py:53 python/tejocr/tejocr_output.py:75
 #: python/tejocr/tejocr_output.py:86 python/tejocr/tejocr_output.py:119
 #: python/tejocr/tejocr_output.py:154 python/tejocr/tejocr_output.py:169
-#: python/tejocr/tejocr_output.py:199
+#: python/tejocr/tejocr_output.py:199 python/tejocr/tejocr_service.py:217
+#: python/tejocr/tejocr_service.py:323 python/tejocr/tejocr_service.py:348
+#: python/tejocr/tejocr_service.py:363 python/tejocr/tejocr_service.py:373
 msgid "Error"
 msgstr ""
 
@@ -133,208 +135,288 @@ msgstr ""
 msgid "Could not extract usable image data from the selected object."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:175
+#: python/tejocr/tejocr_engine.py:177
 msgid "Pytesseract Missing"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:175
+#: python/tejocr/tejocr_engine.py:178
 msgid ""
 "The 'pytesseract' Python library is not installed. TejOCR cannot function "
 "without it."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:182 python/tejocr/tejocr_engine.py:198
+#: python/tejocr/tejocr_engine.py:189 python/tejocr/tejocr_engine.py:213
 msgid "Tesseract Not Found"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:183
+#: python/tejocr/tejocr_engine.py:190
 msgid ""
 "Tesseract OCR executable was not found at the specified path or in system "
 "PATH. Please configure the path in TejOCR Settings."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:194
+#: python/tejocr/tejocr_engine.py:204
 msgid "Tesseract Found"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:194
+#: python/tejocr/tejocr_engine.py:205
 #, python-brace-format
 msgid ""
 "Tesseract OCR (Version {version}) found and working at:\n"
 "{path}"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:198
+#: python/tejocr/tejocr_engine.py:214
 #, python-brace-format
 msgid ""
 "Pytesseract could not find Tesseract at {path} despite the file existing. "
 "Check permissions or Tesseract installation."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:202
+#: python/tejocr/tejocr_engine.py:222
 msgid "Tesseract Error"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:202
+#: python/tejocr/tejocr_engine.py:223
 #, python-brace-format
 msgid ""
-"Error while testing Tesseract at {path}:\n"
-"{error}"
+"An unexpected error occurred while verifying Tesseract at {path}: {error}"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:218
+#: python/tejocr/tejocr_engine.py:241
 msgid "Pytesseract library not installed."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:220
+#: python/tejocr/tejocr_engine.py:243
 msgid "Initializing OCR..."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:226
+#: python/tejocr/tejocr_engine.py:249
 msgid "Tesseract not found or not working. Please check settings."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:232
+#: python/tejocr/tejocr_engine.py:255
 msgid "Critical error: Tesseract path inconsistency."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:243
+#: python/tejocr/tejocr_engine.py:266
 msgid "Invalid image file path provided."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:247
+#: python/tejocr/tejocr_engine.py:270
 msgid "Extracting selected image..."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:252
+#: python/tejocr/tejocr_engine.py:275
 msgid "Failed to extract image from selection."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:257
+#: python/tejocr/tejocr_engine.py:280
 msgid "Invalid OCR source type."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:259
+#: python/tejocr/tejocr_engine.py:282
 msgid "Preprocessing image (if enabled)..."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:277
+#: python/tejocr/tejocr_engine.py:300
 #, python-brace-format
 msgid "Performing OCR (Lang: {lang_code})..."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:294
+#: python/tejocr/tejocr_engine.py:317
 msgid "OCR Complete."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:295
+#: python/tejocr/tejocr_engine.py:318
 msgid "OCR successful."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:298
+#: python/tejocr/tejocr_engine.py:321
 msgid "Tesseract is not installed or not in your PATH. Please check settings."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:300 python/tejocr/tejocr_engine.py:305
-#: python/tejocr/tejocr_engine.py:310 python/tejocr/tejocr_engine.py:317
+#: python/tejocr/tejocr_engine.py:323 python/tejocr/tejocr_engine.py:328
+#: python/tejocr/tejocr_engine.py:333 python/tejocr/tejocr_engine.py:340
 #, python-brace-format
 msgid "Error: {message}"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:303
+#: python/tejocr/tejocr_engine.py:326
 #, python-brace-format
 msgid "Tesseract error: {error_details}"
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:308
+#: python/tejocr/tejocr_engine.py:331
 msgid ""
 "Image file not found for OCR (it may have been a temporary file that was "
 "removed prematurely)."
 msgstr ""
 
-#: python/tejocr/tejocr_engine.py:316
+#: python/tejocr/tejocr_engine.py:339
 #, python-brace-format
 msgid "An unexpected error occurred during OCR: {error_details}"
 msgstr ""
 
-#: python/tejocr/locale_setup.py:83
+#: python/tejocr/tejocr_service.py:153
+msgid ""
+"On macOS, a common way to install Tesseract is using Homebrew: brew install "
+"tesseract"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:155
+msgid ""
+"On Windows, you can find installers on the Tesseract GitHub page (search for "
+"'UB Mannheim Tesseract')."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:157
+msgid ""
+"On Linux, you can usually install Tesseract using your distribution's "
+"package manager (e.g., sudo apt install tesseract-ocr)."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:159
+msgid ""
+"Please refer to the Tesseract OCR documentation for installation "
+"instructions specific to your operating system."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:161
+msgid "TejOCR - Tesseract OCR Required"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:164
+msgid "TejOCR requires Tesseract OCR to function."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:165
+msgid ""
+"Tesseract was not found at the configured path or in your system's PATH."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:167
+msgid "What would you like to do?"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:184
+#, python-brace-format
+msgid ""
+"Tesseract OCR is required but not found or not configured.\\n"
+"\\n{os_install_hint}\\n\\nOpen TejOCR Settings to specify the Tesseract "
+"path? (Choose Yes)\\nOpen the Tesseract installation guide in your browser? "
+"(Choose No)\\nCancel the current operation? (Choose Cancel)"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:218
+#, python-brace-format
+msgid "Could not open the web browser. Please manually visit: {url}"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:323
+msgid "Could not create file picker service."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:327 python/tejocr/tejocr_service.py:329
+msgid "All Supported Image Files"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:331
+msgid "All Files"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:334
+msgid "Select Image File for OCR"
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:348
+msgid "Dialog module not loaded."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:363
+msgid "Output module not loaded."
+msgstr ""
+
+#: python/tejocr/tejocr_service.py:373
+#, python-brace-format
+msgid ""
+"An unexpected error occurred while selecting image for OCR: {error_message}"
+msgstr ""
+
+#: python/tejocr/locale_setup.py:109
 msgid "Hello"
 msgstr ""
 
-#: python/tejocr/locale_setup.py:84
+#: python/tejocr/locale_setup.py:110
 msgid "Test"
 msgstr ""
 
-#: python/tejocr/locale_setup.py:85 python/tejocr/locale_setup.py:86
+#: python/tejocr/locale_setup.py:111 python/tejocr/locale_setup.py:112
 msgid "One item"
 msgid_plural "Multiple items"
 msgstr[0] ""
 msgstr[1] ""
 
-#: python/tejocr/uno_utils.py:34
-msgid "Failed to resolve ServiceManager via UnoUrlResolver"
-msgstr ""
-
-#: python/tejocr/uno_utils.py:167 python/tejocr/uno_utils.py:177
-#: python/tejocr/uno_utils.py:202
+#: python/tejocr/uno_utils.py:215 python/tejocr/uno_utils.py:225
+#: python/tejocr/uno_utils.py:250
 msgid "Configuration Error"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:167
+#: python/tejocr/uno_utils.py:215
 msgid "Cannot access ConfigurationProvider."
 msgstr ""
 
-#: python/tejocr/uno_utils.py:177
+#: python/tejocr/uno_utils.py:225
 #, python-brace-format
 msgid "Cannot access configuration node {node_path}: {e}"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:202
+#: python/tejocr/uno_utils.py:250
 #, python-brace-format
 msgid "Cannot write setting '{key}' to '{full_node_path}': {e}"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:248
+#: python/tejocr/uno_utils.py:296
 #, python-brace-format
 msgid "Configured Tesseract path is not a valid executable: {path}"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:249
+#: python/tejocr/uno_utils.py:297
 msgid "Tesseract Path"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:353
+#: python/tejocr/uno_utils.py:401
 msgid "uno_utils.py: For testing non-UNO functions or with mock UNO context."
 msgstr ""
 
-#: python/tejocr/uno_utils.py:356
+#: python/tejocr/uno_utils.py:404
 msgid ""
 "\n"
 "Testing Tesseract executable finder:"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:361
+#: python/tejocr/uno_utils.py:409
 msgid "  Tesseract not found in PATH or common locations."
 msgstr ""
 
-#: python/tejocr/uno_utils.py:366
+#: python/tejocr/uno_utils.py:414
 msgid ""
 "\n"
 "Testing temp file creation:"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:376
+#: python/tejocr/uno_utils.py:424
 msgid ""
 "\n"
 "Testing logger initialization (will log to a file in temp dir):"
 msgstr ""
 
-#: python/tejocr/uno_utils.py:381
+#: python/tejocr/uno_utils.py:429
 msgid ""
 "  Logger test messages sent. Check log file for 'TejOCR.TestUtil' entries."
 msgstr ""
 
-#: python/tejocr/uno_utils.py:385
+#: python/tejocr/uno_utils.py:433
 msgid ""
 "\n"
 "UNO-dependent functions require a LibreOffice environment to test."

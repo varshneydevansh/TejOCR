@@ -51,21 +51,33 @@ def get_translator(locale_dir=None, language_code=None):
         #         # For simplicity, could fall back to a configured default or 'en'.
         #         language_code = 'en' # Or get from constants.DEFAULT_UI_LANG if defined
 
+        #     # Define TEXT_DOMAIN, ideally from constants.py
+        #     TEXT_DOMAIN = getattr(constants, "TEXT_DOMAIN", "TejOCR") # Fallback to "TejOCR" if not in constants
+
         #     if os.path.isdir(locale_dir):
         #         lang = gettext.translation(
-        #             constants.EXTENSION_ID,  # Domain (usually extension ID or name)
+        #             TEXT_DOMAIN,  # Use the defined TEXT_DOMAIN
         #             localedir=locale_dir,
         #             languages=[language_code],
         #             fallback=True  # Fallback to parent language (e.g., 'en' if 'en_US' not found)
         #         )
-        #         lang.install() # Makes _ available globally if not assigning to a variable
-        #         _translator_instance = lang
-        #         # print(f"Locale setup: Loaded translations for '{language_code}' from '{locale_dir}'")
+        #         # To make _() available globally in the extension:
+        #         # lang.install() 
+        #         # Or, for more controlled usage (preferred in libraries):
+        #         # _translator_instance = lang.gettext 
+        #         # _n_translator_instance = lang.ngettext
+        #         # For simplicity with lang.install(), it sets the global _
+        #         # If lang.install(names=(\"gettext\", \"ngettext\")) is used, then it doesn\'t override \'_\'
+        #         # The default gettext.install() installs _, gettext, ngettext, pgettext, npgettext globally.
+        #         # If using it, ensure it\'s for the correct domain.
+        #         # If just retrieving the translation object:
+        # _translator_instance = lang # This line causes NameError if 'lang' is not defined
+        #         # print(f\"Locale setup: Loaded translations for \'{language_code}\' from \'{locale_dir}\' for domain \'{TEXT_DOMAIN}\'\")
         #     else:
-        #         # print(f"Locale setup: Locale directory '{locale_dir}' not found. Using NullTranslator.")
+        #         # print(f\"Locale setup: Locale directory \'{locale_dir}\' not found. Using NullTranslator.\")
         #         _translator_instance = NullTranslator()
         # except FileNotFoundError:
-        #     # print(f"Locale setup: No translations found for domain '{constants.EXTENSION_ID}' and language '{language_code}'. Using NullTranslator.")
+        #     # print(f"Locale setup: No translations found for domain '{TEXT_DOMAIN}' and language '{language_code}'. Using NullTranslator.")
         #     _translator_instance = NullTranslator()
         # except Exception as e:
         #     # print(f"Locale setup: Error initializing gettext: {e}. Using NullTranslator.")
@@ -75,6 +87,20 @@ def get_translator(locale_dir=None, language_code=None):
 
 # Make a default _ function available for direct import if desired,
 # though it's generally better for modules to call get_translator().gettext explicitly.
+# _ = get_translator().gettext # This might be problematic if _translator_instance is not a full gettext object
+
+# Correct way to get _ for global use IF gettext.translation().install() was used:
+# import builtins
+# _ = builtins.__dict__.get('_', get_translator().gettext) # Fallback to NullTranslator's gettext if _ not installed
+
+# If lang.install() is not used, then _ needs to be explicitly set:
+# translator = get_translator()
+# if hasattr(translator, 'gettext'):
+#     _ = translator.gettext
+# else: # Assuming NullTranslator or similar direct object
+#     _ = translator 
+
+# For now, keep the simple assignment for NullTranslator case
 _ = get_translator().gettext
 
 if __name__ == "__main__":

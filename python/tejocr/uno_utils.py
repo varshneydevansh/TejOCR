@@ -18,100 +18,124 @@ from tejocr import locale_setup
 _ = locale_setup.get_translator().gettext
 
 # --- UNO Service Creation & Access ---
-SMGR = None
+# Removed global SMGR cache to ensure context-specific service managers
 
-def _get_service_manager(ctx=None):
-    global SMGR
-    if SMGR is None:
-        if ctx is None:
-            # Try to get a default context (e.g., from a running office instance)
-            # This is a simplified approach; robust context acquisition might be more complex outside a service.
-            try:
-                resolver = uno.getComponentContext().getServiceManager().createInstanceWithContext(
-                    "com.sun.star.bridge.UnoUrlResolver", uno.getComponentContext())
-                SMGR = resolver.resolve("uno:socket,host=localhost,port=2002;urp;StarOffice.ServiceManager")
-                if SMGR is None:
-                    raise Exception(_("Failed to resolve ServiceManager via UnoUrlResolver"))
-            except Exception as e:
-                # Fallback for scripts not running in a context that can resolve like above
-                # (e.g. macro context where ctx is passed directly)
-                # This path is less likely to be hit if ctx is always provided where needed.
-                print(f"_get_service_manager: {_('Error getting default context/SM via resolver:')} {e}. {_('Requires ctx.')}")
-                # In a real extension, ctx should always be available from __init__ or initialize
-                # If this error occurs, it means a function needing SMGR was called without ctx.
-                return None # Cannot proceed without a context in this case
-        else:
-            SMGR = ctx.getServiceManager()
-    return SMGR
+def _get_service_manager(ctx):
+    """Gets the ServiceManager from the provided component context.
+    This function is intended for in-process UNO components.
+    
+    Args:
+        ctx: The UNO component context
+        
+    Returns:
+        The ServiceManager or None if ctx is None or getServiceManager() fails
+    """
+    if not ctx:
+        print("ERROR: _get_service_manager called without a valid context.")
+        return None
+        
+    try:
+        smgr = ctx.getServiceManager()
+        if not smgr:
+            print("ERROR: ctx.getServiceManager() returned None.")
+        return smgr
+    except Exception as e:
+        print(f"ERROR: Failed to get ServiceManager from context: {e}")
+        return None
 
 def create_instance(service_name, ctx):
-    """Creates an instance of a UNO service."""
-    smgr = _get_service_manager(ctx)
-    if not smgr:
-        # print(f"Error: ServiceManager not available, cannot create instance of {service_name}")
-        # Fallback to component context if ctx is available and smgr somehow failed.
-        if ctx:
-            try:
-                return ctx.getServiceManager().createInstanceWithContext(service_name, ctx)
-            except Exception as e_ctx_smgr:
-                print(f"Error creating {service_name} via ctx.getServiceManager(): {e_ctx_smgr}")
-                return None
+    """Creates an instance of a UNO service using the provided component context."""
+    if not ctx:
+        print(f"ERROR: create_instance called for '{service_name}' without a valid UNO context.")
         return None
-    return smgr.createInstanceWithContext(service_name, ctx)
+
+    try:
+        # Get service manager directly from context for this specific call
+        smgr = ctx.getServiceManager()
+        if not smgr:
+            print(f"ERROR: Could not get ServiceManager from the provided context for '{service_name}'.")
+            return None
+            
+        return smgr.createInstanceWithContext(service_name, ctx)
+    except Exception as e:
+        print(f"ERROR: Failed to create instance of '{service_name}': {e}")
+        return None
 
 # --- UI Utilities ---
-def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None):
+def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None, buttons=None):
     """Displays a message box.
     type: "infobox", "warningbox", "errorbox", "querybox"
+    buttons: UNO constant for buttons, e.g., com.sun.star.awt.MessageBoxButtons.BUTTONS_OK,
+             com.sun.star.awt.MessageBoxButtons.BUTTONS_YES_NO_CANCEL, etc.
+             If None, defaults to OK for infobox/warningbox/errorbox, or OK for querybox.
+    Returns the result of box.execute() which can be compared against com.sun.star.awt.MessageBoxResults constants.
     """
     if ctx is None:
-        # Try to get a component context if None is provided (e.g. for simple script calls)
         try:
             ctx = uno.getComponentContext()
         except Exception:
             print(f"show_message_box: {_('No ctx provided and uno.getComponentContext() failed. Cannot show:')} {title} - {message}")
-            return None # Cannot show message box without context
+            return None # Or a specific error code like -1
 
     parent_peer = None
     if parent_frame and hasattr(parent_frame, "getContainerWindow") and parent_frame.getContainerWindow():
         parent_peer = parent_frame.getContainerWindow().getPeer()
-    elif ctx: # Fallback if no frame, try to get a default parent from toolkit
+    elif ctx:
         toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
-        if toolkit and hasattr(toolkit, "getDesktopWindow"): # getTopWindow is older API
-            parent_peer = toolkit.getDesktopWindow()
+        if toolkit: # Check if toolkit was successfully created
+            # Prefer getActiveTopWindow if available (newer API)
+            if hasattr(toolkit, "getActiveTopWindow") and toolkit.getActiveTopWindow():
+                 parent_peer = toolkit.getActiveTopWindow()
+            elif hasattr(toolkit, "getDesktopWindow"): # Fallback to getDesktopWindow
+                 parent_peer = toolkit.getDesktopWindow()
 
-    box_type_map = {
-        "infobox": constants.DIALOG_MODAL_DEPENDENT,
-        "warningbox": constants.DIALOG_MODAL_DEPENDENT,
-        "errorbox": constants.DIALOG_MODAL_DEPENDENT,
-        "querybox": constants.DIALOG_MODAL_DEPENDENT # querybox typically needs button choices
-    }
-    # Actual service names for message box types
-    service_type_map = {
-        "infobox": "com.sun.star.awt.MessageBoxType.INFOBOX",
-        "warningbox": "com.sun.star.awt.MessageBoxType.WARNINGBOX",
-        "errorbox": "com.sun.star.awt.MessageBoxType.ERRORBOX",
-        "querybox": "com.sun.star.awt.MessageBoxType.QUERYBOX"
-    }
-    msg_type = getattr(uno.getConstantByName(service_type_map.get(type.lower(), "com.sun.star.awt.MessageBoxType.MESSAGEBOX")), "value", 1) # Default to simple MESSAGEBOX if type invalid
+    # Determine MessageBoxType from string
+    actual_box_type_str = "com.sun.star.awt.MessageBoxType.MESSAGEBOX" # Default
+    if type.lower() == "infobox":
+        actual_box_type_str = "com.sun.star.awt.MessageBoxType.INFOBOX"
+    elif type.lower() == "warningbox":
+        actual_box_type_str = "com.sun.star.awt.MessageBoxType.WARNINGBOX"
+    elif type.lower() == "errorbox":
+        actual_box_type_str = "com.sun.star.awt.MessageBoxType.ERRORBOX"
+    elif type.lower() == "querybox":
+        actual_box_type_str = "com.sun.star.awt.MessageBoxType.QUERYBOX"
+
+    try:
+        msg_type_enum = uno.getConstantByName(actual_box_type_str)
+    except Exception:
+        msg_type_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxType.MESSAGEBOX")
+
+
+    # Determine buttons
+    if buttons is None:
+        if type.lower() == "querybox":
+            # Default for querybox could be Yes/No if not specified, or just OK.
+            # For our specific enhanced Tesseract prompt, we'll pass explicit buttons.
+            # If used as a generic querybox without specific buttons, OK is a safe default.
+            buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+        else:
+            buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+    else:
+        buttons_enum = buttons # Assume 'buttons' is already the UNO constant
 
     try:
         toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
         if not toolkit:
             print(f"show_message_box: {_('Failed to create Toolkit. Cannot show:')} {title} - {message}")
-            return None
-            
-        # Buttons: 1 for OK. For querybox, might be (e.g.) com.sun.star.awt.MessageBoxButtons.BUTTONS_YES_NO_CANCEL
-        buttons = 1 # Default to OK button
-        # TODO: Make buttons configurable if querybox is used more extensively
+            # Consider a non-UNO fallback here if essential, e.g., logging to a file or console.
+            return uno.getConstantByName("com.sun.star.awt.MessageBoxResults.CANCEL") # Simulate a cancel
 
-        box = toolkit.createMessageBox(parent_peer, msg_type, buttons, str(title), str(message))
+        box = toolkit.createMessageBox(parent_peer, msg_type_enum, buttons_enum, str(title), str(message))
         return box.execute()
     except Exception as e:
         print(f"{_('Error showing message box')} '{title}': {e}")
-        # Fallback to console if UI fails catastrophically
         print(f"{_('MESSAGE BOX FALLBACK:')} {title} - {message}")
-        return None
+        # Return a value indicating failure, e.g., equivalent to Cancel or a custom error code.
+        # Using MessageBoxResults.CANCEL makes sense as the operation was effectively cancelled.
+        try:
+            return uno.getConstantByName("com.sun.star.awt.MessageBoxResults.CANCEL")
+        except Exception:
+            return 0 # Fallback if even getting CANCEL constant fails.
 
 def get_current_frame(ctx):
     """Gets the current desktop frame."""

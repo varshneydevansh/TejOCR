@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <oor:component-data xmlns:oor="http://openoffice.org/2001/registry"
                     xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                    oor:name="Addons" oor:package="org.libreoffice">
+                    oor:name="Addons" oor:package="org.openoffice.Office">
 
     <node oor:name="AddonUI">
         <node oor:name="OfficeMenuBar">
-            <node oor:name="private:resource/menubar/toolsmenu">
+            <node oor:name="private:resource/menubar/menubar">
                 <node oor:name="org.libreoffice.TejOCR.TopMenu" oor:op="fuse">
                     <prop oor:name="TargetModule" oor:type="xs:string">
                         <value>com.sun.star.text.TextDocument</value>
                     </prop>
+                    <!-- The <Order> property can help position it among other top-level menus -->
+                    <!-- Default position is often at the end. Experiment with values. -->
+                    <!-- For example, a high value might place it after "Help". -->
+                    <!-- <prop oor:name="Order" oor:type="xs:int"><value>900</value></prop> -->
                     <node oor:name="Submenu">
                         <prop oor:name="URL" oor:type="xs:string">
                             <value>service:org.libreoffice.TejOCR.PopupMenu</value>
@@ -28,9 +32,13 @@
                         <prop oor:name="Context" oor:type="xs:string">
                             <value>com.sun.star.text.TextDocument</value>
                         </prop>
-                        <prop oor:name="Order" oor:type="xs:int">
-                            <value>85</value>
-                        </prop>
+                        <!-- The 'Order' property here was for placing it *within* the Tools menu. -->
+                        <!-- For a top-level menu, the Order property should be on its direct parent if needed, -->
+                        <!-- or on the org.libreoffice.TejOCR.TopMenu node itself. -->
+                        <!-- Removing it from here as it doesn't apply directly to the Submenu node in this context. -->
+                        <!-- <prop oor:name="Order" oor:type="xs:int"> -->
+                        <!-- <value>85</value> -->
+                        <!-- </prop> -->
                     </node>
                 </node>
             </node>
@@ -120,7 +128,8 @@
                         <value>com.sun.star.text.TextDocument</value>
                     </prop>
                     <prop oor:name="ImageIdentifier" oor:type="xs:string">
-                        <value>%origin%/icons/tejocr_16</value>
+                        <!-- Changed back to tejocr_26 as it's more standard for toolbars, but tejocr_16 is also fine -->
+                        <value>%origin%/icons/tejocr_26</value>
                     </prop>
                 </node>
             </node>

@@ -374,77 +374,103 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
 
     def _handle_settings(self):
-        if logger: logger.info("Handling Settings")
-        # This action should always proceed without a Tesseract pre-check.
-        self.tejocr_dialogs.show_settings_dialog(self.ctx, self.frame)
-        
-    def addStatusListener(self, Listener, URL):
-        # This needs to be efficient. Only update if truly necessary.
-        # Check if URL.Path matches one of our dynamic commands
-        path_to_check = URL.Path
-        if path_to_check == DISPATCH_URL_OCR_SELECTED[4:] or path_to_check == DISPATCH_URL_TOOLBAR_ACTION[4:]:
-            if not self.frame:
-                 self.frame = uno_utils.get_current_frame(self.ctx)
+        logger.info("Handling Settings action.")
+        # Ensure deferred import of tejocr_dialogs is available
+        if not hasattr(self, 'tejocr_dialogs') or not self.tejocr_dialogs:
+            logger.debug("Attempting to import tejocr_dialogs in _handle_settings (should have been deferred loaded).")
+            from tejocr import tejocr_dialogs as deferred_dialogs # Re-import if necessary
+            self.tejocr_dialogs = deferred_dialogs
+            logger.debug("tejocr_dialogs imported and assigned in _handle_settings.")
 
-            status = uno.createUnoStruct("com.sun.star.frame.FeatureStateEvent")
-            status.FeatureURL = URL
-            status.IsEnabled = uno_utils.is_graphic_object_selected(self.frame, self.ctx) if self.frame else False
-            status.State = status.IsEnabled # For simple enable/disable, State can be same as IsEnabled
-            # If you had a toggle button, State could be True/False for checked/unchecked
+        # Ensure frame is available for dialogs
+        if not self.frame:
+            logger.warning("Frame not available when trying to open settings. Attempting to get current.")
+            self.frame = uno_utils.get_current_frame(self.ctx)
+            if not self.frame:
+                logger.error("Still no frame; cannot display settings dialog correctly.")
+                uno_utils.show_message_box(_("Error"), _("Cannot open settings: No active document window found."), "errorbox", ctx=self.ctx)
+                return
+        
+        try:
+            self.tejocr_dialogs.show_settings_dialog(self.ctx, self.frame)
+            logger.debug("Settings dialog call completed.")
+        except Exception as e_settings_dlg:
+            logger.critical(f"Error showing settings dialog: {e_settings_dlg}", exc_info=True)
+            uno_utils.show_message_box(_("Settings Error"), _("Could not display the settings dialog: {error}").format(error=str(e_settings_dlg)), "errorbox", parent_frame=self.frame, ctx=self.ctx)
+
+
+    # XDispatch (Status Update Part - Optional but good for dynamic menu states)
+    def addStatusListener(self, Listener, URL):
+        logger.debug(f"addStatusListener for URL: {URL.Path if URL and hasattr(URL, 'Path') else 'Invalid/None URL'}")
+        # For TejOCR, a basic implementation: enable if an image is selected for OCR_SELECTED, always for others.
+        if Listener and URL and hasattr(URL, 'Path') and URL.Path:
+            status_event = uno.createUnoStruct("com.sun.star.frame.FeatureStateEvent")
+            status_event.FeatureURL = URL
+            status_event.IsEnabled = True # Default to enabled
+            status_event.Requery = False # Generally false unless state changes very rapidly
+
+            is_selected_action = URL.Path == DISPATCH_URL_OCR_SELECTED or URL.Path == DISPATCH_URL_TOOLBAR_ACTION
+            
+            if is_selected_action: # For toolbar or direct select, enable based on selection
+                # Ensure frame is available for is_graphic_object_selected
+                current_frame = self.frame
+                if not current_frame and self.ctx:
+                    current_frame = uno_utils.get_current_frame(self.ctx)
+                
+                if current_frame: # Only check selection if frame is available
+                    status_event.IsEnabled = uno_utils.is_graphic_object_selected(current_frame, self.ctx)
+                    logger.debug(f"Status for '{URL.Path}': IsEnabled = {status_event.IsEnabled} (based on selection)")
+                else:
+                    status_event.IsEnabled = False # Cannot determine selection without a frame
+                    logger.debug(f"Status for '{URL.Path}': IsEnabled = False (no frame for selection check)")
+            else:
+                 logger.debug(f"Status for '{URL.Path}': IsEnabled = True (not selection-dependent)")
+            
+            # You can also set .State if the command has a state (e.g., a checkbox menu item)
+            # status_event.State = True # or some other value like a string for text display
+
             try:
-                Listener.statusChanged(status)
-            except Exception as e_status:
-                if logger: logger.warning(f"Error in addStatusListener for {URL.Path}: {e_status}", exc_info=False) # Avoid too much logging here
+                Listener.statusChanged(status_event)
+            except Exception as e_stat_change:
+                logger.error(f"Error calling statusChanged for {URL.Path}: {e_stat_change}", exc_info=True)
+        else:
+            logger.warning("addStatusListener called with invalid Listener or URL.")
 
 
     def removeStatusListener(self, Listener, URL):
+        logger.debug(f"removeStatusListener for URL: {URL.Path if URL and hasattr(URL, 'Path') else 'Invalid/None URL'}")
+        # If we were storing listeners (e.g., in a dictionary keyed by URL/Listener), we'd remove them here.
+        # For this basic implementation, there's nothing to remove as we don't store them.
         pass
 
-# LibreOffice Python script framework requires a global entry point
-try:
-    print(f"DEBUG: tejocr_service.py: About to create ImplementationHelper...")
-    g_ImplementationHelper = unohelper.ImplementationHelper()
-    print(f"DEBUG: tejocr_service.py: Successfully created ImplementationHelper: {g_ImplementationHelper}")
-    
-    print(f"DEBUG: tejocr_service.py: Adding TejOCRService implementation (IMPLEMENTATION_NAME={IMPLEMENTATION_NAME}, SERVICE_NAME={SERVICE_NAME})")
-    g_ImplementationHelper.addImplementation(
-        TejOCRService,
-        IMPLEMENTATION_NAME,
-        (SERVICE_NAME,), 
-    )
-    print(f"DEBUG: tejocr_service.py: Service implementation '{IMPLEMENTATION_NAME}' added to helper for service '{SERVICE_NAME}'.")
-    
-    # Add an explicit verification that the service was registered
-    try:
-        print(f"DEBUG: tejocr_service.py: Verifying g_ImplementationHelper contains our implementation...")
-        implementations = g_ImplementationHelper.getImplementations()
-        implementation_names = [impl[0] for impl in implementations]
-        if IMPLEMENTATION_NAME in implementation_names:
-            print(f"DEBUG: tejocr_service.py: VERIFICATION SUCCESS: Implementation '{IMPLEMENTATION_NAME}' found in the helper.")
-        else:
-            print(f"DEBUG: tejocr_service.py: VERIFICATION FAILED: Implementation '{IMPLEMENTATION_NAME}' NOT found in helper! Available: {implementation_names}")
-    except Exception as e_verify:
-        print(f"DEBUG: tejocr_service.py: VERIFICATION ERROR: Failed to check implementations: {e_verify}")
-        
-except Exception as e_script_global:
-    # This is a last-resort catch for any error during the script's global execution phase (outside class methods)
-    # If an error occurs here, the extension likely won't load at all.
-    # A simple print might go to a console if LO is started that way, or to stderr.
-    # For more visibility during development, one might write to a temp file.
-    print(f"CRITICAL ERROR in tejocr_service.py global scope: {e_script_global}")
-    import traceback
-    traceback.print_exc()
-    # Optionally, try to log to a file if basic file operations are possible
-    try:
-        temp_error_log_path = os.path.join(os.path.expanduser("~"), "tejocr_critical_error.log")
-        with open(temp_error_log_path, "a") as f:
-            f.write(f"Timestamp: {datetime.datetime.now()}\n")
-            f.write(f"CRITICAL ERROR in tejocr_service.py global scope: {e_script_global}\n")
-            traceback.print_exc(file=f)
-            f.write("--- End of Error ---\n")
-    except:
-        pass # Ignore if even this fails
-    # DO NOT raise here if g_ImplementationHelper might not exist or if this script is part of registration
-    # Instead, ensure the problem is logged or visible for debugging.
 
-print("DEBUG: tejocr_service.py: Script execution reached end of file (after g_ImplementationHelper). Service should be ready for use.")
+# UNO Component Registration
+# This is the function LibreOffice looks for when registering the component.
+# It must be named exactly as specified (g_ImplementationHelper or createInstance).
+# unohelper.ImplementationHelper is common for older style, direct function more modern.
+
+# We need to ensure that this part is correctly picked up by LibreOffice.
+# The manifest.xml points to this file as a "uno-component;type=Python".
+# LibreOffice will then look for specific factory functions.
+# Common ones are g_ImplementationHelper or createInstance.
+# Let's use g_ImplementationHelper for broad compatibility, as it's well-established.
+
+g_ImplementationHelper = unohelper.ImplementationHelper()
+g_ImplementationHelper.addImplementation(
+    TejOCRService, # The class that implements the service
+    IMPLEMENTATION_NAME, # The unique name of this implementation
+    (SERVICE_NAME,), # Tuple of service names it supports
+)
+
+# For debugging: Confirm registration attempt.
+# This print will only execute if the script itself is parsed correctly up to this point.
+if logger: # Check if logger was successfully initialized earlier
+    logger.info(f"TejOCRService ADDED to ImplementationHelper: IMPL_NAME={IMPLEMENTATION_NAME}, SVC_NAME={SERVICE_NAME}")
+else: # Fallback if logger is still not initialized (shouldn't happen ideally)
+    print(f"CRITICAL FALLBACK PRINT: tejocr_service.py: Logger not available at component registration. Attempting to register TejOCRService. IMPL_NAME={IMPLEMENTATION_NAME}, SVC_NAME={SERVICE_NAME}")
+
+# Final log message for script execution span
+if logger:
+    logger.info("tejocr_service.py: Script execution finished parsing (bottom level).")
+else:
+    print("INFO FALLBACK PRINT: tejocr_service.py: Script execution finished parsing (bottom level, logger not available).")

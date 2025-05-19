@@ -4,7 +4,7 @@
                     oor:name="Addons" oor:package="org.openoffice.Office">
 
     <node oor:name="AddonUI">
-        <!-- Top-level menu definition -->
+        <!-- Top-level menu definition with direct menu items -->
         <node oor:name="OfficeMenuBar">
             <node oor:name="org.libreoffice.TejOCR.TopMenu" oor:op="fuse">
                 <prop oor:name="Title" oor:type="xs:string">
@@ -15,11 +15,9 @@
                     <value xml:lang="de-DE">~TejOCR</value>
                     <value xml:lang="zh-CN">~TejOCR</value>
                 </prop>
-                <!-- Context instead of TargetModule -->
                 <prop oor:name="Context" oor:type="xs:string">
                     <value>com.sun.star.text.TextDocument</value>
                 </prop>
-                <!-- Direct menu items instead of a submenu popup -->
                 <node oor:name="Submenu">
                     <node oor:name="M1" oor:op="fuse">
                         <prop oor:name="URL" oor:type="xs:string"><value>uno:org.libreoffice.TejOCR.OCRSelectedImage</value></prop>
@@ -32,7 +30,6 @@
                             <value xml:lang="zh-CN">识别选定图像</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-                        <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.text.TextDocument</value></prop>
                     </node>
                     <node oor:name="M2" oor:op="fuse">
                         <prop oor:name="URL" oor:type="xs:string"><value>uno:org.libreoffice.TejOCR.OCRImageFromFile</value></prop>
@@ -45,10 +42,12 @@
                             <value xml:lang="zh-CN">从文件识别图像...</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-                        <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.text.TextDocument</value></prop>
                     </node>
+                    <!-- Standard separator definition -->
                     <node oor:name="S1" oor:op="fuse">
-                        <prop oor:name="Type" oor:type="xs:int"><value>1</value></prop>
+                        <prop oor:name="URL" oor:type="xs:string">
+                            <value>private:separator</value>
+                        </prop>
                     </node>
                     <node oor:name="M3" oor:op="fuse">
                         <prop oor:name="URL" oor:type="xs:string"><value>uno:org.libreoffice.TejOCR.Settings</value></prop>
@@ -61,7 +60,6 @@
                             <value xml:lang="zh-CN">设置...</value>
                         </prop>
                         <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-                        <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.text.TextDocument</value></prop>
                     </node>
                 </node>
             </node>
@@ -75,53 +73,50 @@
                 </prop>
                 <node oor:name="UserDefinedImages">
                     <prop oor:name="ImageSmallURL" oor:type="xs:string">
-                        <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
+                        <value>%origin%/icons/tejocr_16.png</value>
                     </prop>
                     <prop oor:name="ImageBigURL" oor:type="xs:string">
-                        <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_26.png</value>
+                        <value>%origin%/icons/tejocr_26.png</value>
                     </prop>
                 </node>
             </node>
-            <node oor:name="org.libreoffice.TejOCR.MenuIcons" oor:op="fuse">
+            <node oor:name="org.libreoffice.TejOCR.OCRSelectedImage" oor:op="fuse">
                 <prop oor:name="URL" oor:type="xs:string">
                     <value>uno:org.libreoffice.TejOCR.OCRSelectedImage</value>
                 </prop>
                 <node oor:name="UserDefinedImages">
                     <prop oor:name="ImageSmallURL" oor:type="xs:string">
-                        <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
+                        <value>%origin%/icons/tejocr_16.png</value>
+                    </prop>
+                </node>
+            </node>
+            <node oor:name="org.libreoffice.TejOCR.OCRImageFromFile" oor:op="fuse">
+                <prop oor:name="URL" oor:type="xs:string">
+                    <value>uno:org.libreoffice.TejOCR.OCRImageFromFile</value>
+                </prop>
+                <node oor:name="UserDefinedImages">
+                    <prop oor:name="ImageSmallURL" oor:type="xs:string">
+                        <value>%origin%/icons/tejocr_16.png</value>
+                    </prop>
+                </node>
+            </node>
+            <node oor:name="org.libreoffice.TejOCR.Settings" oor:op="fuse">
+                <prop oor:name="URL" oor:type="xs:string">
+                    <value>uno:org.libreoffice.TejOCR.Settings</value>
+                </prop>
+                <node oor:name="UserDefinedImages">
+                    <prop oor:name="ImageSmallURL" oor:type="xs:string">
+                        <value>%origin%/icons/tejocr_16.png</value>
                     </prop>
                 </node>
             </node>
         </node>
 
-        <!-- Add to standard toolbar instead of creating a separate one -->
-        <node oor:name="AddonMenu">
-            <node oor:name="org.libreoffice.TejOCR.AddonMenu" oor:op="fuse">
-                <prop oor:name="Title" oor:type="xs:string">
-                    <value xml:lang="en-US">TejOCR</value>
-                </prop>
-                <prop oor:name="Context" oor:type="xs:string">
-                    <value>com.sun.star.text.TextDocument</value>
-                </prop>
-                <node oor:name="Submenu">
-                    <node oor:name="M1" oor:op="fuse">
-                        <prop oor:name="URL" oor:type="xs:string">
-                            <value>uno:org.libreoffice.TejOCR.ToolbarAction</value>
-                        </prop>
-                        <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en-US">Open TejOCR</value>
-                        </prop>
-                        <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-                    </node>
-                </node>
-            </node>
-        </node>
-
-        <!-- Place TejOCR button on the standard toolbar -->
+        <!-- Add to standard toolbar -->
         <node oor:name="OfficeToolBar">
-            <node oor:name="StandardBar" oor:op="fuse">
+            <node oor:name="standardbar">
                 <node oor:name="org.libreoffice.TejOCR.ToolBarButton" oor:op="fuse">
-                    <prop oor:name="URL" oor:type="xs:string"><value>uno:org.libreoffice.TejOCR.ToolbarAction</value></prop>
+                    <prop oor:name="URL" oor:type="xs:string"><value>uno:org.libreoffice.TejOCR.OCRSelectedImage</value></prop>
                     <prop oor:name="Title" oor:type="xs:string">
                         <value xml:lang="en-US">TejOCR</value>
                         <value xml:lang="hi-IN">तेजओसीआर</value>
@@ -131,7 +126,6 @@
                         <value xml:lang="zh-CN">TejOCR</value>
                     </prop>
                     <prop oor:name="Target" oor:type="xs:string"><value>_self</value></prop>
-                    <prop oor:name="Context" oor:type="xs:string"><value>com.sun.star.text.TextDocument</value></prop>
                 </node>
             </node>
         </node>

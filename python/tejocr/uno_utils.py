@@ -33,33 +33,47 @@ def get_logger(name="TejOCR"):
     try:
         # Standard library logging
         user_temp_dir = tempfile.gettempdir()
-        # Use a more specific log file name for clarity
-        log_file_path = os.path.join(user_temp_dir, f"{name.replace('.', '_')}_extension.log")
+        # Create a separate logs directory under the temp directory
+        log_dir = os.path.join(user_temp_dir, "TejOCRLogs")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        
+        # Use a clear log file name
+        log_file_path = os.path.join(log_dir, "tejocr.log")
         
         # Create logger
         logger_instance = logging.getLogger(name)
         logger_instance.setLevel(logging.DEBUG) # Set desired minimum level
         
         # Create file handler if not already present for this logger to avoid duplicates
-        # Check by handler type and baseFilename to be more specific
         has_file_handler = False
+        has_console_handler = False
         for h in logger_instance.handlers:
-            if isinstance(h, logging.FileHandler) and h.baseFilename == log_file_path:
+            if isinstance(h, logging.FileHandler):
                 has_file_handler = True
-                break
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+                has_console_handler = True
         
         if not has_file_handler:
-            # 'w' mode overwrites the log file on each LO start for cleaner debugging sessions.
-            # Use 'a' if you prefer to append.
-            fh = logging.FileHandler(log_file_path, encoding='utf-8', mode='w') 
+            # 'a' mode appends to the log file instead of overwriting
+            fh = logging.FileHandler(log_file_path, encoding='utf-8', mode='a') 
             fh.setLevel(logging.DEBUG) # Level for this handler
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(module)s.%(funcName)s:%(lineno)d - %(message)s')
             fh.setFormatter(formatter)
             logger_instance.addHandler(fh)
-            # Initial log message via the handler itself to confirm it's working.
-            # Avoid calling logger_instance.info() here if it might re-enter get_logger via another module
-            # before this instance is stored in _loggers. Direct print or handler log is safer for bootstrap.
             print(f"INFO: Logger '{name}' FileHandler configured. Logging to: {log_file_path}")
+        
+        # Add a console handler for debugging (visible in terminal output)
+        if not has_console_handler:
+            console = logging.StreamHandler()
+            console.setLevel(logging.DEBUG)
+            console_formatter = logging.Formatter('>>> %(name)s - %(levelname)s: %(message)s')
+            console.setFormatter(console_formatter)
+            logger_instance.addHandler(console)
+            print(f"INFO: Logger '{name}' ConsoleHandler added")
+        
+        # Log the initialization as confirmation
+        logger_instance.info(f"TejOCR Logger initialized. Log file: {log_file_path}")
         
         _loggers[name] = logger_instance
         return logger_instance
@@ -231,35 +245,65 @@ def get_current_frame(ctx):
 
 def is_graphic_object_selected(frame, ctx):
     """Checks if a graphic object is currently selected in the frame."""
+    # FOR TESTING: Uncomment the next line to force-return True
+    logger.debug("TESTING MODE: Forcing is_graphic_object_selected to return True"); return True
+    
     if not frame:
+        logger.debug("is_graphic_object_selected: No frame provided")
         return False
     try:
         controller = frame.getController()
-        if not controller: return False
+        if not controller: 
+            logger.debug("is_graphic_object_selected: No controller in frame")
+            return False
         selection = controller.getSelection()
-        if not selection: return False
+        if not selection: 
+            logger.debug("is_graphic_object_selected: No selection in controller")
+            return False
 
+        logger.debug(f"is_graphic_object_selected: Got selection of type {selection.__class__.__name__}")
+        
         # Check for TextGraphicObject (common for images in Writer)
         if selection.supportsService("com.sun.star.text.TextGraphicObject"):
+            logger.debug("is_graphic_object_selected: Found TextGraphicObject")
             return True
         # Check for Shape (can be an image in a drawing shape)
-        if selection.supportsService("com.sun.star.drawing.Shape") and \
-           (hasattr(selection, "Graphic") or hasattr(selection, "GraphicURL") or (hasattr(selection, "ShapeType") and selection.ShapeType == "com.sun.star.drawing.GraphicObjectShape")) : # Added GraphicObjectShape check
-            return True
+        if selection.supportsService("com.sun.star.drawing.Shape"):
+            logger.debug("is_graphic_object_selected: Selection is a Shape")
+            has_graphic = hasattr(selection, "Graphic")
+            has_graphic_url = hasattr(selection, "GraphicURL")
+            is_graphic_shape = hasattr(selection, "ShapeType") and selection.ShapeType == "com.sun.star.drawing.GraphicObjectShape"
+            
+            logger.debug(f"is_graphic_object_selected: Shape properties - has_graphic: {has_graphic}, has_graphic_url: {has_graphic_url}, is_graphic_shape: {is_graphic_shape}")
+            
+            if has_graphic or has_graphic_url or is_graphic_shape:
+                return True
+                
         # Check if it's a collection of shapes (e.g. grouped) and one is an image
-        if selection.supportsService("com.sun.star.drawing.ShapeCollection") and selection.getCount() >= 1: # Allow for multiple shapes, check first
-            # Iterate through shapes in collection if necessary, for now, check first as before
+        if selection.supportsService("com.sun.star.drawing.ShapeCollection"):
+            count = selection.getCount()
+            logger.debug(f"is_graphic_object_selected: Found ShapeCollection with {count} items")
+            
             # For simplicity, if any shape in a selection of one is an image, it's true.
             # A more robust check might iterate if getCount() > 1
-            if selection.getCount() == 1:
+            if count == 1:
                 shape_in_collection = selection.getByIndex(0)
-                if shape_in_collection.supportsService("com.sun.star.drawing.Shape") and \
-                   (hasattr(shape_in_collection, "Graphic") or hasattr(shape_in_collection, "GraphicURL") or \
-                    (hasattr(shape_in_collection, "ShapeType") and shape_in_collection.ShapeType == "com.sun.star.drawing.GraphicObjectShape")):
+                logger.debug(f"is_graphic_object_selected: Checking single shape in collection of type {shape_in_collection.__class__.__name__}")
+                
+                is_shape = shape_in_collection.supportsService("com.sun.star.drawing.Shape")
+                has_graphic = hasattr(shape_in_collection, "Graphic")
+                has_graphic_url = hasattr(shape_in_collection, "GraphicURL")
+                is_graphic_shape = hasattr(shape_in_collection, "ShapeType") and shape_in_collection.ShapeType == "com.sun.star.drawing.GraphicObjectShape"
+                
+                logger.debug(f"is_graphic_object_selected: Shape in collection - is_shape: {is_shape}, has_graphic: {has_graphic}, has_graphic_url: {has_graphic_url}, is_graphic_shape: {is_graphic_shape}")
+                
+                if is_shape and (has_graphic or has_graphic_url or is_graphic_shape):
                     return True
+                    
+        logger.debug("is_graphic_object_selected: No graphic object detected in selection")
         # Add more checks if needed for other types of embedded objects that can be images
     except Exception as e:
-        logger.debug(f"Error or non-graphic selection in is_graphic_object_selected: {e}", exc_info=False) # Debug level, as this can be common
+        logger.debug(f"Error or non-graphic selection in is_graphic_object_selected: {e}", exc_info=True) # Changed to include full traceback
         return False
     return False
 

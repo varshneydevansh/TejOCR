@@ -232,12 +232,85 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             for arg in args:
                 if arg.Name == "Frame":
                     self.frame = arg.Value
+                    logger.debug(f"Frame set from args: {self.frame is not None}")
+        
         if not self.frame:
+            logger.debug("No frame from args, getting current frame...")
             # This get_current_frame call might happen before logger in uno_utils is fully set up
             # if uno_utils also relies on sys.path modifications for its own imports.
             # However, uno_utils.get_logger has a fallback print if its own logger setup fails.
             self.frame = uno_utils.get_current_frame(self.ctx) 
+            logger.debug(f"Got current frame: {self.frame is not None}")
+            
         if logger: logger.info(f"TejOCRService initialized with frame: {self.frame is not None}")
+        
+        # Test menu enabling by ensuring we can get a current frame later too
+        self._test_frame_access()
+        
+        # Test URL matching directly
+        self._test_url_matching()
+    
+    def _test_frame_access(self):
+        """Internal test method to verify frame access works correctly."""
+        try:
+            logger.debug("Testing frame access...")
+            test_frame = uno_utils.get_current_frame(self.ctx)
+            if test_frame:
+                logger.debug("TEST: Successfully got a current frame")
+                # Test selection checking - should work even without an actual selection
+                selection_result = uno_utils.is_graphic_object_selected(test_frame, self.ctx)
+                logger.debug(f"TEST: is_graphic_object_selected returned {selection_result}")
+            else:
+                logger.warning("TEST: Could not get a current frame for testing!")
+                
+            # Check self.frame again too
+            if self.frame:
+                logger.debug("TEST: self.frame is set")
+                selection_result = uno_utils.is_graphic_object_selected(self.frame, self.ctx)
+                logger.debug(f"TEST: is_graphic_object_selected on self.frame returned {selection_result}")
+            else:
+                logger.warning("TEST: self.frame is not set!")
+                
+        except Exception as e:
+            logger.error(f"TEST: Error in frame access test: {e}", exc_info=True)
+
+    def _test_url_matching(self):
+        """Internal test method to verify URL matching works correctly."""
+        print("=" * 50)
+        print("DIRECT PRINT: _test_url_matching called")
+        logger.debug("_test_url_matching: Testing URL matching...")
+        try:
+            # Create a mock URL for testing
+            from com.sun.star.util import URL as UnoURL
+            test_url = UnoURL()
+            test_url.Complete = DISPATCH_URL_OCR_SELECTED
+            test_url.Protocol = "uno:"
+            test_url.Path = DISPATCH_URL_OCR_SELECTED[4:] # Without protocol
+            test_url.Main = DISPATCH_URL_OCR_SELECTED[4:] # Without protocol
+            
+            print(f"DIRECT PRINT: Created test URL: {test_url.Complete}")
+            
+            # Now test our matching method
+            for cmd in [DISPATCH_URL_OCR_SELECTED, DISPATCH_URL_OCR_FROM_FILE, DISPATCH_URL_SETTINGS, DISPATCH_URL_TOOLBAR_ACTION]:
+                result = self._matches_command_url(test_url, cmd)
+                print(f"DIRECT PRINT: _matches_command_url result for {cmd}: {result}")
+                logger.debug(f"_test_url_matching: matching '{test_url.Complete}' against '{cmd}': {result}")
+                
+            # Test our dispatch method
+            result = self.queryDispatch(test_url, "_self", 0)
+            print(f"DIRECT PRINT: queryDispatch returned: {result is not None}")
+            logger.debug(f"_test_url_matching: queryDispatch test URL result: {result is not None}")
+            
+            # Also test with a different command
+            test_url.Complete = DISPATCH_URL_OCR_FROM_FILE
+            test_url.Path = DISPATCH_URL_OCR_FROM_FILE[4:]
+            result = self.queryDispatch(test_url, "_self", 0)
+            print(f"DIRECT PRINT: queryDispatch with OCR_FROM_FILE returned: {result is not None}")
+            
+        except Exception as e:
+            print(f"DIRECT PRINT: _test_url_matching error: {e}")
+            logger.error(f"_test_url_matching error: {e}", exc_info=True)
+        print("=" * 50)
 
     # XServiceInfo
     def getImplementationName(self):
@@ -249,16 +322,75 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
     def getSupportedServiceNames(self):
         return (SERVICE_NAME,)
 
-    # XDispatchProvider (methods as you provided them, they look fine)
+    def _matches_command_url(self, url_obj, command_url_constant):
+        """Internal helper to robustly match a URL object against our command URL constants.
+        Tries various matching approaches to handle different URL formats from LibreOffice."""
+        if not url_obj:
+            return False
+            
+        # Try with Complete property if available
+        if hasattr(url_obj, 'Complete') and url_obj.Complete:
+            # Direct complete match
+            if url_obj.Complete == command_url_constant:
+                return True
+                
+            # Try also with Path from URL object and prefix from constant
+            if hasattr(url_obj, 'Path') and url_obj.Path and command_url_constant.endswith(url_obj.Path):
+                return True
+        
+        # Try Path property for command part matching
+        if hasattr(url_obj, 'Path') and url_obj.Path:
+            # If command_url_constant has a prefix (like "uno:"), check if Path matches the part after prefix
+            if ":" in command_url_constant:
+                prefix, command_part = command_url_constant.split(":", 1)
+                if url_obj.Path == command_part:
+                    return True
+            
+            # Direct path match
+            if url_obj.Path == command_url_constant:
+                return True
+                
+        # If URL has Main property (some UNO URL objects might), try that too
+        if hasattr(url_obj, 'Main') and url_obj.Main:
+            if url_obj.Main == command_url_constant or command_url_constant.endswith(url_obj.Main):
+                return True
+                
+        return False
+
     def queryDispatch(self, URL, TargetFrameName, SearchFlags):
-        if URL.Protocol == "uno:":
-            if URL.Path in [DISPATCH_URL_OCR_SELECTED[4:], # Compare without "uno:" prefix
-                             DISPATCH_URL_OCR_FROM_FILE[4:], 
-                             DISPATCH_URL_SETTINGS[4:], 
-                             DISPATCH_URL_TOOLBAR_ACTION[4:]]:
-                if logger: logger.debug(f"queryDispatch: Supporting URL {URL.Path}")
-                return self 
-        if logger: logger.debug(f"queryDispatch: Not supporting URL {URL.Path}")
+        # Super verbose logging to diagnose URL matching issues
+        print("=" * 50)
+        print(f"DIRECT PRINT: queryDispatch CALLED with URL: {URL}")
+        if hasattr(URL, 'Complete'):
+            print(f"DIRECT PRINT: URL.Complete: '{URL.Complete}'")
+        if hasattr(URL, 'Path'):
+            print(f"DIRECT PRINT: URL.Path: '{URL.Path}'")
+        logger.debug("=" * 50)
+        logger.debug(f"queryDispatch CALLED with URL: {URL}")
+        if hasattr(URL, 'Complete'):
+            logger.debug(f"URL.Complete: '{URL.Complete}'")
+        if hasattr(URL, 'Path'):
+            logger.debug(f"URL.Path: '{URL.Path}'")
+        if hasattr(URL, 'Protocol'):
+            logger.debug(f"URL.Protocol: '{URL.Protocol}'")
+        logger.debug(f"Our constants:")
+        logger.debug(f"DISPATCH_URL_OCR_SELECTED: '{DISPATCH_URL_OCR_SELECTED}'")
+        logger.debug(f"DISPATCH_URL_OCR_FROM_FILE: '{DISPATCH_URL_OCR_FROM_FILE}'")
+        logger.debug(f"DISPATCH_URL_SETTINGS: '{DISPATCH_URL_SETTINGS}'")
+        logger.debug(f"DISPATCH_URL_TOOLBAR_ACTION: '{DISPATCH_URL_TOOLBAR_ACTION}'")
+        
+        # Use our new robust URL matching helper
+        if (self._matches_command_url(URL, DISPATCH_URL_OCR_SELECTED) or
+            self._matches_command_url(URL, DISPATCH_URL_OCR_FROM_FILE) or
+            self._matches_command_url(URL, DISPATCH_URL_SETTINGS) or
+            self._matches_command_url(URL, DISPATCH_URL_TOOLBAR_ACTION)):
+            logger.debug(f"queryDispatch: MATCHED a known URL. Returning SELF.")
+            print(f"DIRECT PRINT: queryDispatch: MATCHED a known URL. Returning SELF.")
+            return self
+        
+        logger.debug(f"queryDispatch: NOT MATCHED. Returning None.")
+        print(f"DIRECT PRINT: queryDispatch: NOT MATCHED. Returning None.")
+        logger.debug("=" * 50)
         return None
 
     def queryDispatches(self, Requests):
@@ -278,9 +410,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 return
 
         if URL.Protocol == "uno:":
-            path = URL.Path # This is the part after "uno:"
+            complete_url = URL.Complete
             
-            if path == DISPATCH_URL_TOOLBAR_ACTION[4:]:
+            if complete_url == DISPATCH_URL_TOOLBAR_ACTION:
                 # Toolbar action checks if an image is selected to decide which OCR to run
                 is_image_selected = uno_utils.is_graphic_object_selected(self.frame, self.ctx)
                 if is_image_selected:
@@ -291,13 +423,13 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                     self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file)
                 return
 
-            if path == DISPATCH_URL_OCR_SELECTED[4:]:
+            if complete_url == DISPATCH_URL_OCR_SELECTED:
                 # self._handle_ocr_selected_image()
                 self._ensure_tesseract_is_ready_and_run(self._handle_ocr_selected_image)
-            elif path == DISPATCH_URL_OCR_FROM_FILE[4:]:
+            elif complete_url == DISPATCH_URL_OCR_FROM_FILE:
                 # self._handle_ocr_image_from_file()
                 self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file)
-            elif path == DISPATCH_URL_SETTINGS[4:]:
+            elif complete_url == DISPATCH_URL_SETTINGS:
                 self._handle_settings() # Settings should not have the Tesseract pre-check
     
     def _handle_ocr_selected_image(self):
@@ -401,40 +533,87 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     # XDispatch (Status Update Part - Optional but good for dynamic menu states)
     def addStatusListener(self, Listener, URL):
-        logger.debug(f"addStatusListener for URL: {URL.Path if URL and hasattr(URL, 'Path') else 'Invalid/None URL'}")
+        print("=" * 50)
+        print(f"DIRECT PRINT: addStatusListener CALLED for URL: {URL}")
+        logger.debug("=" * 50)
+        logger.debug(f"addStatusListener CALLED for URL: {URL}")
+        if hasattr(URL, 'Complete'):
+            logger.debug(f"URL.Complete: '{URL.Complete}'")
+            print(f"DIRECT PRINT: URL.Complete: '{URL.Complete}'")
+        if hasattr(URL, 'Path'):
+            logger.debug(f"URL.Path: '{URL.Path}'")
+            print(f"DIRECT PRINT: URL.Path: '{URL.Path}'")
+        if hasattr(URL, 'Protocol'):
+            logger.debug(f"URL.Protocol: '{URL.Protocol}'")
+        
         # For TejOCR, a basic implementation: enable if an image is selected for OCR_SELECTED, always for others.
         if Listener and URL and hasattr(URL, 'Path') and URL.Path:
-            status_event = uno.createUnoStruct("com.sun.star.frame.FeatureStateEvent")
-            status_event.FeatureURL = URL
-            status_event.IsEnabled = True # Default to enabled
-            status_event.Requery = False # Generally false unless state changes very rapidly
-
-            is_selected_action = URL.Path == DISPATCH_URL_OCR_SELECTED or URL.Path == DISPATCH_URL_TOOLBAR_ACTION
-            
-            if is_selected_action: # For toolbar or direct select, enable based on selection
-                # Ensure frame is available for is_graphic_object_selected
-                current_frame = self.frame
-                if not current_frame and self.ctx:
-                    current_frame = uno_utils.get_current_frame(self.ctx)
-                
-                if current_frame: # Only check selection if frame is available
-                    status_event.IsEnabled = uno_utils.is_graphic_object_selected(current_frame, self.ctx)
-                    logger.debug(f"Status for '{URL.Path}': IsEnabled = {status_event.IsEnabled} (based on selection)")
-                else:
-                    status_event.IsEnabled = False # Cannot determine selection without a frame
-                    logger.debug(f"Status for '{URL.Path}': IsEnabled = False (no frame for selection check)")
-            else:
-                 logger.debug(f"Status for '{URL.Path}': IsEnabled = True (not selection-dependent)")
-            
-            # You can also set .State if the command has a state (e.g., a checkbox menu item)
-            # status_event.State = True # or some other value like a string for text display
-
             try:
+                logger.debug("Creating status event...")
+                status_event = uno.createUnoStruct("com.sun.star.frame.FeatureStateEvent")
+                status_event.FeatureURL = URL
+                status_event.IsEnabled = True # Default to enabled
+                status_event.Requery = False # Generally false unless state changes very rapidly
+
+                # FOR TESTING ONLY: Force enable all items
+                status_event.IsEnabled = True
+                logger.debug("FORCE ENABLING ALL ITEMS FOR TESTING")
+                print("DIRECT PRINT: FORCE ENABLING ALL ITEMS FOR TESTING")
                 Listener.statusChanged(status_event)
-            except Exception as e_stat_change:
-                logger.error(f"Error calling statusChanged for {URL.Path}: {e_stat_change}", exc_info=True)
+                print("DIRECT PRINT: statusChanged call completed")
+                return
+                
+                # Use our robust URL matching helper
+                is_ocr_selected = self._matches_command_url(URL, DISPATCH_URL_OCR_SELECTED)
+                is_ocr_file = self._matches_command_url(URL, DISPATCH_URL_OCR_FROM_FILE)
+                is_settings = self._matches_command_url(URL, DISPATCH_URL_SETTINGS)
+                is_toolbar = self._matches_command_url(URL, DISPATCH_URL_TOOLBAR_ACTION)
+                
+                # Log each comparison result
+                logger.debug(f"is_ocr_selected: {is_ocr_selected}")
+                logger.debug(f"is_ocr_file: {is_ocr_file}")
+                logger.debug(f"is_settings: {is_settings}")
+                logger.debug(f"is_toolbar: {is_toolbar}")
+                
+                # Selection-dependent actions
+                if is_ocr_selected or is_toolbar:
+                    logger.debug("This is a selection-dependent action.")
+                    
+                    # FOR TESTING ONLY: Uncomment next line to force enable all menu items
+                    # status_event.IsEnabled = True; logger.debug("FORCE ENABLING for testing"); return Listener.statusChanged(status_event)
+                    
+                    # Ensure frame is available for is_graphic_object_selected
+                    current_frame = self.frame
+                    if not current_frame and self.ctx:
+                        logger.debug("No frame available, getting current frame from ctx")
+                        current_frame = uno_utils.get_current_frame(self.ctx)
+                    
+                    if current_frame: 
+                        logger.debug("Got a valid frame, checking if graphic is selected...")
+                        # Only check selection if frame is available
+                        is_graphic_selected = uno_utils.is_graphic_object_selected(current_frame, self.ctx)
+                        status_event.IsEnabled = is_graphic_selected
+                        logger.debug(f"is_graphic_object_selected returned: {is_graphic_selected}")
+                    else:
+                        logger.debug("No valid frame available, disabling.")
+                        status_event.IsEnabled = False # Cannot determine selection without a frame
+                else:
+                    # Non-selection dependent commands should always be enabled
+                    logger.debug("This is NOT a selection-dependent action. Always enabling.")
+                    status_event.IsEnabled = True
+                
+                logger.debug(f"Final status_event.IsEnabled = {status_event.IsEnabled}")
+                try:
+                    logger.debug("Calling statusChanged on listener...")
+                    Listener.statusChanged(status_event)
+                    logger.debug("statusChanged call completed successfully")
+                except Exception as e_stat_change:
+                    logger.error(f"Error calling statusChanged: {e_stat_change}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Error in addStatusListener processing: {e}", exc_info=True)
         else:
             logger.warning("addStatusListener called with invalid Listener or URL.")
+        logger.debug("=" * 50)
 
 
     def removeStatusListener(self, Listener, URL):

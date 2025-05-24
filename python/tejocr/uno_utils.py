@@ -168,21 +168,53 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
             ctx = uno.getComponentContext()
         except Exception:
             logger.warning(f"show_message_box: {_('No ctx provided and uno.getComponentContext() failed. Cannot show:')} {title} - {message}")
+            print(f"MESSAGE BOX (CONSOLE FALLBACK - NO CONTEXT): {title} - {message}")
             return None # Or a specific error code like -1
 
     parent_peer = None
-    if parent_frame and hasattr(parent_frame, "getContainerWindow") and parent_frame.getContainerWindow():
-        parent_peer = parent_frame.getContainerWindow().getPeer()
-    elif ctx:
-        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
-        if toolkit: # Check if toolkit was successfully created
-            # Prefer getActiveTopWindow if available (newer API)
-            if hasattr(toolkit, "getActiveTopWindow") and toolkit.getActiveTopWindow():
-                 parent_peer = toolkit.getActiveTopWindow()
-            elif hasattr(toolkit, "getDesktopWindow"): # Fallback to getDesktopWindow
-                 parent_peer = toolkit.getDesktopWindow()
-            else: # If no window can be found
-                logger.debug("show_message_box: Toolkit created but no suitable window found (getActiveTopWindow/getDesktopWindow).")
+    
+    # Safe extraction of parent peer
+    if parent_frame:
+        try:
+            container_window = parent_frame.getContainerWindow()
+            if container_window and hasattr(container_window, 'getPeer'):
+                parent_peer = container_window.getPeer()
+                logger.debug("show_message_box: Got parent_peer from parent_frame")
+            else:
+                logger.debug("show_message_box: parent_frame has no valid container window or getPeer method")
+        except Exception as e:
+            logger.debug(f"show_message_box: Error getting parent peer from parent_frame: {e}")
+    
+    # Fallback parent peer strategies
+    if not parent_peer and ctx:
+        try:
+            toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+            if toolkit: # Check if toolkit was successfully created
+                # Prefer getActiveTopWindow if available (newer API)
+                try:
+                    if hasattr(toolkit, "getActiveTopWindow"):
+                        active_window = toolkit.getActiveTopWindow()
+                        if active_window:
+                            parent_peer = active_window
+                            logger.debug("show_message_box: Got parent_peer from toolkit.getActiveTopWindow")
+                except Exception as e:
+                    logger.debug(f"show_message_box: getActiveTopWindow failed: {e}")
+                
+                # Fallback to getDesktopWindow
+                if not parent_peer:
+                    try:
+                        if hasattr(toolkit, "getDesktopWindow"):
+                            desktop_window = toolkit.getDesktopWindow()
+                            if desktop_window:
+                                parent_peer = desktop_window
+                                logger.debug("show_message_box: Got parent_peer from toolkit.getDesktopWindow")
+                    except Exception as e:
+                        logger.debug(f"show_message_box: getDesktopWindow failed: {e}")
+                        
+                if not parent_peer:
+                    logger.debug("show_message_box: Toolkit created but no suitable window found")
+        except Exception as e:
+            logger.debug(f"show_message_box: Error creating toolkit for parent peer: {e}")
 
     # Determine MessageBoxType dynamically
     box_type_str_map = {
@@ -199,7 +231,12 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
         msg_type_enum = uno.getConstantByName(actual_box_type_constant_str)
     except Exception:
         logger.warning(f"Failed to get MessageBoxType constant '{actual_box_type_constant_str}'. Falling back to MESSAGEBOX.")
-        msg_type_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxType.MESSAGEBOX")
+        try:
+            msg_type_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxType.MESSAGEBOX")
+        except Exception:
+            # Ultimate fallback to numeric value
+            msg_type_enum = 4  # MESSAGEBOX
+            logger.warning("Using numeric fallback for MessageBoxType")
 
     # Determine buttons dynamically
     if isinstance(buttons, str):
@@ -217,9 +254,15 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
             buttons_enum = uno.getConstantByName(buttons_constant_str)
         except Exception:
             logger.warning(f"Failed to get MessageBoxButtons constant '{buttons_constant_str}'. Falling back to BUTTONS_OK.")
-            buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+            try:
+                buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+            except Exception:
+                buttons_enum = 1  # BUTTONS_OK numeric fallback
     elif buttons is None: # Default to OK if not specified
-        buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+        try:
+            buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+        except Exception:
+            buttons_enum = 1  # BUTTONS_OK numeric fallback
     else: # Assume 'buttons' is already the UNO constant
         buttons_enum = buttons
         
@@ -261,8 +304,8 @@ def get_current_frame(ctx):
 def is_graphic_object_selected(frame, ctx):
     """Checks if a graphic object is currently selected in the frame."""
     # FOR TESTING: Uncomment the next line to force-return True
-    logger.debug("TESTING MODE: Forcing is_graphic_object_selected to return True");
-    return True
+    # logger.debug("TESTING MODE: Forcing is_graphic_object_selected to return True");
+    # return True
     
     if not frame:
         logger.debug("is_graphic_object_selected: No frame provided")
@@ -277,44 +320,75 @@ def is_graphic_object_selected(frame, ctx):
             logger.debug("is_graphic_object_selected: No selection in controller")
             return False
 
-        logger.debug(f"is_graphic_object_selected: Got selection of type {selection.__class__.__name__}")
+        # Safe logging of selection type
+        try:
+            selection_type = selection.__class__.__name__ if selection else "None"
+            logger.debug(f"is_graphic_object_selected: Got selection of type {selection_type}")
+        except AttributeError:
+            logger.debug("is_graphic_object_selected: Selection object has no __class__ attribute")
         
         # Check for TextGraphicObject (common for images in Writer)
-        if selection.supportsService("com.sun.star.text.TextGraphicObject"):
-            logger.debug("is_graphic_object_selected: Found TextGraphicObject")
-            return True
-        # Check for Shape (can be an image in a drawing shape)
-        if selection.supportsService("com.sun.star.drawing.Shape"):
-            logger.debug("is_graphic_object_selected: Selection is a Shape")
-            has_graphic = hasattr(selection, "Graphic")
-            has_graphic_url = hasattr(selection, "GraphicURL")
-            is_graphic_shape = hasattr(selection, "ShapeType") and selection.ShapeType == "com.sun.star.drawing.GraphicObjectShape"
-            
-            logger.debug(f"is_graphic_object_selected: Shape properties - has_graphic: {has_graphic}, has_graphic_url: {has_graphic_url}, is_graphic_shape: {is_graphic_shape}")
-            
-            if has_graphic or has_graphic_url or is_graphic_shape:
+        try:
+            if selection.supportsService("com.sun.star.text.TextGraphicObject"):
+                logger.debug("is_graphic_object_selected: Found TextGraphicObject")
                 return True
+        except AttributeError:
+            logger.debug("is_graphic_object_selected: Selection doesn't support supportsService method")
+            return False
+            
+        # Check for Shape (can be an image in a drawing shape)
+        try:
+            if selection.supportsService("com.sun.star.drawing.Shape"):
+                logger.debug("is_graphic_object_selected: Selection is a Shape")
+                has_graphic = hasattr(selection, "Graphic")
+                has_graphic_url = hasattr(selection, "GraphicURL")
+                
+                # Safe check for ShapeType
+                is_graphic_shape = False
+                try:
+                    is_graphic_shape = (hasattr(selection, "ShapeType") and 
+                                      selection.ShapeType == "com.sun.star.drawing.GraphicObjectShape")
+                except AttributeError:
+                    pass
+                
+                logger.debug(f"is_graphic_object_selected: Shape properties - has_graphic: {has_graphic}, has_graphic_url: {has_graphic_url}, is_graphic_shape: {is_graphic_shape}")
+                
+                if has_graphic or has_graphic_url or is_graphic_shape:
+                    return True
+        except AttributeError:
+            logger.debug("is_graphic_object_selected: Selection doesn't support Shape service check")
                 
         # Check if it's a collection of shapes (e.g. grouped) and one is an image
-        if selection.supportsService("com.sun.star.drawing.ShapeCollection"):
-            count = selection.getCount()
-            logger.debug(f"is_graphic_object_selected: Found ShapeCollection with {count} items")
-            
-            # For simplicity, if any shape in a selection of one is an image, it's true.
-            # A more robust check might iterate if getCount() > 1
-            if count == 1:
-                shape_in_collection = selection.getByIndex(0)
-                logger.debug(f"is_graphic_object_selected: Checking single shape in collection of type {shape_in_collection.__class__.__name__}")
+        try:
+            if selection.supportsService("com.sun.star.drawing.ShapeCollection"):
+                count = selection.getCount()
+                logger.debug(f"is_graphic_object_selected: Found ShapeCollection with {count} items")
                 
-                is_shape = shape_in_collection.supportsService("com.sun.star.drawing.Shape")
-                has_graphic = hasattr(shape_in_collection, "Graphic")
-                has_graphic_url = hasattr(shape_in_collection, "GraphicURL")
-                is_graphic_shape = hasattr(shape_in_collection, "ShapeType") and shape_in_collection.ShapeType == "com.sun.star.drawing.GraphicObjectShape"
-                
-                logger.debug(f"is_graphic_object_selected: Shape in collection - is_shape: {is_shape}, has_graphic: {has_graphic}, has_graphic_url: {has_graphic_url}, is_graphic_shape: {is_graphic_shape}")
-                
-                if is_shape and (has_graphic or has_graphic_url or is_graphic_shape):
-                    return True
+                # For simplicity, if any shape in a selection of one is an image, it's true.
+                # A more robust check might iterate if getCount() > 1
+                if count == 1:
+                    shape_in_collection = selection.getByIndex(0)
+                    shape_type = shape_in_collection.__class__.__name__ if shape_in_collection else "None"
+                    logger.debug(f"is_graphic_object_selected: Checking single shape in collection of type {shape_type}")
+                    
+                    is_shape = shape_in_collection.supportsService("com.sun.star.drawing.Shape")
+                    has_graphic = hasattr(shape_in_collection, "Graphic")
+                    has_graphic_url = hasattr(shape_in_collection, "GraphicURL")
+                    
+                    # Safe check for ShapeType on collection item
+                    is_graphic_shape = False
+                    try:
+                        is_graphic_shape = (hasattr(shape_in_collection, "ShapeType") and 
+                                          shape_in_collection.ShapeType == "com.sun.star.drawing.GraphicObjectShape")
+                    except AttributeError:
+                        pass
+                    
+                    logger.debug(f"is_graphic_object_selected: Shape in collection - is_shape: {is_shape}, has_graphic: {has_graphic}, has_graphic_url: {has_graphic_url}, is_graphic_shape: {is_graphic_shape}")
+                    
+                    if is_shape and (has_graphic or has_graphic_url or is_graphic_shape):
+                        return True
+        except AttributeError:
+            logger.debug("is_graphic_object_selected: Selection doesn't support ShapeCollection service check")
                     
         logger.debug("is_graphic_object_selected: No graphic object detected in selection")
         # Add more checks if needed for other types of embedded objects that can be images

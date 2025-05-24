@@ -7,8 +7,8 @@
     <identifier value="org.libreoffice.TejOCR" />
 
     <display-name>
-        <name lang="en-US">TejOCR</name>
-        <name lang="hi-IN">तेजओसीआर</name>
+        <name lang="en">TejOCR v0.1.3</name>
+        <name lang="hi-IN">तेजओसीआर v0.1.3</name>
         <name lang="es-ES">TejOCR</name>
         <name lang="fr-FR">TejOCR</name>
         <name lang="de-DE">TejOCR</name>
@@ -18,15 +18,15 @@
     <platform value="all" />
 
     <dependencies>
-        <OpenOffice.org-minimal-version value="4.1" d:name="OpenOffice.org 4.1" />
+        <OpenOffice.org-minimal-version value="4.0" d:name="LibreOffice 4.0" />
     </dependencies>
 
     <publisher>
-        <name lang="en-US" xlink:href="https://github.com/varshneydevansh">Devansh Varshney</name>
+        <name xlink:href="https://github.com/devanshvarshney" lang="en">Devansh Varshney</name>
     </publisher>
 
     <release-notes>
-        <src lang="en-US" xlink:href="CHANGELOG.md" />
+        <src lang="en" xlink:href="CHANGELOG.md" />
     </release-notes>
 
     <registration>
@@ -36,8 +36,8 @@
     </registration>
 
     <icon>
-        <default xlink:href="icons/tejocr_26.png" />
-        <high-contrast xlink:href="icons/tejocr_26_hc.png" />
+        <default xlink:href="icons/tejocr_48.png" />
+        <high-contrast xlink:href="icons/tejocr_48.png" />
     </icon>
 
     <!-- Optional: Update information -->
@@ -48,7 +48,8 @@
     -->
 
     <extension-description>
-        <src lang="en-US" xlink:href="README.md" />
+        <src lang="en" xlink:href="description_en.txt" />
+        <src lang="hi-IN" xlink:href="description_hi.txt" />
     </extension-description>
 
 </description>

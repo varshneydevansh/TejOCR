@@ -7,6 +7,11 @@
 
 """Constants used throughout the TejOCR extension."""
 
+# --- Version Information ---
+EXTENSION_VERSION = "0.1.3"
+EXTENSION_NAME = "TejOCR"
+EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
+
 # --- Configuration Keys (for UNO ConfigurationProvider) ---
 # Path: org.libreoffice.Office.Addons/TejOCR.Configuration/Settings
 CFG_NODE_SETTINGS = "Settings"

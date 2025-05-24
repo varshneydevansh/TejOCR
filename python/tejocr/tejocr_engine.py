@@ -8,6 +8,7 @@
 """Core OCR processing, Tesseract interaction, and image handling."""
 
 import os
+import sys
 import uno
 import unohelper
 import tempfile
@@ -22,15 +23,158 @@ _ = locale_setup.get_translator().gettext # Added for i18n
 # Initialize logger for this module
 logger = uno_utils.get_logger("TejOCR.Engine")
 
-# Attempt to import pytesseract and Pillow, but handle if not available initially
+# Global variables for pytesseract state
 PYTESSERACT_AVAILABLE = False
-PILLOW_AVAILABLE = False
+pytesseract = None
 
-try:
-    import pytesseract
-    PYTESSERACT_AVAILABLE = True
-except ImportError:
-    logger.warning("Pytesseract library not found. OCR functionality will be disabled.")
+def _initialize_pytesseract():
+    """Initialize pytesseract with robust error handling and path detection."""
+    global PYTESSERACT_AVAILABLE, pytesseract
+    
+    if PYTESSERACT_AVAILABLE and pytesseract:
+        return True
+    
+    # First, try to ensure numpy is available since pytesseract depends on it
+    numpy_available = False
+    try:
+        import numpy
+        numpy_available = True
+        logger.debug(f"NumPy found: version {numpy.__version__}")
+    except ImportError as numpy_err:
+        logger.warning(f"NumPy import failed: {numpy_err}")
+        
+        # Try to add LibreOffice Python paths and check for numpy
+        try:
+            lo_python_paths = [
+                "/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/lib/python3.10/site-packages",
+                "/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/3.10/lib/python3.10/site-packages"
+            ]
+            
+            for path in lo_python_paths:
+                if os.path.exists(path) and path not in sys.path:
+                    sys.path.insert(0, path)
+                    logger.debug(f"Added {path} to sys.path for NumPy search")
+            
+            # Try numpy import again after path adjustment
+            import numpy
+            numpy_available = True
+            logger.info(f"NumPy found after path adjustment: version {numpy.__version__}")
+        except ImportError as numpy_err2:
+            logger.error(f"NumPy still not found after path adjustment: {numpy_err2}")
+            numpy_available = False
+    
+    if not numpy_available:
+        logger.error("NumPy is required for pytesseract but not found in LibreOffice Python environment")
+        return False
+    
+    try:
+        # First attempt: Standard import (numpy is now confirmed available)
+        import pytesseract as pt
+        pytesseract = pt
+        
+        # Verify tesseract executable is accessible
+        tesseract_path = _find_tesseract_executable()
+        if tesseract_path:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_path
+            logger.info(f"Pytesseract initialized successfully with tesseract at: {tesseract_path}")
+            
+            # Test that it actually works
+            try:
+                version_info = pytesseract.get_tesseract_version()
+                logger.info(f"Tesseract version confirmed: {version_info}")
+                PYTESSERACT_AVAILABLE = True
+                return True
+            except Exception as e:
+                logger.warning(f"Pytesseract imported but tesseract not working: {e}")
+                return False
+        else:
+            logger.warning("Pytesseract imported but tesseract executable not found")
+            return False
+            
+    except ImportError as e:
+        logger.error(f"Pytesseract import failed even with NumPy available: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error initializing pytesseract: {e}", exc_info=True)
+        return False
+
+def _find_tesseract_executable():
+    """Find tesseract executable with multiple fallback strategies."""
+    # Strategy 1: Check if already set
+    if hasattr(pytesseract, 'pytesseract') and hasattr(pytesseract.pytesseract, 'tesseract_cmd'):
+        current_cmd = pytesseract.pytesseract.tesseract_cmd
+        if current_cmd != 'tesseract' and os.path.isfile(current_cmd):
+            return current_cmd
+    
+    # Strategy 2: Use shutil.which (respects PATH)
+    tesseract_path = shutil.which('tesseract')
+    if tesseract_path:
+        logger.debug(f"Found tesseract via shutil.which: {tesseract_path}")
+        return tesseract_path
+    
+    # Strategy 3: Common macOS locations
+    common_paths = [
+        '/usr/local/bin/tesseract',
+        '/opt/homebrew/bin/tesseract',
+        '/usr/bin/tesseract'
+    ]
+    
+    for path in common_paths:
+        if os.path.isfile(path):
+            logger.debug(f"Found tesseract at common location: {path}")
+            return path
+    
+    logger.warning("Tesseract executable not found in any known location")
+    return None
+
+def is_tesseract_ready(ctx=None, show_gui_errors=True, parent_frame=None):
+    """Check if Tesseract and pytesseract are ready for OCR operations."""
+    if not _initialize_pytesseract():
+        if show_gui_errors:
+            # Check specifically what's missing to provide better error message
+            numpy_available = False
+            try:
+                import numpy
+                numpy_available = True
+            except ImportError:
+                pass
+            
+            if not numpy_available:
+                error_message = "TejOCR requires NumPy for OCR functionality.\n\nNumPy is missing from LibreOffice's Python environment.\n\nTo install:\n• /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract\n\nThen restart LibreOffice."
+                title = "NumPy Required"
+            else:
+                error_message = "Tesseract OCR is not properly installed or configured.\n\nPlease install tesseract and pytesseract:\n• brew install tesseract\n• /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract numpy\n\nThen restart LibreOffice."
+                title = "Tesseract Not Available"
+                
+            uno_utils.show_message_box(
+                title,
+                error_message,
+                "errorbox",
+                parent_frame=parent_frame,
+                ctx=ctx
+            )
+        return False, "Pytesseract not available or tesseract not found"
+    
+    try:
+        # Test actual OCR capability with a minimal operation
+        version = pytesseract.get_tesseract_version()
+        logger.debug(f"Tesseract ready check passed. Version: {version}")
+        return True, f"Tesseract v{version} ready"
+    except Exception as e:
+        error_msg = f"Tesseract test failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        if show_gui_errors:
+            uno_utils.show_message_box(
+                "Tesseract Test Failed",
+                f"Tesseract is installed but not working properly:\n\n{error_msg}\n\nPlease check your installation.",
+                "errorbox",
+                parent_frame=parent_frame,
+                ctx=ctx
+            )
+        return False, error_msg
+
+# Attempt to import pytesseract and Pillow, but handle if not available initially
+PILLOW_AVAILABLE = False
 
 try:
     from PIL import Image, ImageOps, ImageFilter
@@ -170,137 +314,108 @@ def _preprocess_image(image_path, grayscale=False, binarize_method=None):
 
 def extract_text_from_selected_image(ctx, frame, lang="eng"):
     """Extract text from currently selected image in LibreOffice."""
-    logger.info(f"Extracting text from selected image with language: {lang}")
-    
-    if not PYTESSERACT_AVAILABLE:
-        raise Exception("pytesseract library not available. Please install pytesseract.")
-    
-    if not PILLOW_AVAILABLE:
-        raise Exception("Pillow library not available. Please install Pillow.")
-    
-    # Get image from selection
-    temp_image_path = _get_image_from_selection(frame, ctx)
-    if not temp_image_path:
-        raise Exception("Could not extract image from selection.")
+    if not _initialize_pytesseract():
+        logger.error("Cannot extract text: Pytesseract not available")
+        return None
     
     try:
-        # Configure pytesseract path
-        tess_path = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx)
-        tess_exec = uno_utils.find_tesseract_executable(tess_path, ctx)
-        if not tess_exec:
-            raise Exception("Tesseract executable not found. Please check your installation.")
+        # Get the selected image
+        controller = frame.getController()
+        if not controller:
+            logger.error("No controller available")
+            return None
+            
+        selection = controller.getSelection()
+        if not selection:
+            logger.error("No selection available") 
+            return None
         
-        original_cmd = pytesseract.pytesseract.tesseract_cmd
-        pytesseract.pytesseract.tesseract_cmd = tess_exec
+        # Extract graphic from selection
+        graphic = uno_utils.get_graphic_from_selection(selection, ctx)
+        if not graphic:
+            logger.error("Could not extract graphic from selection")
+            return None
+        
+        # Export graphic to temporary file
+        temp_image_path = uno_utils.create_temp_file_from_graphic(graphic, ctx)
+        if not temp_image_path:
+            logger.error("Could not create temporary image file")
+            return None
         
         try:
-            # Perform OCR
-            logger.info(f"Running OCR on temp image: {temp_image_path}")
+            # Perform OCR on the temporary image file
+            logger.info(f"Performing OCR on selected image with language: {lang}")
             text = pytesseract.image_to_string(temp_image_path, lang=lang)
             logger.info(f"OCR completed. Extracted {len(text)} characters.")
             return text.strip()
         finally:
-            pytesseract.pytesseract.tesseract_cmd = original_cmd
-            
-    finally:
-        # Clean up temp file
-        if temp_image_path and os.path.exists(temp_image_path):
+            # Clean up temporary file
             try:
-                os.remove(temp_image_path)
-                logger.debug(f"Cleaned up temp file: {temp_image_path}")
-            except OSError:
-                pass
+                if os.path.exists(temp_image_path):
+                    os.remove(temp_image_path)
+            except Exception as e:
+                logger.warning(f"Could not remove temporary file {temp_image_path}: {e}")
+        
+    except Exception as e:
+        logger.error(f"Error extracting text from selected image: {e}", exc_info=True)
+        return None
 
 def extract_text_from_image_file(ctx, image_path, lang="eng"):
     """Extract text from an image file."""
-    logger.info(f"Extracting text from image file: {image_path} with language: {lang}")
-    
-    if not PYTESSERACT_AVAILABLE:
-        raise Exception("pytesseract library not available. Please install pytesseract.")
-    
-    if not PILLOW_AVAILABLE:
-        raise Exception("Pillow library not available. Please install Pillow.")
+    if not _initialize_pytesseract():
+        logger.error("Cannot extract text: Pytesseract not available")
+        return None
     
     if not os.path.exists(image_path):
-        raise Exception(f"Image file not found: {image_path}")
-    
-    # Configure pytesseract path
-    tess_path = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx)
-    tess_exec = uno_utils.find_tesseract_executable(tess_path, ctx)
-    if not tess_exec:
-        raise Exception("Tesseract executable not found. Please check your installation.")
-    
-    original_cmd = pytesseract.pytesseract.tesseract_cmd
-    pytesseract.pytesseract.tesseract_cmd = tess_exec
+        logger.error(f"Image file does not exist: {image_path}")
+        return None
     
     try:
-        # Perform OCR
-        logger.info(f"Running OCR on image file: {image_path}")
+        logger.info(f"Performing OCR on image file: {image_path} with language: {lang}")
         text = pytesseract.image_to_string(image_path, lang=lang)
-        logger.info(f"OCR completed. Extracted {len(text)} characters.")
+        logger.info(f"OCR completed. Extracted {len(text)} characters from {os.path.basename(image_path)}")
         return text.strip()
-    finally:
-        pytesseract.pytesseract.tesseract_cmd = original_cmd
+    except Exception as e:
+        logger.error(f"Error extracting text from image file {image_path}: {e}", exc_info=True)
+        return None
 
 def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False, show_gui_errors=True):
-    """Checks if Tesseract is available at the given path or via auto-detection."""
-    if not PYTESSERACT_AVAILABLE:
-        logger.error("Pytesseract library not installed. Cannot check Tesseract path.")
-        if show_gui_errors: # Control GUI error display
-            uno_utils.show_message_box(
-                _("Pytesseract Missing"),
-                _("The 'pytesseract' Python library is not installed. TejOCR cannot function without it."),
-                type="errorbox", parent_frame=parent_frame, ctx=ctx
-            )
-        return False
-
-    tess_exec = uno_utils.find_tesseract_executable(tesseract_path, ctx)
-
-    if not tess_exec:
-        logger.warning("Tesseract executable not found via find_tesseract_executable.")
-        if show_gui_errors: # Control GUI error display
-            uno_utils.show_message_box(
-                _("Tesseract Not Found"),
-                _("Tesseract OCR executable was not found at the specified path or in system PATH. Please configure the path in TejOCR Settings."),
-                type="errorbox", parent_frame=parent_frame, ctx=ctx
-            )
-        return False
-
-    # Try running tesseract --version
-    original_cmd = pytesseract.pytesseract.tesseract_cmd
-    pytesseract.pytesseract.tesseract_cmd = tess_exec
+    """Check if a given tesseract path is valid and working."""
+    if not tesseract_path:
+        return False, "No path provided"
+    
+    if not os.path.isfile(tesseract_path):
+        return False, f"File not found: {tesseract_path}"
+    
     try:
-        version = pytesseract.get_tesseract_version()
-        # The show_success flag is independent of show_gui_errors for positive confirmation
-        if show_success:
-            logger.info(f"Tesseract version {version} found at {tess_exec}.")
-            uno_utils.show_message_box(
-                _("Tesseract Found"),
-                _("Tesseract OCR (Version {version}) found and working at:\n{path}").format(version=version, path=tess_exec),
-                type="infobox", parent_frame=parent_frame, ctx=ctx
-            )
-        return True
-    except pytesseract.TesseractNotFoundError:
-        logger.warning(f"Pytesseract TesseractNotFoundError for path: {tess_exec}")
-        if show_gui_errors: # Control GUI error display
-            uno_utils.show_message_box(
-                _("Tesseract Not Found"),
-                _("Pytesseract could not find Tesseract at {path} despite the file existing. Check permissions or Tesseract installation.").format(path=tess_exec),
-                type="errorbox", parent_frame=parent_frame, ctx=ctx
-            )
-        return False
+        # Test the tesseract executable
+        import subprocess
+        result = subprocess.run([tesseract_path, '--version'], 
+                              capture_output=True, text=True, timeout=10)
+        
+        if result.returncode == 0:
+            version_info = result.stdout.strip().split('\n')[0] if result.stdout.strip() else "Version info unavailable"
+            if show_success and show_gui_errors:
+                uno_utils.show_message_box(
+                    "Tesseract Test Success",
+                    f"✓ Tesseract is working!\n\n{version_info}\n\nPath: {tesseract_path}",
+                    "infobox",
+                    parent_frame=parent_frame,
+                    ctx=ctx
+                )
+            return True, version_info
+        else:
+            error_msg = f"Tesseract returned error code {result.returncode}"
+            if result.stderr:
+                error_msg += f": {result.stderr.strip()}"
+            return False, error_msg
+            
+    except FileNotFoundError:
+        return False, "Tesseract executable not found or not executable"
+    except subprocess.TimeoutExpired:
+        return False, "Tesseract test timed out"
     except Exception as e:
-        logger.error(f"Error during Tesseract version check with path {tess_exec}: {e}", exc_info=True)
-        if show_gui_errors: # Control GUI error display
-            uno_utils.show_message_box(
-                _("Tesseract Error"),
-                _("An unexpected error occurred while verifying Tesseract at {path}: {error}").format(path=tess_exec, error=e),
-                type="errorbox", parent_frame=parent_frame, ctx=ctx
-            )
-        return False
-    finally:
-        pytesseract.pytesseract.tesseract_cmd = original_cmd
-
+        return False, f"Error testing tesseract: {str(e)}"
 
 def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_options, status_callback=None):
     """Main function to perform OCR.

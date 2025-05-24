@@ -103,6 +103,10 @@ def get_translator(locale_dir=None, language_code=None):
 # For now, keep the simple assignment for NullTranslator case
 _ = get_translator().gettext
 
+def get_translation_function():
+    """Returns the translation function for use in other modules."""
+    return get_translator().gettext
+
 if __name__ == "__main__":
     # Test the dummy translator
     t = get_translator()

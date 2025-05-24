@@ -27,7 +27,6 @@ try:
         print(f"DEBUG: tejocr_service.py: Added '{python_dir_in_oxt}' to sys.path.")
     else:
         print(f"DEBUG: tejocr_service.py: '{python_dir_in_oxt}' already in sys.path.")
-    print(f"DEBUG: tejocr_service.py: Current sys.path: {sys.path}")
 except Exception as e_sys_path:
     print(f"DEBUG: tejocr_service.py: Error modifying sys.path: {e_sys_path}")
 # --- End of Python Path Modification ---
@@ -50,23 +49,34 @@ try:
     print("DEBUG: tejocr_service.py: uno_utils imported.")
     from tejocr import constants
     print("DEBUG: tejocr_service.py: constants imported.")
-    # from tejocr import tejocr_dialogs # DEFERRED
-    # print("DEBUG: tejocr_service.py: tejocr_dialogs imported.") # DEFERRED
-    # from tejocr import tejocr_output # DEFERRED
-    # print("DEBUG: tejocr_service.py: tejocr_output imported.") # DEFERRED
     from tejocr import locale_setup
     print("DEBUG: tejocr_service.py: locale_setup imported.")
+    
+    # Set up internationalization function
+    try:
+        _ = locale_setup.get_translation_function()
+    except:
+        # Fallback if locale setup fails
+        def _(text):
+            return text
+    
     print("DEBUG: tejocr_service.py: All 'from tejocr import ...' imports successful.")
 
 except ImportError as e_imp:
     print(f"DEBUG: tejocr_service.py: IMPORT ERROR during initial imports: {e_imp}")
     import traceback
     print(traceback.format_exc())
+    # Set up fallback _ function
+    def _(text):
+        return text
     raise
 except Exception as e_gen:
     print(f"DEBUG: tejocr_service.py: GENERAL ERROR during initial imports: {e_gen}")
     import traceback
     print(traceback.format_exc())
+    # Set up fallback _ function
+    def _(text):
+        return text
     raise
 
 # Initialize logger for this module
@@ -251,8 +261,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         return url_obj.Complete == command_url_constant
 
     def queryDispatch(self, URL, TargetFrameName, SearchFlags):
-        self.logger.debug(f"queryDispatch CALLED for URL: {URL.Complete if URL else 'None'}, Target: {TargetFrameName}, Flags: {SearchFlags}")
-        print(f"CONSOLE DEBUG: queryDispatch CALLED for URL: {URL.Complete if URL else 'None'}")
+        self.logger.debug(f"queryDispatch CALLED for URL: {URL.Complete if URL else 'None'}, Target: {TargetFrameName}")
         dispatch = None
         if self._matches_command_url(URL, DISPATCH_URL_OCR_SELECTED) or \
            self._matches_command_url(URL, DISPATCH_URL_OCR_FROM_FILE) or \
@@ -261,15 +270,12 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             # We handle these URLs, so return self as the XDispatch object
             dispatch = self 
             self.logger.debug(f"queryDispatch: MATCHED URL '{URL.Complete}', returning self.")
-            print(f"CONSOLE DEBUG: queryDispatch MATCHED URL '{URL.Complete}', returning self")
         else:
             self.logger.debug(f"queryDispatch: NOT MATCHED URL '{URL.Complete}', returning None.")
-            print(f"CONSOLE DEBUG: queryDispatch NOT MATCHED URL '{URL.Complete}', returning None")
         return dispatch
 
     def queryDispatches(self, Requests):
         self.logger.debug(f"queryDispatches CALLED with {len(Requests) if Requests else 0} requests.")
-        print(f"CONSOLE DEBUG: queryDispatches CALLED with {len(Requests) if Requests else 0} requests")
         dispatches = []
         for req in Requests:
             dispatches.append(self.queryDispatch(req.FeatureURL, req.FrameName, req.SearchFlags))
@@ -277,18 +283,15 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     def dispatch(self, URL, Arguments):
         self.logger.info(f"Dispatching URL: {URL.Complete if URL else 'None'}")
-        print(f"CONSOLE DEBUG: dispatch CALLED for URL: {URL.Complete if URL else 'None'}")
         if not self.frame:
             self.frame = uno_utils.get_current_frame(self.ctx)
             if not self.frame:
                 self.logger.error("Cannot perform action: No active document window for dispatch.")
-                print("CONSOLE DEBUG: ERROR - No active document window for dispatch")
                 return
 
         # CRITICAL: Ensure all necessary modules are loaded before proceeding
         if not _ensure_modules_loaded(self):
             self.logger.error("Dispatch aborted: Critical modules could not be loaded.")
-            print("CONSOLE DEBUG: ERROR - Critical modules could not be loaded")
             return
 
         # Now use _tejocr_dialogs_module, _tejocr_output_module, _tejocr_engine_module
@@ -300,11 +303,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         }
 
         if URL.Complete in action_map:
-            print(f"CONSOLE DEBUG: Found action for URL '{URL.Complete}', executing...")
             action_map[URL.Complete]()
         else:
             self.logger.warning(f"No action mapped for dispatch URL: {URL.Complete}")
-            print(f"CONSOLE DEBUG: WARNING - No action mapped for dispatch URL: {URL.Complete}")
             
     def _ensure_tesseract_is_ready_and_run(self, actual_handler_method, *args, **kwargs):
         """Wrapper to check Tesseract setup before running OCR-dependent handlers."""
@@ -550,10 +551,8 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     def addStatusListener(self, Listener, URL):
         self.logger.debug(f"addStatusListener CALLED for URL: {URL.Complete if URL else 'None'}")
-        print(f"CONSOLE DEBUG: addStatusListener CALLED for URL: {URL.Complete if URL else 'None'}")
         if not _ensure_modules_loaded(self): 
             self.logger.warning("addStatusListener: Critical modules not loaded, cannot determine status.")
-            print("CONSOLE DEBUG: addStatusListener - Critical modules not loaded")
             # Potentially disable the command if modules can't load
             if Listener and hasattr(Listener, "statusChanged"):
                 status_event = uno.createUnoStruct("com.sun.star.frame.FeatureStateEvent")
@@ -575,30 +574,24 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             else:
                 status_event.IsEnabled = False # Explicitly disable if no graphic selected
             self.logger.debug(f"Status for OCR_SELECTED: IsEnabled={status_event.IsEnabled}")
-            print(f"CONSOLE DEBUG: Status for OCR_SELECTED: IsEnabled={status_event.IsEnabled}")
 
         elif self._matches_command_url(URL, DISPATCH_URL_OCR_FROM_FILE) or \
              self._matches_command_url(URL, DISPATCH_URL_SETTINGS):
             # OCR from File and Settings are always enabled if the service is active and document is TextDocument
             status_event.IsEnabled = True 
             self.logger.debug(f"Status for {URL.Complete}: IsEnabled=True (always on for TextDocument)")
-            print(f"CONSOLE DEBUG: Status for {URL.Complete}: IsEnabled=True")
 
         elif self._matches_command_url(URL, DISPATCH_URL_TOOLBAR_ACTION):
             # Toolbar action is always enabled, its behavior depends on selection.
             status_event.IsEnabled = True
             self.logger.debug(f"Status for TOOLBAR_ACTION: IsEnabled=True")
-            print(f"CONSOLE DEBUG: Status for TOOLBAR_ACTION: IsEnabled=True")
         else:
             self.logger.debug(f"Status for UNKNOWN URL {URL.Complete}: IsEnabled=False by default")
-            print(f"CONSOLE DEBUG: Status for UNKNOWN URL {URL.Complete}: IsEnabled=False")
 
         if Listener and hasattr(Listener, "statusChanged"):
             Listener.statusChanged(status_event)
-            print(f"CONSOLE DEBUG: Status event sent to listener for {URL.Complete}")
         else:
             self.logger.warning(f"Status listener invalid or missing statusChanged for URL: {URL.Complete}")
-            print(f"CONSOLE DEBUG: WARNING - Invalid listener for {URL.Complete}")
 
     def removeStatusListener(self, Listener, URL):
         self.logger.debug(f"removeStatusListener for URL: {URL.Complete if URL and hasattr(URL, 'Complete') else 'Invalid/None URL'}")

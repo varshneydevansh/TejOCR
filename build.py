@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 import sys
 
-VERSION = "0.1.0"  # Should match version in description.xml
+VERSION = "0.1.3"  # Should match version in description.xml
 
 def clean_xml_files(temp_dir):
     """

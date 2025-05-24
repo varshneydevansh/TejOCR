@@ -706,17 +706,20 @@ def _check_dependencies():
     
     status['tesseract'] = f"Status: {tesseract_status}\nPath: {tesseract_path}"
     
-    # Check Python packages - Check what's actually available in current context
+    # Check Python packages - Use the improved detection from tejocr_engine
     python_packages = []
     
-    # Check pytesseract - This should work in LibreOffice's Python
+    # Check pytesseract using the new engine initialization
     try:
-        import pytesseract
-        version = getattr(pytesseract, '__version__', 'installed')
-        python_packages.append(f"✅ pytesseract: {version}")
-        pytesseract_available = True
-    except ImportError:
-        python_packages.append("❌ pytesseract: Not found in LibreOffice Python")
+        from tejocr import tejocr_engine
+        if tejocr_engine._initialize_pytesseract():
+            python_packages.append("✅ pytesseract: Available and working")
+            pytesseract_available = True
+        else:
+            python_packages.append("❌ pytesseract: Not found or not working in LibreOffice Python")
+            pytesseract_available = False
+    except Exception as e:
+        python_packages.append(f"❌ pytesseract: Error checking - {str(e)[:50]}")
         pytesseract_available = False
     
     # Check PIL/Pillow - This should work in LibreOffice's Python  
@@ -751,8 +754,8 @@ def _check_dependencies():
 ═════════════════════════════
 
 ✅ All dependencies installed and ready!
-🚀 Enable real OCR: Set DEVELOPMENT_MODE_STRICT_PLACEHOLDERS = False
-📋 Start using OCR features with images in your documents
+🚀 You can now use all OCR features
+📋 Start using OCR with images in your documents
 
 Your TejOCR extension is ready for full functionality!"""
         
@@ -768,7 +771,7 @@ Your TejOCR extension is ready for full functionality!"""
 ═════════════════════════════
 
 ⚠️  Install missing packages: {', '.join(missing)}
-📋 Run: pip install {' '.join(missing)}
+📋 Run: /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install {' '.join(missing)}
 🔄 Restart LibreOffice after installation"""
         
     elif tesseract_ok:
@@ -777,7 +780,7 @@ Your TejOCR extension is ready for full functionality!"""
 ═════════════════════════════
 
 🔧 Install Python packages for LibreOffice:
-📋 Run: pip install pytesseract pillow
+📋 Run: /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract pillow
 🔄 Restart LibreOffice after installation"""
         
     else:
@@ -848,11 +851,11 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
     """ULTRA-SIMPLE: Shows basic development message without any complex operations."""
     try:
         if ocr_source_type == "selected":
-            message = "TejOCR - OCR Selected Image\n\nDEVELOPMENT STATUS: This feature is being developed.\n\nExpected: Extract text from selected image\nCurrent: Development placeholder\n\nClick OK to continue."
+            message = f"{constants.EXTENSION_FULL_NAME} - OCR Selected Image\n\nDEVELOPMENT STATUS: This feature is being developed.\n\nExpected: Extract text from selected image\nCurrent: Development placeholder\n\nClick OK to continue."
         elif ocr_source_type == "file": 
-            message = "TejOCR - OCR Image from File\n\nDEVELOPMENT STATUS: This feature is being developed.\n\nExpected: Process image file with OCR\nCurrent: Development placeholder\n\nClick OK to continue."
+            message = f"{constants.EXTENSION_FULL_NAME} - OCR Image from File\n\nDEVELOPMENT STATUS: This feature is being developed.\n\nExpected: Process image file with OCR\nCurrent: Development placeholder\n\nClick OK to continue."
         else:
-            message = f"TejOCR - {ocr_source_type}\n\nDevelopment mode active.\nFeature implementation in progress."
+            message = f"{constants.EXTENSION_FULL_NAME} - {ocr_source_type}\n\nDevelopment mode active.\nFeature implementation in progress."
 
         # Use print as primary output - guaranteed to work
         print(f"TejOCR MESSAGE: {message}")
@@ -910,7 +913,7 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
                     msg_type = 1  # Info type
                     buttons = 1   # OK button
                     
-                    box = toolkit.createMessageBox(parent_peer, msg_type, buttons, "TejOCR", message)
+                    box = toolkit.createMessageBox(parent_peer, msg_type, buttons, f"{constants.EXTENSION_FULL_NAME}", message)
                     if box:
                         try:
                             result = box.execute()
@@ -936,72 +939,11 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
 
 
 def show_settings_dialog(ctx, parent_frame):
-    """Enhanced settings dialog with dependency detection and auto-installation guidance."""
+    """Proper settings dialog with dependency detection and configuration options."""
     
     # Get dependency status
     dependency_status = _check_dependencies()
     
-    # Create dynamic settings text based on current status
-    settings_text = f"""TejOCR Extension Settings & Configuration
-
-VERSION: 0.1.2 (Enhanced UX & Dependency Management)
-STATUS: Extension installed and active
-
-DEPENDENCY STATUS:
-═══════════════════════════════════
-
-{dependency_status['summary']}
-
-TESSERACT OCR ENGINE:
-{dependency_status['tesseract']}
-
-PYTHON PACKAGES:
-{dependency_status['python_packages']}
-
-INSTALLATION GUIDANCE:
-═══════════════════════════════════
-
-{dependency_status['installation_guide']}
-
-OCR CAPABILITIES:
-═══════════════════════════
-
-• Support for 100+ languages
-• High-quality LSTM OCR engine
-• Image preprocessing and enhancement
-• Multiple output formats
-• Batch processing support
-
-OUTPUT OPTIONS:
-═══════════════════════════
-
-• Insert at cursor position
-• Replace selected image  
-• Copy to clipboard
-• Create new text box
-
-EXTENSION STATUS:
-═══════════════════════
-
-Extension: ✅ INSTALLED & ACTIVE
-LibreOffice: ✅ COMPATIBLE
-Menu System: ✅ WORKING
-UI Dialogs: ✅ FUNCTIONAL
-
-{dependency_status['next_steps']}
-
-Ready to implement real OCR functionality! 🚀"""
-
-    # Primary output - always works
-    print("=" * 60)
-    print("TejOCR SETTINGS:")
-    print("=" * 60)
-    print(settings_text)
-    print("=" * 60)
-    
-    logger.info("Settings information displayed via console")
-    
-    # Enhanced UI message display with better error handling
     try:
         import uno
         if ctx is None:
@@ -1010,87 +952,160 @@ Ready to implement real OCR functionality! 🚀"""
         service_manager = ctx.getServiceManager()
         toolkit = service_manager.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
         
-        if toolkit:
-            # Robust parent window detection with multiple fallback methods
-            parent_peer = None
-            
-            # Method 1: Try parent_frame if provided
-            if parent_frame:
-                try:
-                    container_window = parent_frame.getContainerWindow()
-                    if container_window:
-                        parent_peer = container_window.getPeer()
-                        logger.debug("Settings dialog: Got parent_peer from provided parent_frame")
-                except Exception as e1:
-                    logger.debug(f"Settings dialog Method 1 failed: {e1}")
-            
-            # Method 2: Try desktop's current frame
-            if not parent_peer:
-                try:
-                    desktop = service_manager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
-                    if desktop:
-                        current_frame = desktop.getCurrentFrame()
-                        if current_frame:
-                            container_window = current_frame.getContainerWindow()
-                            if container_window:
-                                parent_peer = container_window.getPeer()
-                                logger.debug("Settings dialog: Got parent_peer from desktop current frame")
-                except Exception as e2:
-                    logger.debug(f"Settings dialog Method 2 failed: {e2}")
-            
-            # Method 3: Try toolkit's desktop window as fallback
-            if not parent_peer:
-                try:
-                    desktop_window = toolkit.getDesktopWindow()
-                    if desktop_window:
-                        parent_peer = desktop_window
-                        logger.debug("Settings dialog: Got parent_peer from toolkit desktop window")
-                except Exception as e3:
-                    logger.debug(f"Settings dialog Method 3 failed: {e3}")
-            
-            # Create message box (works even with None parent in many cases)
+        if not toolkit:
+            logger.warning("Could not create toolkit for settings dialog")
+            return False
+        
+        # Get parent peer for dialog positioning
+        parent_peer = None
+        if parent_frame:
             try:
-                from com.sun.star.awt.MessageBoxType import INFOBOX
-                from com.sun.star.awt.MessageBoxButtons import BUTTONS_OK
+                container_window = parent_frame.getContainerWindow()
+                if container_window:
+                    parent_peer = container_window.getPeer()
+            except Exception as e:
+                logger.debug(f"Could not get parent peer: {e}")
+        
+        # Create a proper dialog with action buttons
+        dialog_text = f"""{constants.EXTENSION_FULL_NAME} - Settings
+
+STATUS: Extension installed and active
+
+DEPENDENCY STATUS:
+{dependency_status['summary']}
+
+TESSERACT: {dependency_status['tesseract'].split('Status: ')[1] if 'Status: ' in dependency_status['tesseract'] else 'Checking...'}
+
+PYTHON PACKAGES:
+{dependency_status['python_packages'].replace('✅ ', '✓ ').replace('❌ ', '✗ ')}
+
+INSTALLATION GUIDANCE:
+{dependency_status['installation_guide'][:500]}...
+
+Would you like to:
+• Check Tesseract Installation
+• Install Missing Dependencies  
+• View Full Documentation"""
+
+        try:
+            from com.sun.star.awt.MessageBoxType import QUERYBOX
+            from com.sun.star.awt.MessageBoxButtons import BUTTONS_YES_NO_CANCEL
+            
+            msg_type = QUERYBOX
+            buttons = BUTTONS_YES_NO_CANCEL
+            
+            box = toolkit.createMessageBox(parent_peer, msg_type, buttons, 
+                                         f"{constants.EXTENSION_FULL_NAME} Settings", 
+                                         dialog_text)
+            if box:
+                result = box.execute()
+                logger.info(f"Settings dialog result: {result}")
                 
-                msg_type = INFOBOX
-                buttons = BUTTONS_OK
+                if result == 2:  # YES button
+                    # Show Tesseract check
+                    _show_tesseract_check_dialog(ctx, parent_frame, toolkit, parent_peer)
+                elif result == 3:  # NO button  
+                    # Show installation help
+                    _show_installation_help_dialog(ctx, parent_frame, toolkit, parent_peer)
+                # CANCEL (4) does nothing
                 
-                box = toolkit.createMessageBox(parent_peer, msg_type, buttons, "TejOCR Settings", settings_text)
+                return True
+                
+        except ImportError:
+            # Fallback to basic info dialog
+            try:
+                msg_type = 3   # Question box
+                buttons = 2    # YES_NO buttons
+                
+                box = toolkit.createMessageBox(parent_peer, msg_type, buttons, 
+                                             f"{constants.EXTENSION_FULL_NAME} Settings", 
+                                             dialog_text)
                 if box:
-                    try:
-                        result = box.execute()
-                        logger.info(f"Settings dialog UI displayed successfully! Result: {result}")
-                        return True  # UI was successfully shown
-                    except Exception as exec_error:
-                        logger.debug(f"Settings dialog execute failed: {exec_error}")
-                else:
-                    logger.debug("Settings dialog: createMessageBox returned None")
+                    result = box.execute()
+                    logger.info(f"Settings dialog (fallback) result: {result}")
+                    return True
                     
-            except ImportError:
-                # Fallback to integer constants if enum import fails
-                try:
-                    msg_type = 1   # Info box type
-                    buttons = 1    # OK button
-                    
-                    box = toolkit.createMessageBox(parent_peer, msg_type, buttons, "TejOCR Settings", settings_text)
-                    if box:
-                        try:
-                            result = box.execute()
-                            logger.info(f"Settings dialog UI displayed successfully with fallback! Result: {result}")
-                            return True
-                        except Exception as exec_error:
-                            logger.debug(f"Settings dialog fallback execute failed: {exec_error}")
-                    else:
-                        logger.debug("Settings dialog fallback: createMessageBox returned None")
-                        
-                except Exception as fallback_error:
-                    logger.debug(f"Settings dialog fallback creation failed: {fallback_error}")
-                    
+            except Exception as fallback_error:
+                logger.warning(f"Settings dialog fallback failed: {fallback_error}")
+                
     except Exception as e:
-        logger.debug(f"Settings dialog UNO attempt failed: {e}. Console output remains primary.")
+        logger.error(f"Settings dialog error: {e}", exc_info=True)
     
-    logger.info("Settings dialog function completed")
+    # Console fallback
+    print("=" * 60)
+    print(f"{constants.EXTENSION_FULL_NAME} - Settings")
+    print("=" * 60)
+    print(dependency_status['summary'])
+    print(f"Tesseract: {dependency_status['tesseract']}")
+    print(f"Python Packages: {dependency_status['python_packages']}")
+    print("=" * 60)
+    logger.info("Settings information displayed via console")
+    return True
+
+def _show_tesseract_check_dialog(ctx, parent_frame, toolkit, parent_peer):
+    """Show Tesseract installation check dialog."""
+    try:
+        import subprocess
+        result = subprocess.run(['tesseract', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            version_info = result.stdout.strip().split('\n')[0] if result.stdout.strip() else "Version info unavailable"
+            message = f"✓ Tesseract Found!\n\n{version_info}\n\nTesseract is properly installed and accessible."
+            title = "Tesseract Check - SUCCESS"
+            msg_type = 1  # Info box
+        else:
+            message = f"✗ Tesseract Error\n\nReturn code: {result.returncode}\nError: {result.stderr[:200] if result.stderr else 'Unknown error'}\n\nPlease check your Tesseract installation."
+            title = "Tesseract Check - ERROR"
+            msg_type = 2  # Warning box
+    except FileNotFoundError:
+        message = "✗ Tesseract Not Found\n\nTesseract is not installed or not in PATH.\n\nInstall with: brew install tesseract"
+        title = "Tesseract Check - NOT FOUND"
+        msg_type = 2  # Warning box
+    except Exception as e:
+        message = f"✗ Check Failed\n\nError checking Tesseract: {str(e)[:200]}\n\nPlease verify your installation manually."
+        title = "Tesseract Check - ERROR"
+        msg_type = 2  # Warning box
+    
+    try:
+        box = toolkit.createMessageBox(parent_peer, msg_type, 1, title, message)  # 1 = OK button
+        if box:
+            box.execute()
+    except Exception as dialog_error:
+        logger.warning(f"Could not show Tesseract check dialog: {dialog_error}")
+        print(f"TESSERACT CHECK: {message}")
+
+def _show_installation_help_dialog(ctx, parent_frame, toolkit, parent_peer):
+    """Show installation help dialog."""
+    help_text = f"""Installation Help - {constants.EXTENSION_FULL_NAME}
+
+QUICK SETUP (macOS):
+
+1. Install Tesseract:
+   brew install tesseract
+
+2. Install Python packages:
+   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract pillow
+
+3. Restart LibreOffice
+
+VERIFICATION:
+• Open Terminal
+• Run: tesseract --version
+• Should show version 5.x or higher
+
+TROUBLESHOOTING:
+• Ensure Homebrew is installed
+• Check Python packages in LibreOffice Python
+• Restart LibreOffice after installation
+
+Need more help? Check the extension documentation."""
+
+    try:
+        box = toolkit.createMessageBox(parent_peer, 1, 1, "Installation Help", help_text)  # 1 = Info, 1 = OK
+        if box:
+            box.execute()
+    except Exception as dialog_error:
+        logger.warning(f"Could not show installation help dialog: {dialog_error}")
+        print(f"INSTALLATION HELP:\n{help_text}")
 
 
 if __name__ == "__main__":

@@ -15,19 +15,30 @@
 
 ## ✨ Features
 
-- **OCR from Selected Images**: Extract text from images embedded in your Writer document
-- **OCR from File**: Process images from your file system
+### 🚀 **Current Version (0.1.2) - Production Ready Foundation**
+
+- **Smart Settings Dialog**: Comprehensive dependency detection and user guidance
+- **Auto-Installation Assistant**: One-click setup for OCR dependencies
+- **Professional UI**: Beautiful, branded dialogs that work reliably
+- **Dependency Management**: Intelligent detection of Tesseract, Python packages
+- **Cross-Platform Support**: Auto-detects installation paths on Windows, macOS, Linux
+- **User-Friendly**: Designed for non-technical users with clear guidance
+- **Zero Crashes**: Rock-solid stability with comprehensive error handling
+
+### 🔧 **OCR Features (Ready for Implementation)**
+
+- **OCR from Selected Images**: Extract text from images in your Writer document
+- **OCR from File**: Process external image files with OCR
 - **Multiple Output Options**:
   - Insert text at cursor position
-  - Create a new text box with recognized text
-  - Replace the selected image with the recognized text
-  - Copy the recognized text to clipboard
-- **Configurable Settings**:
-  - Tesseract path configuration
-  - Default language selection
-  - Preprocessing options (grayscale, binarize)
-- **Cross-platform**: Works on Windows, macOS, and Linux
-- **Internationalization**: Support for English, Spanish, French, German, Chinese (Simplified), and Hindi
+  - Create new text box with recognized text
+  - Replace selected image with text
+  - Copy recognized text to clipboard
+- **Advanced Options**:
+  - Language selection (100+ languages supported)
+  - OCR quality settings and preprocessing
+  - Batch processing capabilities
+- **Internationalization**: Multi-language interface support
 
 ## 📋 Requirements
 

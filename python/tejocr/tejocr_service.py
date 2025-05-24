@@ -105,11 +105,11 @@ _tejocr_output_module = None
 _tejocr_engine_module = None # Added for consistency if engine is also complex
 
 # --- Helper functions for lazy loading ---
-def _ensure_modules_loaded(service_instance):
+def _ensure_modules_loaded(service_instance, engine=False, dialogs=False, output=False):
     """Ensures all critical modules (dialogs, output, engine) are loaded."""
     global _tejocr_dialogs_module, _tejocr_output_module, _tejocr_engine_module
     
-    if _tejocr_dialogs_module is None:
+    if dialogs and _tejocr_dialogs_module is None:
         service_instance.logger.debug("Lazily importing tejocr_dialogs module...")
         try:
             from tejocr import tejocr_dialogs as _dialogs_mod
@@ -120,7 +120,7 @@ def _ensure_modules_loaded(service_instance):
             uno_utils.show_message_box(_("Error"), _("Extension internal error: Dialogs module failed. Check logs."), "errorbox", parent_frame=service_instance.frame, ctx=service_instance.ctx)
             return False
 
-    if _tejocr_output_module is None:
+    if output and _tejocr_output_module is None:
         service_instance.logger.debug("Lazily importing tejocr_output module...")
         try:
             from tejocr import tejocr_output as _output_mod
@@ -131,7 +131,7 @@ def _ensure_modules_loaded(service_instance):
             uno_utils.show_message_box(_("Error"), _("Extension internal error: Output module failed. Check logs."), "errorbox", parent_frame=service_instance.frame, ctx=service_instance.ctx)
             return False
             
-    if _tejocr_engine_module is None:
+    if engine and _tejocr_engine_module is None:
         service_instance.logger.debug("Lazily importing tejocr_engine module...")
         try:
             from tejocr import tejocr_engine as _engine_mod
@@ -305,18 +305,53 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             self.logger.warning(f"No action mapped for dispatch URL: {URL.Complete}")
             print(f"CONSOLE DEBUG: WARNING - No action mapped for dispatch URL: {URL.Complete}")
             
-    def _ensure_tesseract_is_ready_and_run(self, actual_action_callable):
-        self.logger.debug(f"_ensure_tesseract_is_ready_and_run called for: {actual_action_callable.__name__}")
-        if not _ensure_modules_loaded(self): return # Ensure engine is loaded
-        
-        tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, self.ctx)
-        # Pass self.frame to check_tesseract_path
-        if _tejocr_engine_module.check_tesseract_path(tess_path_cfg, self.ctx, self.frame, show_success=False, show_gui_errors=True):
-            self.logger.debug("Tesseract check passed. Running action.")
-            actual_action_callable()
-        else:
-            self.logger.warning("Tesseract check failed or user cancelled configuration. Action not run.")
-            # User was prompted by check_tesseract_path if GUI errors were enabled.
+    def _ensure_tesseract_is_ready_and_run(self, actual_handler_method, *args, **kwargs):
+        """Wrapper to check Tesseract setup before running OCR-dependent handlers."""
+        self.logger.debug(f"_ensure_tesseract_is_ready_and_run called for: {actual_handler_method.__name__}")
+
+        if constants.DEVELOPMENT_MODE_STRICT_PLACEHOLDERS:
+            self.logger.info("DEVELOPMENT_MODE_STRICT_PLACEHOLDERS is True. Bypassing Tesseract checks.")
+            if not _ensure_modules_loaded(self, dialogs=True): # Still ensure dialogs module is loaded
+                 self.logger.critical("Dialogs module could not be loaded even in strict placeholder mode.")
+                 uno_utils.show_message_box(
+                    title=_("Critical Error"),
+                    message=_("The dialogs module could not be loaded. Please check logs."),
+                    type="errorbox", parent_frame=self.frame, ctx=self.ctx
+                )
+                 return
+            actual_handler_method(*args, **kwargs)
+            return
+
+        # Ensure core modules and the engine module are loaded
+        if not _ensure_modules_loaded(self, engine=True, dialogs=True, output=True):
+            self.logger.error("Core modules (engine/dialogs/output) could not be loaded. Cannot proceed with OCR.")
+            # Message box already shown by _ensure_modules_loaded typically
+            return
+
+        # Now that modules are loaded, attempt to use the engine's readiness check
+        try:
+            if _tejocr_engine_module and hasattr(_tejocr_engine_module, 'is_tesseract_ready'):
+                is_ready, message = _tejocr_engine_module.is_tesseract_ready(self.ctx, show_gui_errors=True, parent_frame=self.frame)
+                if is_ready:
+                    self.logger.info("Tesseract is ready. Proceeding with OCR action.")
+                    actual_handler_method(*args, **kwargs)
+                else:
+                    self.logger.warning(f"Tesseract is not ready: {message}. OCR action aborted.")
+                    # Message already shown by is_tesseract_ready if show_gui_errors is True
+            else:
+                self.logger.error("TejOCR Engine module or is_tesseract_ready function not found.")
+                uno_utils.show_message_box(
+                    title=_("Engine Error"),
+                    message=_("The OCR engine module is not correctly loaded. Cannot perform OCR."),
+                    type="errorbox", parent_frame=self.frame, ctx=self.ctx
+                )
+        except Exception as e_check:
+            self.logger.critical(f"Exception during Tesseract readiness check: {e_check}", exc_info=True)
+            uno_utils.show_message_box(
+                title=_("OCR Error"),
+                message=_("An unexpected error occurred while checking Tesseract status: {error}").format(error=str(e_check)),
+                type="errorbox", parent_frame=self.frame, ctx=self.ctx
+            )
 
     def _handle_toolbar_action(self):
         self.logger.info("Handling Toolbar Action")
@@ -348,17 +383,30 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     def _handle_ocr_image_from_file(self):
         self.logger.info("Handling OCR from file...")
-        if not _ensure_modules_loaded(self): return
+        if not _ensure_modules_loaded(self, dialogs=True): return
 
+        # In development mode, show placeholder instead of trying to create file picker
+        if constants.DEVELOPMENT_MODE_STRICT_PLACEHOLDERS:
+            self.logger.info("DEVELOPMENT_MODE_STRICT_PLACEHOLDERS: Using placeholder for OCR from file")
+            recognized_text, output_mode = _tejocr_dialogs_module.show_ocr_options_dialog(
+                self.ctx, self.frame, ocr_source_type="file", image_path=None
+            )
+            if recognized_text is not None and output_mode:
+                self.logger.info(f"OCR placeholder completed. Output mode: {output_mode}")
+            else:
+                self.logger.info("OCR from file placeholder completed.")
+            return
+
+        # Real implementation (when development mode is disabled)
         file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
         if not file_picker:
-            uno_utils.show_message_box(_("Error"), _("Could not create file picker service."), "errorbox", parent_frame=self.frame, ctx=self.ctx)
+            uno_utils.show_message_box("Error", "Could not create file picker service.", "errorbox", parent_frame=self.frame, ctx=self.ctx)
             return
 
         # Setup file picker (example for images)
         file_picker.appendFilter("Image Files", "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tiff")
         file_picker.setCurrentFilter("Image Files")
-        file_picker.setTitle(_("Select Image File for OCR"))
+        file_picker.setTitle("Select Image File for OCR")
 
         if file_picker.execute() == 1: # OK pressed
             files = file_picker.getFiles()
@@ -372,6 +420,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 )
                 if recognized_text is not None and output_mode:
                     self.logger.info(f"OCR successful from file. Output mode: {output_mode}. Text length: {len(recognized_text)}")
+                    if not _ensure_modules_loaded(self, output=True): return
                     _tejocr_output_module.handle_ocr_output(self.ctx, self.frame, recognized_text, output_mode)
                 else:
                     self.logger.info("OCR from file was cancelled or failed in options dialog.")
@@ -382,14 +431,13 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     def _handle_settings(self):
         self.logger.info("Handling Settings action.")
-        if not _ensure_modules_loaded(self): return
+        
+        # Ensure dialogs module is loaded specifically for settings
+        if not _ensure_modules_loaded(self, dialogs=True): 
+            self.logger.error("Critical error: Could not load dialogs module for settings.")
+            return
         
         try:
-            # Double-check that we have the dialogs module
-            if not _tejocr_dialogs_module:
-                self.logger.error("Dialogs module not available for settings.")
-                return
-                
             # Call the ultra-simplified settings dialog
             _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
             self.logger.debug("Settings dialog call completed successfully.")

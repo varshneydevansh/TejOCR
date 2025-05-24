@@ -100,3 +100,14 @@ LOG_FILE_NAME = "tejocr.log"
 
 # --- UI Related ---
 DIALOG_MODAL_DEPENDENT = 1 # For com.sun.star.awt.MessageBoxType & Dialog behavior 
+
+# Current Log Level (can be overridden by user config if implemented)
+# Possible values: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
+CURRENT_LOG_LEVEL = "DEBUG"
+
+# --- Development Flags ---
+# When True, bypasses certain checks for placeholder UI testing
+DEVELOPMENT_MODE_STRICT_PLACEHOLDERS = True
+
+# Default file for logging, relative to user's temp directory subfolder
+LOG_FILENAME = "tejocr.log" 

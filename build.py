@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Build script for TejOCR LibreOffice extension.
-This script creates a properly packaged .oxt file from the project directory.
+Build script for TejOCR LibreOffice Extension
+Creates the .oxt file for distribution
 """
 
 import os
@@ -12,7 +12,13 @@ import re
 from pathlib import Path
 import sys
 
-VERSION = "0.1.3"  # Should match version in description.xml
+# Import version from constants
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'python'))
+from tejocr.constants import EXTENSION_VERSION
+
+VERSION = EXTENSION_VERSION  # Use version from constants
+EXTENSION_NAME = "TejOCR"
+OXT_FILENAME = f"{EXTENSION_NAME}-{VERSION}.oxt"
 
 def clean_xml_files(temp_dir):
     """
@@ -137,7 +143,7 @@ def create_extension(build_dir=None, output_name=None):
         
         # Create the .oxt file (which is just a ZIP file with .oxt extension)
         if output_name is None:
-            output_name = f"TejOCR-{VERSION}.oxt"
+            output_name = OXT_FILENAME
         
         output_path = os.path.join(project_dir, output_name)
         

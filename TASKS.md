@@ -1,113 +1,157 @@
-# TejOCR Development Tasks
+# TejOCR - PROJECT TASKS
 
-This file tracks the progress of features and components for the TejOCR LibreOffice Writer extension.
+Project management and task tracking for TejOCR LibreOffice Extension development.
 
-## Core Functionality
+---
 
--   [x] **Project Setup & Structure**: Basic directory structure created (`python/tejocr`, `dialogs`, `icons`, `l10n`, `META-INF`).
--   [x] **OCR Engine Core (`tejocr_engine.py`)**:
-    -   [x] Pytesseract integration.
-    -   [x] Pillow integration for preprocessing (grayscale, binarize placeholder).
-    -   [x] Image export from selection (`_get_image_from_selection`).
-    -   [x] Image export from XGraphic (`_export_graphic_to_file`).
-    -   [x] Tesseract path checking (`check_tesseract_path`).
-    -   [x] Main `perform_ocr()` function.
-    -   [x] Temporary file management.
--   [x] **OCR Options Dialog (`tejocr_dialogs.py`, `tejocr_options_dialog.xdl`)**:
-    -   [x] XDL dialog definition created.
-    -   [x] `OptionsDialogHandler` implemented.
-    -   [x] Population of language, PSM, OEM dropdowns.
-    -   [x] Loading/saving last used options to configuration.
-    -   [x] "Refresh Languages" button.
-    -   [x] Integration with `tejocr_engine.py` to run OCR.
-    -   [x] Status label updates during OCR.
--   [x] **OCR Output Handling (`tejocr_output.py`)**:
-    -   [x] Implement "Insert at Cursor".
-    -   [x] Implement "Insert into New Text Box".
-    -   [x] Implement "Replace Image with Text".
-    -   [x] Implement "Copy to Clipboard".
--   [x] **Service Integration (`tejocr_service.py`)**:
-    -   [x] `XDispatchProvider` and `XServiceInfo` implementation.
-    -   [x] Dispatch URLs for "OCR Selected", "OCR from File", "Settings".
-    -   [x] Context-sensitive toolbar action.
-    -   [x] Calling `tejocr_dialogs.show_ocr_options_dialog`.
-    -   [x] Connect to `tejocr_output.py` for handling OCR results.
--   [x] **Settings Dialog (`tejocr_dialogs.py`, `tejocr_settings_dialog.xdl`)**:
-    -   [x] XDL dialog definition for settings created (`dialogs/tejocr_settings_dialog.xdl`).
-    -   [x] Full implementation of `SettingsDialogHandler` in `python/tejocr/tejocr_dialogs.py`.
-        -   [x] Load/save Tesseract path.
-        -   [x] Implement Tesseract path browsing.
-        -   [x] Implement Tesseract path testing.
-        -   [x] Load/save other default settings (default language, preprocessing options).
--   [x] **UNO Utilities (`uno_utils.py`)**:
-    -   [x] Helpers for service access, UI messages.
-    -   [x] Selection checking (`is_graphic_object_selected`).
-    -   [x] Configuration getters/setters.
-    -   [x] File/path utilities (`get_user_temp_dir`, `create_temp_file`, `find_tesseract_executable`).
-    -   [x] `get_graphic_from_selected_shape` (refined and used in `tejocr_engine.py`).
--   [x] **Constants (`constants.py`)**:
-    -   [x] Configuration keys, default values, Tesseract modes, output modes, image formats, logging constants.
+## 🎯 **CURRENT MILESTONE: PHASE 2 - UI/UX Enhancement**
 
-## Packaging & Configuration
+**Target Version**: v0.1.5
+**Status**: Planning Phase
+**Priority**: High
 
--   [x] **`META-INF/manifest.xml`**: Created, lists initial files.
--   [x] **`Addons.xcu`**: Created, defines menus and toolbar button for Writer.
--   [x] **`description.xml`**: Created with extension metadata and localization placeholders.
--   [x] **Build Process**: 
-    -   [x] Created `build.py` - Python script to package as `.oxt` with proper encoding.
-    -   [x] Created `run_libreoffice_with_extension.py` - Script to test the extension with LibreOffice.
+### 🚧 **IN PROGRESS**
 
-## Internationalization (i18n)
+- [ ] **Version Management**: 
+  - [x] Update to v0.1.4 
+  - [x] Centralize version constants
+  - [x] Fix extension icon in Extension Manager
+  - [ ] Clean up documentation structure
 
--   [x] **Directory Structure**: `l10n/` with language subfolders created.
--   [x] **`gettext` Implementation**:
-    -   [x] Created `locale_setup.py` for integration with gettext.
-    -   [x] Wrapped user-facing strings with `_()`.
--   [x] **`.po` files**:
-    -   [x] Created `generate_translations.py` for `.pot` template generation and `.po` files.
-    -   [x] Setup structure for English, Spanish, French, German, Chinese (Simplified), Hindi.
+### 📋 **NEXT UP - Phase 2 Features**
 
-## Documentation & Licensing
+#### **Real Settings Dialog (XDL-based)**
+- [ ] Design XDL layout (`dialogs/tejocr_settings_dialog.xdl`)
+  - [ ] Tesseract executable path field + browse button
+  - [ ] Default OCR language dropdown
+  - [ ] Test Tesseract path button
+  - [ ] Dependency check/install button
+  - [ ] Save/Cancel buttons
+- [ ] Implement SettingsDialogHandler class
+- [ ] Integrate with existing settings system
+- [ ] Test across different LibreOffice versions
 
--   [x] **`LICENSE`**: MPL-2.0 text added.
--   [x] **`README.md`**: Comprehensive README with setup, usage, and development instructions.
--   [x] **`CHANGELOG.md`**: Created and updated with version history.
--   [x] **`TASKS.md`**: This file, updated to reflect current status.
+#### **OCR Options Dialog**  
+- [ ] Design XDL layout (`dialogs/tejocr_options_dialog.xdl`)
+  - [ ] Language selection dropdown
+  - [ ] Output mode radio buttons (cursor/textbox/replace/clipboard)
+  - [ ] Preprocessing options checkbox
+  - [ ] Progress indicator area
+  - [ ] Start OCR/Cancel buttons
+- [ ] Implement OptionsDialogHandler class
+- [ ] Integrate with both OCR workflows
+- [ ] Add progress feedback during OCR
 
-## Icons & Visuals
+#### **Enhanced User Experience**
+- [ ] Better error messages with actionable guidance
+- [ ] Progress indicators for long operations
+- [ ] Keyboard shortcuts for common actions
+- [ ] Context-sensitive help
 
--   [x] **`icons/` directory**: Created.
--   [x] **Icon Generation**: 
-    -   [x] Created `generate_icons.py` utility for creating properly sized icons.
-    -   [x] Support for 16x16, 26x26, and high-contrast versions.
--   [x] **Visual Identity**: Orange/saffron/yellow for icons, standard dialogs. (Decision made).
+---
 
-## Logging
+## ✅ **COMPLETED - Phase 1**
 
--   [x] **File-based Logging**: Implemented robust logging using Python's `logging` module.
+### **v0.1.4 - Core Stability & OCR Functionality** ✅
+- [x] Multi-strategy text insertion (4 fallback strategies)
+- [x] Multi-strategy image export (6 fallback strategies) 
+- [x] Robust error handling throughout codebase
+- [x] Complete OCR workflow: File → Extract → Insert
+- [x] Complete OCR workflow: Selected Image → Export → Extract → Insert
+- [x] Dependency detection for all required packages
+- [x] Centralized version management
+- [x] Comprehensive logging system
 
-## Testing
+### **v0.1.3 - Real OCR Functionality** ✅
+- [x] Core OCR engine with pytesseract integration
+- [x] Image processing for multiple formats
+- [x] Text extraction from files and selected images
+- [x] Basic output options (cursor, clipboard)
+- [x] Dependency detection system
+- [x] Settings dialog with status information
 
--   [x] **Test Script (`test_ocr_engine.py`)**: 
-    -   [x] Created script for testing Tesseract OCR functionality.
-    -   [x] Implemented checks for Tesseract installation and language data.
-    -   [x] Added image preprocessing and OCR tests.
+### **v0.1.2 - Foundation & Bug Resolution** ✅
+- [x] Extension loading and service registration
+- [x] Logger dependencies and circular import fixes
+- [x] Menu integration (TejOCR menu and toolbar)
+- [x] Basic service framework
 
-## Edge Cases & Refinements
+---
 
--   [x] **XML Encoding Handling**: 
-    -   [x] Added code to clean XML files and remove BOM markers.
-    -   [x] Fixed XML parsing errors related to encoding.
--   [x] **Error Handling**: 
-    -   [x] Improved error reporting for Tesseract issues.
-    -   [x] Added fallbacks for missing dependencies.
--   [x] **Usability Improvements**:
-    -   [x] Added testing utilities.
-    -   [x] Improved documentation.
+## 🔮 **FUTURE PHASES**
 
-## Additional Tools
+### **Phase 3 - Advanced Features** (v0.1.6+)
+- [ ] Language auto-detection
+- [ ] Batch processing for multiple images
+- [ ] OCR result review/editing dialog
+- [ ] Template-based text formatting
+- [ ] Integration with LibreOffice's Find & Replace
+- [ ] Support for more image sources (scanner, camera)
 
--   [x] **`generate_icons.py`**: Utility for creating properly sized icons from a source image.
--   [x] **`generate_translations.py`**: Utility for generating translation templates and `.po` files.
--   [x] **`test_ocr_engine.py`**: Script for testing Tesseract OCR functionality.
--   [x] **`run_libreoffice_with_extension.py`**: Script for testing the extension with LibreOffice. 
+### **Phase 4 - Professional Features** (v0.2.0+)
+- [ ] Table recognition and reconstruction
+- [ ] PDF text extraction integration
+- [ ] Cloud OCR service integration (Google Vision, Azure, AWS)
+- [ ] Custom training data support
+- [ ] Multi-language document handling
+- [ ] Administrative deployment features
+
+### **Phase 5 - Cross-Platform & Distribution** (v0.3.0+)
+- [ ] Windows support and testing
+- [ ] Linux support and testing
+- [ ] LibreOffice Extensions marketplace submission
+- [ ] Automated CI/CD pipeline
+- [ ] Multilingual interface (beyond English/Hindi)
+- [ ] Professional documentation suite
+
+---
+
+## 🐛 **KNOWN ISSUES**
+
+### **Current Issues (v0.1.4)**
+- [ ] Extension icon not showing in Extension Manager (investigating)
+- [ ] MessageBoxType constant warnings in logs (cosmetic)
+- [ ] Selection detection occasionally reports wrong class (no functional impact)
+
+### **Future Improvements**
+- [ ] Reduce debug log verbosity in production builds
+- [ ] Optimize performance for large images
+- [ ] Better handling of corrupted/unsupported image formats
+- [ ] More graceful degradation when dependencies are partially available
+
+---
+
+## 📊 **METRICS & TESTING**
+
+### **Test Coverage Goals**
+- [ ] Unit tests for core OCR engine
+- [ ] Integration tests for UNO services
+- [ ] UI automation tests for dialogs
+- [ ] Performance benchmarks for various image sizes
+- [ ] Cross-platform compatibility tests
+
+### **User Experience Metrics**
+- [ ] Installation success rate tracking
+- [ ] Common error scenarios documentation
+- [ ] User workflow optimization analysis
+- [ ] Accessibility compliance review
+
+---
+
+## 🎨 **DESIGN DECISIONS**
+
+### **Architecture Principles**
+- ✅ **Robustness**: Multi-strategy fallbacks for critical operations
+- ✅ **Modularity**: Clean separation between engine, UI, and UNO integration
+- ✅ **User-Friendly**: Clear error messages and helpful guidance
+- ✅ **Performance**: Lazy loading and efficient resource management
+
+### **Future Considerations**
+- **Async Operations**: Non-blocking UI for long OCR tasks
+- **Caching**: Intelligent caching of OCR results
+- **Extensibility**: Plugin architecture for additional OCR engines
+- **Localization**: Full i18n support beyond current basic implementation
+
+---
+
+*Updated: 2025-05-24 - Phase 1 Complete, Phase 2 Planning* 

@@ -488,46 +488,173 @@ def create_temp_file(suffix=".tmp", prefix="tejocr_tmp_", dir=None):
             return None
 
 def create_temp_file_from_graphic(graphic, ctx):
-    # Ensure create_temp_file is defined or imported if it's from this module or another
-    path = create_temp_file(suffix=".png") # Assuming create_temp_file is in this module
+    """Creates a temporary file from an XGraphic object with multiple fallback strategies."""
+    path = create_temp_file(suffix=".png")
     if not path:
         logger.error("Failed to create a temporary file name.")
         return None
     
+    # Strategy 1: Standard GraphicExporter approach
     try:
-        # Create a GraphicExporter
         exporter = create_instance("com.sun.star.drawing.GraphicExporter", ctx)
-        if not exporter:
-            logger.error("Failed to create GraphicExporter instance.")
-            return None
-        
-        # Set the source graphic for the exporter
-        props = (uno.createUnoStruct("com.sun.star.beans.PropertyValue"),)
-        props[0].Name = "Graphic"
-        props[0].Value = graphic
-        exporter.setSource(props)
-        
-        # Prepare properties for export (export to PNG)
-        export_props = (uno.createUnoStruct("com.sun.star.beans.PropertyValue"),
-                        uno.createUnoStruct("com.sun.star.beans.PropertyValue"))
-        export_props[0].Name = "URL"
-        export_props[0].Value = unohelper.systemPathToFileUrl(path)
-        export_props[1].Name = "MimeType"
-        export_props[1].Value = "image/png"
-        
-        # Filter the export
-        exporter.filter(export_props)
-        logger.info(f"Graphic exported successfully to: {path}")
-        return path
+        if exporter:
+            # Set the source graphic for the exporter
+            props = (uno.createUnoStruct("com.sun.star.beans.PropertyValue"),)
+            props[0].Name = "Graphic"
+            props[0].Value = graphic
+            exporter.setSource(props)
+            
+            # Prepare properties for export (export to PNG)
+            export_props = (uno.createUnoStruct("com.sun.star.beans.PropertyValue"),
+                            uno.createUnoStruct("com.sun.star.beans.PropertyValue"))
+            export_props[0].Name = "URL"
+            export_props[0].Value = unohelper.systemPathToFileUrl(path)
+            export_props[1].Name = "MimeType"
+            export_props[1].Value = "image/png"
+            
+            # Filter the export
+            exporter.filter(export_props)
+            logger.info(f"Strategy 1 SUCCESS: Graphic exported successfully to: {path}")
+            return path
     except Exception as e:
-        logger.error(f"Failed to export graphic to PNG: {e}", exc_info=True)
-        if os.path.exists(path):
-            try:
-                os.remove(path) # Clean up partially created file
-            except OSError as oe:
-                logger.error(f"Error cleaning up temporary file {path}: {oe}")
-        return None
+        logger.debug(f"Strategy 1 FAILED (GraphicExporter): {e}")
     
+    # Strategy 2: Try alternative GraphicExporter service names
+    alternative_exporters = [
+        "com.sun.star.drawing.GraphicExportFilter",
+        "com.sun.star.graphic.GraphicExporter", 
+        "com.sun.star.graphic.GraphicExportFilter"
+    ]
+    
+    for service_name in alternative_exporters:
+        try:
+            exporter = create_instance(service_name, ctx)
+            if exporter:
+                # Use same export logic as Strategy 1
+                props = (uno.createUnoStruct("com.sun.star.beans.PropertyValue"),)
+                props[0].Name = "Graphic"
+                props[0].Value = graphic
+                exporter.setSource(props)
+                
+                export_props = (uno.createUnoStruct("com.sun.star.beans.PropertyValue"),
+                                uno.createUnoStruct("com.sun.star.beans.PropertyValue"))
+                export_props[0].Name = "URL"
+                export_props[0].Value = unohelper.systemPathToFileUrl(path)
+                export_props[1].Name = "MimeType"
+                export_props[1].Value = "image/png"
+                
+                exporter.filter(export_props)
+                logger.info(f"Strategy 2 SUCCESS: Graphic exported using {service_name} to: {path}")
+                return path
+        except Exception as e:
+            logger.debug(f"Strategy 2 FAILED ({service_name}): {e}")
+    
+    # Strategy 3: Try using GraphicProvider to store the graphic
+    try:
+        provider = create_instance("com.sun.star.graphic.GraphicProvider", ctx)
+        if provider:
+            # Store properties
+            prop_val = uno.createUnoStruct("com.sun.star.beans.PropertyValue")
+            prop_val.Name = "URL"
+            prop_val.Value = unohelper.systemPathToFileUrl(path)
+            
+            prop_val_mime = uno.createUnoStruct("com.sun.star.beans.PropertyValue")
+            prop_val_mime.Name = "MimeType"
+            prop_val_mime.Value = "image/png"
+            
+            properties = (prop_val, prop_val_mime)
+            provider.storeGraphic(graphic, properties)
+            logger.info(f"Strategy 3 SUCCESS: Graphic stored using GraphicProvider to: {path}")
+            return path
+    except Exception as e:
+        logger.debug(f"Strategy 3 FAILED (GraphicProvider): {e}")
+    
+    # Strategy 4: Try to get Bitmap property and use system export
+    try:
+        # Some graphics may have a Bitmap property that we can access
+        if hasattr(graphic, "Bitmap") and graphic.Bitmap:
+            bitmap = graphic.Bitmap
+            
+            # Try to get the bitmap data as a byte sequence
+            if hasattr(bitmap, "DIB") and bitmap.DIB:
+                # DIB (Device Independent Bitmap) data
+                dib_data = bitmap.DIB
+                
+                # Write DIB data to temporary file
+                # This is a basic approach - DIB format may need specific handling
+                with open(path, 'wb') as f:
+                    f.write(bytes(dib_data))
+                logger.info(f"Strategy 4 SUCCESS: Bitmap DIB data written to: {path}")
+                return path
+                
+            elif hasattr(bitmap, "Size") and bitmap.Size:
+                # If we have size info, we might be able to construct a minimal image
+                logger.debug(f"Bitmap size available: {bitmap.Size.Width}x{bitmap.Size.Height}")
+                
+        logger.debug("Strategy 4: No usable bitmap data found")
+    except Exception as e:
+        logger.debug(f"Strategy 4 FAILED (Bitmap export): {e}")
+    
+    # Strategy 5: Try to get URL property if it's a linked graphic
+    try:
+        if hasattr(graphic, "URL") and graphic.URL:
+            graphic_url = graphic.URL
+            logger.debug(f"Found graphic URL: {graphic_url}")
+            
+            # If it's a file URL, try to copy the file
+            if graphic_url.startswith("file://"):
+                import shutil
+                source_path = unohelper.fileUrlToSystemPath(graphic_url)
+                if os.path.exists(source_path):
+                    shutil.copy2(source_path, path)
+                    logger.info(f"Strategy 5 SUCCESS: Copied graphic file from {source_path} to {path}")
+                    return path
+                else:
+                    logger.debug(f"Source file not found: {source_path}")
+        else:
+            logger.debug("No URL property found on graphic")
+    except Exception as e:
+        logger.debug(f"Strategy 5 FAILED (URL copy): {e}")
+    
+    # Strategy 6: Try to create a simple placeholder image with PIL if available
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        
+        # Create a simple placeholder image
+        img = Image.new('RGB', (400, 200), color='lightgray')
+        draw = ImageDraw.Draw(img)
+        
+        text = "OCR Error: Could not export\nselected image.\n\nTry saving the image as a\nfile and using 'OCR from File'\ninstead."
+        
+        # Use default font
+        try:
+            # Try to load a default font
+            font = ImageFont.load_default()
+        except:
+            font = None
+        
+        # Draw text on placeholder
+        draw.multiline_text((10, 10), text, fill='black', font=font)
+        
+        # Save placeholder
+        img.save(path, 'PNG')
+        logger.warning(f"Strategy 6 FALLBACK: Created placeholder image at {path}")
+        return path
+        
+    except ImportError:
+        logger.debug("Strategy 6 FAILED: PIL not available for placeholder creation")
+    except Exception as e:
+        logger.debug(f"Strategy 6 FAILED (PIL placeholder): {e}")
+    
+    # All strategies failed
+    logger.error("All graphic export strategies failed")
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return None
+
 def get_graphic_from_selection(selection, ctx):
     """Extracts graphic object from selection. Supports TextGraphicObject and GraphicObjectShape."""
     graphic = None

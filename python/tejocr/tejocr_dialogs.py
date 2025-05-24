@@ -706,23 +706,41 @@ def _check_dependencies():
     
     status['tesseract'] = f"Status: {tesseract_status}\nPath: {tesseract_path}"
     
-    # Check Python packages - Use the improved detection from tejocr_engine
+    # Check Python packages with detailed diagnostics
     python_packages = []
     
+    # Check NumPy first since it's required for pytesseract
+    numpy_available = False
+    try:
+        import numpy
+        python_packages.append(f"✅ numpy: {numpy.__version__}")
+        numpy_available = True
+    except ImportError:
+        python_packages.append("❌ numpy: Not found in LibreOffice Python (required for pytesseract)")
+        numpy_available = False
+    
     # Check pytesseract using the new engine initialization
+    pytesseract_available = False
     try:
         from tejocr import tejocr_engine
         if tejocr_engine._initialize_pytesseract():
             python_packages.append("✅ pytesseract: Available and working")
             pytesseract_available = True
         else:
-            python_packages.append("❌ pytesseract: Not found or not working in LibreOffice Python")
+            if numpy_available:
+                python_packages.append("❌ pytesseract: Available but not working (check tesseract installation)")
+            else:
+                python_packages.append("❌ pytesseract: Cannot load due to missing numpy")
             pytesseract_available = False
     except Exception as e:
-        python_packages.append(f"❌ pytesseract: Error checking - {str(e)[:50]}")
+        error_msg = str(e)[:50]
+        if "numpy" in error_msg.lower():
+            python_packages.append("❌ pytesseract: Failed due to missing numpy")
+        else:
+            python_packages.append(f"❌ pytesseract: Error checking - {error_msg}")
         pytesseract_available = False
     
-    # Check PIL/Pillow - This should work in LibreOffice's Python  
+    # Check PIL/Pillow
     try:
         import PIL
         python_packages.append(f"✅ Pillow: {PIL.__version__}")
@@ -745,10 +763,10 @@ def _check_dependencies():
     # More accurate readiness assessment
     tesseract_ok = "✅" in tesseract_status
     
-    logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
+    logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, numpy_available={numpy_available}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
     
     # Use the more accurate variables from above
-    if tesseract_ok and pytesseract_available and pillow_available:
+    if tesseract_ok and numpy_available and pytesseract_available and pillow_available:
         status['summary'] = "🎉 ALL DEPENDENCIES READY! OCR functionality available."
         status['next_steps'] = """NEXT STEPS:
 ═════════════════════════════
@@ -759,11 +777,13 @@ def _check_dependencies():
 
 Your TejOCR extension is ready for full functionality!"""
         
-    elif tesseract_ok and (pytesseract_available or pillow_available):
+    elif tesseract_ok and (pytesseract_available or pillow_available or numpy_available):
         status['summary'] = "⚠️  PARTIALLY READY - Some Python packages missing"
         missing = []
+        if not numpy_available:
+            missing.append("numpy")
         if not pytesseract_available:
-            missing.append("pytesseract")
+            missing.append("pytesseract") 
         if not pillow_available:
             missing.append("Pillow")
         
@@ -780,7 +800,7 @@ Your TejOCR extension is ready for full functionality!"""
 ═════════════════════════════
 
 🔧 Install Python packages for LibreOffice:
-📋 Run: /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract pillow
+📋 Run: /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow
 🔄 Restart LibreOffice after installation"""
         
     else:
@@ -806,7 +826,7 @@ See installation guide below for your platform."""
    brew install tesseract
 
 2️⃣ PYTHON PACKAGES:
-   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract pillow
+   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow
 
 3️⃣ VERIFY:
    tesseract --version"""
@@ -820,7 +840,7 @@ See installation guide below for your platform."""
    sudo pacman -S tesseract         # Arch
 
 2️⃣ PYTHON PACKAGES:
-   pip3 install pytesseract pillow
+   pip3 install numpy pytesseract pillow
 
 3️⃣ VERIFY:
    tesseract --version"""
@@ -833,7 +853,7 @@ See installation guide below for your platform."""
    Run installer and add to PATH
 
 2️⃣ PYTHON PACKAGES:
-   pip install pytesseract pillow
+   pip install numpy pytesseract pillow
 
 3️⃣ VERIFY:
    tesseract --version"""
@@ -842,7 +862,7 @@ See installation guide below for your platform."""
         status['installation_guide'] = """🖥️ General Installation:
 
 1️⃣ TESSERACT: Install from https://tesseract-ocr.github.io/
-2️⃣ PYTHON PACKAGES: pip install pytesseract pillow
+2️⃣ PYTHON PACKAGES: pip install numpy pytesseract pillow
 3️⃣ VERIFY: tesseract --version"""
     
     return status

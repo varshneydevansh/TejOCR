@@ -9,6 +9,7 @@
 
 import uno
 import unohelper
+import time
 
 # Safe import of UNO interfaces with fallbacks
 print("DEBUG: tejocr_output.py: Attempting UNO interface imports...")
@@ -84,19 +85,73 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert):
             uno_utils.show_message_box(_("Error"), _("Cannot insert text: Active document is not a text document."), "errorbox", parent_frame=frame, ctx=ctx)
             return
 
+        controller = frame.getController()
         text_doc = model.getText()
-        view_cursor = frame.getController().getViewCursor()
-        text_range = view_cursor.getStart() # Get XTextRange at cursor start
-
-        # Insert text at the range. If a selection exists, it will be replaced.
-        text_range.setString(text_to_insert)
-        # Collapse cursor to end of inserted text
-        view_cursor.collapseToEnd()
-        logger.info(f"Inserted {len(text_to_insert)} characters at cursor.")
+        
+        # Strategy 1: Try to use view cursor normally
+        try:
+            view_cursor = controller.getViewCursor()
+            if view_cursor:
+                text_range = view_cursor.getStart() # Get XTextRange at cursor start
+                text_range.setString(text_to_insert)
+                view_cursor.collapseToEnd()
+                logger.info(f"Strategy 1 SUCCESS: Inserted {len(text_to_insert)} characters at view cursor.")
+                return
+        except Exception as cursor_error:
+            logger.debug(f"Strategy 1 FAILED (view cursor): {cursor_error}")
+        
+        # Strategy 2: Try to get text cursor and insert at current position
+        try:
+            text_cursor = text_doc.createTextCursor()
+            if text_cursor:
+                # Move cursor to end of document as fallback position
+                text_cursor.gotoEnd(False)
+                text_cursor.setString("\n" + text_to_insert)
+                logger.info(f"Strategy 2 SUCCESS: Inserted {len(text_to_insert)} characters using text cursor at document end.")
+                return
+        except Exception as text_cursor_error:
+            logger.debug(f"Strategy 2 FAILED (text cursor): {text_cursor_error}")
+        
+        # Strategy 3: Direct insertion at end of main text body
+        try:
+            if text_doc:
+                # Get end position and insert there
+                end_cursor = text_doc.createTextCursor()
+                end_cursor.gotoEnd(False)
+                text_doc.insertString(end_cursor, "\n" + text_to_insert, False)
+                logger.info(f"Strategy 3 SUCCESS: Inserted {len(text_to_insert)} characters at document end via insertString.")
+                return
+        except Exception as insert_error:
+            logger.debug(f"Strategy 3 FAILED (direct insert): {insert_error}")
+        
+        # Strategy 4: Try to focus the document and retry view cursor
+        try:
+            # Try to bring the document window to focus
+            window = frame.getContainerWindow()
+            if window:
+                window.setFocus()
+            
+            # Small delay to allow focus to settle (not ideal but may help)
+            time.sleep(0.1)
+            
+            view_cursor = controller.getViewCursor()
+            if view_cursor:
+                # Try to position cursor at end of document first
+                view_cursor.gotoEnd(False)
+                view_cursor.setString("\n" + text_to_insert)
+                logger.info(f"Strategy 4 SUCCESS: Inserted {len(text_to_insert)} characters after focusing window.")
+                return
+        except Exception as focus_error:
+            logger.debug(f"Strategy 4 FAILED (focus retry): {focus_error}")
+        
+        # If all strategies fail, show error
+        raise RuntimeError("All text insertion strategies failed")
 
     except Exception as e:
         logger.error(f"Error inserting text at cursor: {e}", exc_info=True)
-        uno_utils.show_message_box(_("Insert Text Error"), _("Could not insert text at cursor: {error}").format(error=e), "errorbox", parent_frame=frame, ctx=ctx)
+        # Provide helpful error message with troubleshooting
+        error_msg = f"Could not insert text at cursor.\n\nTroubleshooting:\n• Click in the document to set cursor position\n• Ensure document has focus\n• Try copying text to clipboard instead\n\nTechnical error: {str(e)[:100]}"
+        uno_utils.show_message_box(_("Insert Text Error"), error_msg, "errorbox", parent_frame=frame, ctx=ctx)
 
 def _insert_text_into_new_textbox(ctx, frame, text_to_insert):
     logger.info("Output mode: Insert into new text box")

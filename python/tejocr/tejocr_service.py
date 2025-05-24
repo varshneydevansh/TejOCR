@@ -368,156 +368,151 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file)
 
     def _handle_ocr_selected_image(self):
-        self.logger.info("Handling OCR Selected Image")
-        if not _ensure_modules_loaded(self, dialogs=True): return
-
-        # Check if image is selected
-        if not uno_utils.is_graphic_object_selected(self.frame, self.ctx):
-            uno_utils.show_message_box("TejOCR - No Image Selected", 
-                                       "Please select an image in your document first, then try OCR Selected Image again.", 
-                                       "infobox", parent_frame=self.frame, ctx=self.ctx)
+        self.logger.info("Handling OCR Selected Image action.")
+        
+        # Check if an image is selected
+        current_frame = uno_utils.get_current_frame(self.ctx)
+        if not uno_utils.is_graphic_object_selected(current_frame, self.ctx):
+            uno_utils.show_message_box("Selection Required", "Please select an image in your document first.", "warningbox", parent_frame=self.frame, ctx=self.ctx)
             return
 
-        # Simple OCR without complex options dialog - make it user-friendly
-        try:
-            # Get the selected image and extract text
-            if not _ensure_modules_loaded(self, engine=True, output=True):
-                return
+        # Ensure dependencies and show options dialog
+        if self._ensure_tesseract_is_ready_and_run():
+            try:
+                # Ensure dialogs module is loaded
+                if not _ensure_modules_loaded(self, dialogs=True):
+                    self.logger.error("Could not load dialogs module for OCR options")
+                    return
                 
-            self.logger.info("Starting OCR on selected image...")
-            
-            # Extract image and perform OCR
-            recognized_text = _tejocr_engine_module.extract_text_from_selected_image(
-                ctx=self.ctx, 
-                frame=self.frame,
-                lang="eng"  # Default to English for simplicity
-            )
-            
-            if recognized_text and recognized_text.strip():
-                self.logger.info(f"OCR successful! Extracted {len(recognized_text)} characters.")
+                # Create and show OCR options dialog for selected image
+                options_dialog = _tejocr_dialogs_module.OptionsDialogHandler(self.ctx, ocr_source_type="selected")
                 
-                # Insert text at cursor position (simple, user-friendly default)
-                _tejocr_output_module.insert_text_at_cursor(self.ctx, self.frame, recognized_text)
-                
-                # Show success message
-                uno_utils.show_message_box(
-                    "TejOCR - Success!", 
-                    f"Text extracted and inserted at cursor!\n\nExtracted {len(recognized_text)} characters of text from the selected image.",
-                    "infobox", 
-                    parent_frame=self.frame, 
-                    ctx=self.ctx
-                )
-            else:
-                self.logger.warning("OCR completed but no text was found.")
-                uno_utils.show_message_box(
-                    "TejOCR - No Text Found", 
-                    "No text could be extracted from the selected image.\n\nTips:\n• Make sure the image contains clear, readable text\n• Try selecting a different image\n• Check that the image quality is good",
-                    "infobox", 
-                    parent_frame=self.frame, 
-                    ctx=self.ctx
-                )
-                
-        except Exception as e:
-            self.logger.error(f"Error during OCR on selected image: {e}", exc_info=True)
-            uno_utils.show_message_box(
-                "TejOCR - Error", 
-                f"An error occurred during OCR:\n\n{str(e)}\n\nPlease check that:\n• Tesseract is properly installed\n• The selected image contains readable text\n• The image format is supported",
-                "errorbox", 
-                parent_frame=self.frame, 
-                ctx=self.ctx
-            )
+                if options_dialog._create_dialog(self.frame):
+                    result = options_dialog.execute()
+                    self.logger.info(f"OCR options dialog completed with result: {result}")
+                    
+                    if result and options_dialog.recognized_text:
+                        # Show success message
+                        char_count = len(options_dialog.recognized_text)
+                        uno_utils.show_message_box("OCR Complete", f"Successfully extracted {char_count} characters from selected image.", "infobox", parent_frame=self.frame, ctx=self.ctx)
+                    elif result:
+                        self.logger.warning("OCR dialog returned success but no text was found")
+                    else:
+                        self.logger.info("OCR options dialog was cancelled")
+                    
+                    # Clean up
+                    options_dialog.dispose()
+                else:
+                    self.logger.error("Failed to create OCR options dialog for selected image")
+                    # Fallback to direct OCR call
+                    self._fallback_direct_ocr_selected()
+                    
+            except Exception as e:
+                self.logger.error(f"Error in OCR selected image dialog: {e}", exc_info=True)
+                # Try fallback
+                self._fallback_direct_ocr_selected()
 
     def _handle_ocr_image_from_file(self):
-        self.logger.info("Handling OCR from file...")
-        if not _ensure_modules_loaded(self, dialogs=True): return
-
-        # Real implementation - create file picker for user-friendly experience
+        self.logger.info("Handling OCR Image from File action.")
+        
+        # Show file picker first
         try:
             file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
             if not file_picker:
-                uno_utils.show_message_box(
-                    "TejOCR - Error", 
-                    "Could not open file selection dialog.\n\nPlease try again or check your LibreOffice installation.", 
-                    "errorbox", 
-                    parent_frame=self.frame, 
-                    ctx=self.ctx
-                )
+                uno_utils.show_message_box("Error", "Could not create file picker.", "errorbox", parent_frame=self.frame, ctx=self.ctx)
                 return
-
-            # Setup file picker for images
-            file_picker.appendFilter("Image Files", "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.tiff;*.tif;*.webp")
+            
+            file_picker.setTitle("Select Image for OCR")
+            
+            # Set file filters for image files
+            file_picker.appendFilter("Image Files", constants.IMAGE_FILE_DIALOG_FILTER)
             file_picker.appendFilter("All Files", "*.*")
-            file_picker.setCurrentFilter("Image Files")
-            file_picker.setTitle("TejOCR - Select Image File")
-
-            if file_picker.execute() == 1:  # OK pressed
-                files = file_picker.getFiles()
-                if files and len(files) > 0:
-                    image_path_url = files[0]
-                    image_path_system = unohelper.fileUrlToSystemPath(image_path_url)
-                    self.logger.info(f"Image selected from file: {image_path_system}")
+            
+            # Execute file picker
+            if file_picker.execute() == 1:  # OK button pressed
+                selected_files = file_picker.getFiles()
+                if selected_files:
+                    image_path = unohelper.fileUrlToSystemPath(selected_files[0])
+                    self.logger.info(f"Selected image file: {image_path}")
                     
-                    # Ensure engine and output modules are loaded
-                    if not _ensure_modules_loaded(self, engine=True, output=True):
-                        return
-                    
-                    # Perform OCR on the selected file
-                    try:
-                        self.logger.info("Starting OCR on selected file...")
-                        
-                        recognized_text = _tejocr_engine_module.extract_text_from_image_file(
-                            ctx=self.ctx,
-                            image_path=image_path_system,
-                            lang="eng"  # Default to English for simplicity
-                        )
-                        
-                        if recognized_text and recognized_text.strip():
-                            self.logger.info(f"OCR successful! Extracted {len(recognized_text)} characters from file.")
+                    # Ensure dependencies and show options dialog
+                    if self._ensure_tesseract_is_ready_and_run():
+                        try:
+                            # Ensure dialogs module is loaded
+                            if not _ensure_modules_loaded(self, dialogs=True):
+                                self.logger.error("Could not load dialogs module for OCR options")
+                                return
                             
-                            # Insert text at cursor position
-                            _tejocr_output_module.insert_text_at_cursor(self.ctx, self.frame, recognized_text)
+                            # Create and show OCR options dialog for file
+                            options_dialog = _tejocr_dialogs_module.OptionsDialogHandler(self.ctx, ocr_source_type="file", image_path=image_path)
                             
-                            # Show success message
-                            uno_utils.show_message_box(
-                                "TejOCR - Success!",
-                                f"Text extracted from image file and inserted at cursor!\n\nFile: {os.path.basename(image_path_system)}\nExtracted {len(recognized_text)} characters of text.",
-                                "infobox",
-                                parent_frame=self.frame,
-                                ctx=self.ctx
-                            )
-                        else:
-                            self.logger.warning("OCR completed but no text was found in the file.")
-                            uno_utils.show_message_box(
-                                "TejOCR - No Text Found",
-                                f"No text could be extracted from the selected image file.\n\nFile: {os.path.basename(image_path_system)}\n\nTips:\n• Make sure the image contains clear, readable text\n• Try a different image file\n• Check that the image quality is good",
-                                "infobox",
-                                parent_frame=self.frame,
-                                ctx=self.ctx
-                            )
-                            
-                    except Exception as e:
-                        self.logger.error(f"Error during OCR on file: {e}", exc_info=True)
-                        uno_utils.show_message_box(
-                            "TejOCR - OCR Error",
-                            f"An error occurred while processing the image file:\n\n{str(e)}\n\nPlease check that:\n• The file is a valid image format\n• Tesseract is properly installed\n• The image contains readable text",
-                            "errorbox",
-                            parent_frame=self.frame,
-                            ctx=self.ctx
-                        )
+                            if options_dialog._create_dialog(self.frame):
+                                result = options_dialog.execute()
+                                self.logger.info(f"OCR options dialog completed with result: {result}")
+                                
+                                if result and options_dialog.recognized_text:
+                                    # Show success message
+                                    char_count = len(options_dialog.recognized_text)
+                                    filename = os.path.basename(image_path)
+                                    uno_utils.show_message_box("OCR Complete", f"Successfully extracted {char_count} characters from {filename}.", "infobox", parent_frame=self.frame, ctx=self.ctx)
+                                elif result:
+                                    self.logger.warning("OCR dialog returned success but no text was found")
+                                else:
+                                    self.logger.info("OCR options dialog was cancelled")
+                                
+                                # Clean up
+                                options_dialog.dispose()
+                            else:
+                                self.logger.error("Failed to create OCR options dialog for file")
+                                # Fallback to direct OCR call
+                                self._fallback_direct_ocr_file(image_path)
+                                
+                        except Exception as e:
+                            self.logger.error(f"Error in OCR file dialog: {e}", exc_info=True)
+                            # Try fallback
+                            self._fallback_direct_ocr_file(image_path)
                 else:
-                    self.logger.info("File picker executed OK, but no files returned.")
+                    self.logger.info("No file selected in file picker")
             else:
-                self.logger.info("File picker cancelled by user.")
+                self.logger.info("File picker was cancelled")
                 
         except Exception as e:
-            self.logger.error(f"Error creating file picker: {e}", exc_info=True)
-            uno_utils.show_message_box(
-                "TejOCR - Error",
-                f"Could not open file selection dialog:\n\n{str(e)}",
-                "errorbox",
-                parent_frame=self.frame,
-                ctx=self.ctx
-            )
+            self.logger.error(f"Error in file picker: {e}", exc_info=True)
+            uno_utils.show_message_box("File Picker Error", f"Could not open file picker: {e}", "errorbox", parent_frame=self.frame, ctx=self.ctx)
+
+    def _fallback_direct_ocr_selected(self):
+        """Fallback method for direct OCR of selected image without dialog."""
+        try:
+            if not _ensure_modules_loaded(self, engine=True, output=True):
+                return
+            
+            text = _tejocr_engine_module.extract_text_from_selected_image(self.ctx)
+            if text:
+                _tejocr_output_module.insert_text_at_cursor(text, self.ctx)
+                uno_utils.show_message_box("OCR Complete", f"Extracted {len(text)} characters.", "infobox", parent_frame=self.frame, ctx=self.ctx)
+            else:
+                uno_utils.show_message_box("OCR Result", "No text found in selected image.", "infobox", parent_frame=self.frame, ctx=self.ctx)
+        except Exception as e:
+            self.logger.error(f"Fallback OCR selected failed: {e}", exc_info=True)
+            uno_utils.show_message_box("OCR Error", f"OCR processing failed: {e}", "errorbox", parent_frame=self.frame, ctx=self.ctx)
+
+    def _fallback_direct_ocr_file(self, image_path):
+        """Fallback method for direct OCR of file without dialog."""
+        try:
+            if not _ensure_modules_loaded(self, engine=True, output=True):
+                return
+            
+            text = _tejocr_engine_module.extract_text_from_image_file(image_path, self.ctx)
+            if text:
+                _tejocr_output_module.insert_text_at_cursor(text, self.ctx)
+                filename = os.path.basename(image_path)
+                uno_utils.show_message_box("OCR Complete", f"Extracted {len(text)} characters from {filename}.", "infobox", parent_frame=self.frame, ctx=self.ctx)
+            else:
+                filename = os.path.basename(image_path)
+                uno_utils.show_message_box("OCR Result", f"No text found in {filename}.", "infobox", parent_frame=self.frame, ctx=self.ctx)
+        except Exception as e:
+            self.logger.error(f"Fallback OCR file failed: {e}", exc_info=True)
+            uno_utils.show_message_box("OCR Error", f"OCR processing failed: {e}", "errorbox", parent_frame=self.frame, ctx=self.ctx)
 
     def _handle_settings(self):
         self.logger.info("Handling Settings action.")
@@ -528,9 +523,27 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             return
         
         try:
-            # Call the ultra-simplified settings dialog
-            _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
-            self.logger.debug("Settings dialog call completed successfully.")
+            # Create and show the real settings dialog
+            settings_dialog = _tejocr_dialogs_module.SettingsDialogHandler(self.ctx)
+            
+            # Create the dialog and show it
+            if settings_dialog._create_dialog(self.frame):
+                result = settings_dialog.execute()
+                self.logger.info(f"Settings dialog completed with result: {result}")
+                
+                if result:
+                    self.logger.info("Settings were saved successfully")
+                    # Optionally show a brief confirmation
+                    uno_utils.show_message_box("Settings", "Settings saved successfully", "infobox", parent_frame=self.frame, ctx=self.ctx)
+                else:
+                    self.logger.info("Settings dialog was cancelled or closed without saving")
+                    
+                # Clean up
+                settings_dialog.dispose()
+            else:
+                self.logger.error("Failed to create settings dialog")
+                # Fallback to the old simple dialog
+                _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
             
         except Exception as e_settings_dlg:
             self.logger.critical(f"Critical error in settings dialog: {e_settings_dlg}", exc_info=True)
@@ -548,6 +561,11 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             except Exception as e_nested:
                 self.logger.critical(f"Even error message box failed: {e_nested}")
                 print(f"CONSOLE DEBUG: Even error dialog failed: {e_nested}")
+                # Last resort - fallback to old settings dialog
+                try:
+                    _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
+                except:
+                    self.logger.critical("All settings dialog methods failed")
 
     def addStatusListener(self, Listener, URL):
         self.logger.debug(f"addStatusListener CALLED for URL: {URL.Complete if URL else 'None'}")

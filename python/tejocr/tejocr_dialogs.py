@@ -182,68 +182,318 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
 # --- OCR Options Dialog Handler ---
 class OptionsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx, ocr_source_type="file", image_path=None): # ocr_source_type: "file" or "selected"
-        # The dialog URL will point to an XDL file. Path needs to be resolvable by LO.
-        # Example: "vnd.sun.star.script:TejOCR.xdl$OptionsDialog?location=user"
-        # For now, we use a placeholder that assumes it's in the extension package.
-        # The actual URL construction might need adjustment based on how LO Python extensions resolve resources.
-        # Typically, dialogs are stored in a 'dialogs' subdirectory of the extension.
-        # The path would be relative to the extension's root.
-        # dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_options_dialog.xdl")
-        # Attempt to construct URL relative to where LO scripts are found if possible
-        # This might need to be: "private:dialogs/tejocr_options_dialog.xdl"
-        # Or a more robust way to get extension root.
-        # For now, keeping systemPathToFileUrl as it might work if __file__ is within the OXT structure.
-        # dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path) 
-        # A more robust way to get the dialog URL if it's packaged:
-        # self.dialog_url = uno_utils.get_extension_resource_url(ctx, "dialogs/tejocr_options_dialog.xdl")
-        # Corrected URL for packaged extensions:
-        dialog_url = "private:dialogs/tejocr_options_dialog.xdl"
+        # Use the correct dialog URL for packaged extensions
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_options_dialog.xdl"
         super().__init__(ctx, dialog_url)
-        self.ocr_source_type = ocr_source_type
-        self.image_path = image_path # Store image_path if provided (for 'file' source)
+        self.ctx = ctx
+        self.ocr_source_type = ocr_source_type  # "file" or "selected"
+        self.image_path = image_path  # Path to image file (if ocr_source_type == "file") or None for selected
         self.selected_options = {}
-        self.available_languages_map = {} # To store code -> display name mapping
-        self.recognized_text = None # To store the OCR result
+        self.recognized_text = None
+        self.available_languages_map = {}
 
     def _init_controls(self):
-        """Initialize controls and attach listeners for the OCR Options dialog."""
-        # Example: Get a button and add self as listener
-        # btn_run = self.get_control("RunOCRButton")
-        # if btn_run:
-        #     btn_run.setActionCommand("run_ocr")
-        #     btn_run.addActionListener(self)
+        """Initialize controls and attach listeners for the Options dialog."""
+        logger.info(f"OptionsDialogHandler: _init_controls called for source type: {self.ocr_source_type}")
         
-        # btn_cancel = self.get_control("CancelButton")
-        # if btn_cancel:
-        #     btn_cancel.setActionCommand("cancel")
-        #     btn_cancel.addActionListener(self)
-        
-        # lang_dropdown = self.get_control("LanguageDropdown")
-        # if lang_dropdown:
-        #    self._populate_languages(lang_dropdown)
-        #    lang_dropdown.addItemListener(self)
-        # ... and so on for other controls (Output Mode, PSM, OEM, checkboxes)
-        
-        # For now, just log that this would be where controls are set up
-        logger.info("OptionsDialogHandler: _init_controls called.")
-        
-        # Example for status label
-        # status_label = self.get_control("StatusLabel")
-        # if status_label: status_label.setText("Ready.")
-
-        self._add_listener_to_control("RefreshLanguagesButton", "refresh_languages")
-        self._add_listener_to_control("RunOCRButton", "run_ocr")
+        # Attach button listeners
+        self._add_listener_to_control("RunOCRButton", "run_ocr") 
         self._add_listener_to_control("CancelButton", "cancel")
         self._add_listener_to_control("HelpButton", "help")
+        self._add_listener_to_control("RefreshLanguagesButton", "refresh_languages")
+        
+        # Initialize dialog content
+        self._setup_source_information()
+        self._load_default_settings()
+        self._populate_dropdowns()
+        self._enable_disable_controls()
 
+    def _setup_source_information(self):
+        """Set up the source information section based on OCR type."""
+        source_desc_label = self.get_control("SourceDescriptionLabel")
+        if source_desc_label:
+            if self.ocr_source_type == "file":
+                if self.image_path:
+                    filename = os.path.basename(self.image_path)
+                    source_desc_label.setText(f"Image file: {filename}")
+                else:
+                    source_desc_label.setText("Image file (to be selected)")
+            elif self.ocr_source_type == "selected":
+                source_desc_label.setText("Selected image in document")
+            else:
+                source_desc_label.setText(f"OCR source: {self.ocr_source_type}")
+
+    def _load_default_settings(self):
+        """Load default settings from configuration."""
+        # Load language preference
+        default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
+        
+        # Load output mode preference
+        default_output_mode = uno_utils.get_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, constants.DEFAULT_OUTPUT_MODE, self.ctx)
+        self._load_output_mode(default_output_mode)
+        
+        # Load preprocessing defaults
+        default_grayscale = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, constants.DEFAULT_PREPROC_GRAYSCALE, self.ctx)
+        default_binarize = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_BINARIZE, constants.DEFAULT_PREPROC_BINARIZE, self.ctx)
+        
+        grayscale_cb = self.get_control("GrayscaleCheckbox")
+        if grayscale_cb: grayscale_cb.setState(default_grayscale)
+        
+        binarize_cb = self.get_control("BinarizeCheckbox")
+        if binarize_cb: binarize_cb.setState(default_binarize)
+
+    def _populate_dropdowns(self):
+        """Populate all dropdown controls with available options."""
+        # Populate language dropdown
         self._populate_languages_dropdown()
+        
+        # Populate PSM dropdown
         self._populate_psm_dropdown()
+        
+        # Populate OEM dropdown
         self._populate_oem_dropdown()
-        self._load_output_mode()
-        self._load_preprocessing_options()
 
+    def _enable_disable_controls(self):
+        """Enable/disable controls based on context."""
+        # Disable "Replace Image" option if not processing a selected image
+        replace_radio = self.get_control("OutputReplaceImageRadio")
+        if replace_radio:
+            replace_radio.setEnable(self.ocr_source_type == "selected")
+            
+        # If replace image is disabled and was selected, switch to cursor mode
+        if self.ocr_source_type != "selected" and replace_radio and replace_radio.getState():
+            cursor_radio = self.get_control("OutputAtCursorRadio")
+            if cursor_radio:
+                cursor_radio.setState(True)
+                replace_radio.setState(False)
+
+    def _load_output_mode(self, default_mode=None):
+        """Load output mode selection."""
+        if default_mode is None:
+            default_mode = uno_utils.get_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, constants.DEFAULT_OUTPUT_MODE, self.ctx)
+        
+        controls = {
+            constants.OUTPUT_MODE_CURSOR: "OutputAtCursorRadio",
+            constants.OUTPUT_MODE_TEXTBOX: "OutputNewTextboxRadio",
+            constants.OUTPUT_MODE_REPLACE: "OutputReplaceImageRadio",
+            constants.OUTPUT_MODE_CLIPBOARD: "OutputToClipboardRadio"
+        }
+        
+        # Reset all radio buttons first
+        for control_id in controls.values():
+            control = self.get_control(control_id)
+            if control:
+                control.setState(False)
+        
+        # Set the selected one
+        selected_control_id = controls.get(default_mode, controls[constants.OUTPUT_MODE_CURSOR])
+        selected_control = self.get_control(selected_control_id)
+        if selected_control:
+            selected_control.setState(True)
+
+    def actionPerformed(self, event):
+        super().actionPerformed(event) # Handles run_ocr, cancel, help (if not overridden)
+        command = event.ActionCommand
+        logger.debug(f"OptionsDialogHandler actionPerformed: {command}")
+        
+        if command == "refresh_languages":
+            self._refresh_languages()
+        elif command == "help":
+            self._show_help()
+        elif command == "run_ocr":
+            # The base class will call _handle_ok_action()
+            pass
+
+    def _refresh_languages(self):
+        """Refresh the language list."""
+        self.available_languages_map = {}  # Clear cache
+        self._populate_languages_dropdown()
         status_label = self.get_control("StatusLabel")
-        if status_label: status_label.setText("Ready.")
+        if status_label:
+            status_label.setText("Language list refreshed")
+
+    def _show_help(self):
+        """Show help for the OCR Options dialog."""
+        help_text = f"""{constants.EXTENSION_FULL_NAME} - OCR Options Help
+
+LANGUAGE SELECTION:
+• Choose the language of text in your image
+• Correct language selection improves accuracy
+• Use 'Refresh' to update available languages
+
+OUTPUT MODE:
+• Cursor: Insert text at current cursor position
+• Text Box: Create a new text box with the text
+• Replace Image: Replace selected image with text
+• Clipboard: Copy text to system clipboard
+
+ADVANCED OPTIONS:
+• Page Mode: How Tesseract should analyze the image
+• Engine Mode: Which OCR engine to use
+• Preprocessing: Basic image enhancement options
+
+BUTTONS:
+• Start OCR: Begin text recognition
+• Cancel: Close without processing
+• Help: Show this help message"""
+        
+        uno_utils.show_message_box("OCR Options Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+
+    def _handle_ok_action(self):
+        """Collect options and perform OCR."""
+        logger.info("OCR Options: Starting OCR process...")
+        
+        try:
+            # Collect all selected options
+            self._collect_selected_options()
+            
+            # Update status
+            status_label = self.get_control("StatusLabel")
+            if status_label: 
+                status_label.setText("Starting OCR processing...")
+            
+            # Perform OCR based on source type
+            if self.ocr_source_type == "file":
+                result = self._perform_file_ocr()
+            elif self.ocr_source_type == "selected":
+                result = self._perform_selected_image_ocr()
+            else:
+                raise ValueError(f"Unknown OCR source type: {self.ocr_source_type}")
+            
+            if result:
+                self.recognized_text = result
+                if status_label: 
+                    status_label.setText(f"OCR completed! Found {len(result)} characters")
+                
+                # Process the output according to selected mode
+                self._handle_output()
+                return True  # Success - close dialog
+            else:
+                if status_label: 
+                    status_label.setText("OCR failed or no text found")
+                return False  # Keep dialog open
+                
+        except Exception as e:
+            logger.error(f"Error in OCR options dialog: {e}", exc_info=True)
+            status_label = self.get_control("StatusLabel")
+            if status_label: 
+                status_label.setText("Error during OCR processing")
+            uno_utils.show_message_box("OCR Error", f"OCR processing failed: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+            return False  # Keep dialog open
+
+    def _collect_selected_options(self):
+        """Collect all user-selected options."""
+        self.selected_options = {}
+        
+        # Language
+        lang_dropdown = self.get_control("LanguageDropdown")
+        if lang_dropdown and lang_dropdown.getItemCount() > 0:
+            selected_lang_display = lang_dropdown.getSelectedItem()
+            # Map display name back to code
+            inverted_lang_map = {v: k for k, v in self.available_languages_map.items()}
+            self.selected_options["lang"] = inverted_lang_map.get(selected_lang_display, constants.DEFAULT_OCR_LANGUAGE)
+        else:
+            self.selected_options["lang"] = constants.DEFAULT_OCR_LANGUAGE
+        
+        # Output Mode
+        output_modes_map = {
+            "OutputAtCursorRadio": constants.OUTPUT_MODE_CURSOR,
+            "OutputNewTextboxRadio": constants.OUTPUT_MODE_TEXTBOX,
+            "OutputReplaceImageRadio": constants.OUTPUT_MODE_REPLACE,
+            "OutputToClipboardRadio": constants.OUTPUT_MODE_CLIPBOARD
+        }
+        
+        self.selected_options["output_mode"] = constants.DEFAULT_OUTPUT_MODE
+        for control_id, mode_value in output_modes_map.items():
+            control = self.get_control(control_id)
+            if control and control.getState():
+                self.selected_options["output_mode"] = mode_value
+                break
+        
+        # PSM (Page Segmentation Mode)
+        psm_dropdown = self.get_control("PSMDropdown")
+        if psm_dropdown and psm_dropdown.getItemCount() > 0:
+            selected_psm_display = psm_dropdown.getSelectedItem()
+            inverted_psm_map = {v: k for k, v in constants.TESSERACT_PSM_MODES.items()}
+            self.selected_options["psm"] = inverted_psm_map.get(selected_psm_display, constants.DEFAULT_PSM_MODE)
+        else:
+            self.selected_options["psm"] = constants.DEFAULT_PSM_MODE
+
+        # OEM (OCR Engine Mode)
+        oem_dropdown = self.get_control("OEMDropdown")
+        if oem_dropdown and oem_dropdown.getItemCount() > 0:
+            selected_oem_display = oem_dropdown.getSelectedItem()
+            inverted_oem_map = {v: k for k, v in constants.TESSERACT_OEM_MODES.items()}
+            self.selected_options["oem"] = inverted_oem_map.get(selected_oem_display, constants.DEFAULT_OEM_MODE)
+        else:
+            self.selected_options["oem"] = constants.DEFAULT_OEM_MODE
+
+        # Preprocessing
+        grayscale_cb = self.get_control("GrayscaleCheckbox")
+        binarize_cb = self.get_control("BinarizeCheckbox")
+        
+        self.selected_options["grayscale"] = bool(grayscale_cb.getState() if grayscale_cb else False)
+        self.selected_options["binarize"] = bool(binarize_cb.getState() if binarize_cb else False)
+
+        logger.info(f"Collected OCR options: {self.selected_options}")
+        
+        # Save last used options for next time
+        uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, self.selected_options["output_mode"], self.ctx)
+
+    def _perform_file_ocr(self):
+        """Perform OCR on a file."""
+        if not self.image_path:
+            raise ValueError("No image file path provided for file OCR")
+        
+        # Import engine module
+        from . import tejocr_engine
+        return tejocr_engine.extract_text_from_image_file(
+            self.image_path,
+            self.ctx,
+            language=self.selected_options.get("lang", constants.DEFAULT_OCR_LANGUAGE),
+            psm=self.selected_options.get("psm", constants.DEFAULT_PSM_MODE),
+            oem=self.selected_options.get("oem", constants.DEFAULT_OEM_MODE),
+            preprocess_grayscale=self.selected_options.get("grayscale", False),
+            preprocess_binarize=self.selected_options.get("binarize", False)
+        )
+
+    def _perform_selected_image_ocr(self):
+        """Perform OCR on selected image."""
+        # Import engine module
+        from . import tejocr_engine
+        return tejocr_engine.extract_text_from_selected_image(
+            self.ctx,
+            language=self.selected_options.get("lang", constants.DEFAULT_OCR_LANGUAGE),
+            psm=self.selected_options.get("psm", constants.DEFAULT_PSM_MODE),
+            oem=self.selected_options.get("oem", constants.DEFAULT_OEM_MODE),
+            preprocess_grayscale=self.selected_options.get("grayscale", False),
+            preprocess_binarize=self.selected_options.get("binarize", False)
+        )
+
+    def _handle_output(self):
+        """Handle the recognized text according to selected output mode."""
+        if not self.recognized_text:
+            return
+        
+        # Import output module
+        from . import tejocr_output
+        
+        output_mode = self.selected_options.get("output_mode", constants.OUTPUT_MODE_CURSOR)
+        
+        if output_mode == constants.OUTPUT_MODE_CURSOR:
+            tejocr_output.insert_text_at_cursor(self.recognized_text, self.ctx)
+        elif output_mode == constants.OUTPUT_MODE_TEXTBOX:
+            tejocr_output.create_text_box_with_text(self.recognized_text, self.ctx)
+        elif output_mode == constants.OUTPUT_MODE_REPLACE:
+            if self.ocr_source_type == "selected":
+                tejocr_output.replace_selected_image_with_text(self.recognized_text, self.ctx)
+            else:
+                # Fallback to cursor if replace not applicable
+                tejocr_output.insert_text_at_cursor(self.recognized_text, self.ctx)
+        elif output_mode == constants.OUTPUT_MODE_CLIPBOARD:
+            tejocr_output.copy_text_to_clipboard(self.recognized_text, self.ctx)
+        
+        logger.info(f"Text output handled with mode: {output_mode}")
 
     def _populate_languages_dropdown(self):
         langs = self._get_tesseract_languages()
@@ -256,35 +506,25 @@ class OptionsDialogHandler(BaseDialogHandler):
     def _populate_oem_dropdown(self):
         self._populate_dropdown("OEMDropdown", constants.TESSERACT_OEM_MODES, "LastOEMMode", constants.DEFAULT_OEM_MODE)
 
-    def _load_output_mode(self):
-        last_mode = uno_utils.get_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, constants.DEFAULT_OUTPUT_MODE, self.ctx)
-        controls = {
-            constants.OUTPUT_MODE_CURSOR: "OutputAtCursorRadio",
-            constants.OUTPUT_MODE_TEXTBOX: "OutputNewTextboxRadio",
-            constants.OUTPUT_MODE_REPLACE: "OutputReplaceImageRadio",
-            constants.OUTPUT_MODE_CLIPBOARD: "OutputToClipboardRadio"
-        }
-        found_selected = False
-        for mode_value, control_id in controls.items():
-            control = self.get_control(control_id)
-            if control:
-                is_selected = (str(mode_value) == str(last_mode))
-                control.setState(is_selected)
-                if is_selected:
-                    found_selected = True
+    def _populate_dropdown(self, control_name, items_map, current_value_key, default_value):
+        dropdown = self.get_control(control_name)
+        if not dropdown: return
 
-        if not found_selected:
-            cursor_radio = self.get_control(controls[constants.OUTPUT_MODE_CURSOR])
-            if cursor_radio:
-                cursor_radio.setState(True)
+        stored_value = uno_utils.get_setting(current_value_key, default_value, self.ctx)
+        dropdown.getModel().removeAllItems()
+        
+        selected_pos = 0
+        item_keys = list(items_map.keys()) # Keep order for mapping position to key
 
-    def _load_preprocessing_options(self):
-        grayscale = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, constants.DEFAULT_PREPROC_GRAYSCALE, self.ctx)
-        binarize = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_BINARIZE, constants.DEFAULT_PREPROC_BINARIZE, self.ctx)
-        cb_gray = self.get_control("GrayscaleCheckbox")
-        if cb_gray: cb_gray.setState(grayscale)
-        cb_bin = self.get_control("BinarizeCheckbox")
-        if cb_bin: cb_bin.setState(binarize)
+        for i, key in enumerate(item_keys):
+            display_text = items_map[key]
+            dropdown.addItem(display_text, i)
+            if str(key) == str(stored_value):
+                selected_pos = i
+        
+        if dropdown.getItemCount() > 0:
+            dropdown.selectItemPos(selected_pos, True)
+        self.available_languages_map = items_map # Store for retrieval
 
     def _get_tesseract_languages(self):
         global PYTESSERACT_LANGUAGES
@@ -315,182 +555,86 @@ class OptionsDialogHandler(BaseDialogHandler):
              PYTESSERACT_LANGUAGES = {k: v for k, v in LANG_CODE_TO_NAME.items()} # Fallback
         return PYTESSERACT_LANGUAGES
 
-    def _populate_dropdown(self, control_name, items_map, current_value_key, default_value):
-        dropdown = self.get_control(control_name)
-        if not dropdown: return
-
-        stored_value = uno_utils.get_setting(current_value_key, default_value, self.ctx)
-        dropdown.getModel().removeAllItems()
-        
-        selected_pos = 0
-        item_keys = list(items_map.keys()) # Keep order for mapping position to key
-
-        for i, key in enumerate(item_keys):
-            display_text = items_map[key]
-            dropdown.addItem(display_text, i)
-            if str(key) == str(stored_value):
-                selected_pos = i
-        
-        if dropdown.getItemCount() > 0:
-            dropdown.selectItemPos(selected_pos, True)
-        self.available_languages_map = items_map # Store for retrieval
-
-    def actionPerformed(self, event):
-        """Handle specific actions for the OCR Options dialog."""
-        super().actionPerformed(event)
-        command = event.ActionCommand
-        logger.debug(f"OptionsDialogHandler actionPerformed: {command}")
-        if command == "refresh_languages":
-            global PYTESSERACT_LANGUAGES # Allow modification
-            PYTESSERACT_LANGUAGES = {} # Clear cache to force refresh
-            logger.info("Refreshing OCR languages list.")
-            self._populate_languages_dropdown()
-            uno_utils.show_message_box("Languages Refreshed", "The list of available OCR languages has been updated.", "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
-
-    def _get_selected_dropdown_key(self, control_name, items_map):
-        dropdown = self.get_control(control_name)
-        if dropdown and dropdown.getItemCount() > 0:
-            selected_pos = dropdown.getSelectedItemPos()
-            item_keys = list(items_map.keys())
-            if 0 <= selected_pos < len(item_keys):
-                return item_keys[selected_pos]
-        return None
-
-    def _handle_ok_action(self):
-        """Collects selected options and prepares for OCR. Returns True if ready, False otherwise."""
-        self.selected_options = {}
-        # ... (collect all options: language, psm, oem, output_mode, preprocessing)
-        # Language
-        lang_dropdown = self.get_control("LanguageDropdown")
-        if lang_dropdown:
-            selected_lang_display = lang_dropdown.getSelectedItem()
-            # Find code from display name (self.available_languages_map stores code -> display name)
-            # Invert map for lookup or iterate
-            inverted_lang_map = {v: k for k, v in self.available_languages_map.items()}
-            self.selected_options["lang"] = inverted_lang_map.get(selected_lang_display, constants.DEFAULT_OCR_LANGUAGE)
-        else:
-            self.selected_options["lang"] = constants.DEFAULT_OCR_LANGUAGE
-        
-        # Output Mode - Updated to use radio buttons
-        output_modes_map = {
-            "OutputAtCursorRadio": constants.OUTPUT_MODE_CURSOR,
-            "OutputNewTextboxRadio": constants.OUTPUT_MODE_TEXTBOX,
-            "OutputReplaceImageRadio": constants.OUTPUT_MODE_REPLACE,
-            "OutputToClipboardRadio": constants.OUTPUT_MODE_CLIPBOARD
-        }
-        self.selected_options["output_mode"] = constants.DEFAULT_OUTPUT_MODE # Default
-        for control_id, mode_value in output_modes_map.items():
-            control = self.get_control(control_id)
-            if control and control.getState():
-                self.selected_options["output_mode"] = mode_value
-                break
-        
-        # Save the selected output mode for next time
-        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_KEY_LAST_OUTPUT_MODE, self.selected_options["output_mode"])
-
-        # PSM
-        psm_dropdown = self.get_control("PSMDropdown")
-        if psm_dropdown:
-            selected_psm_display = psm_dropdown.getSelectedItem()
-            # Find key from display name (assuming constants.TESSERACT_PSM_MODES maps int key to display string)
-            # Need to invert or iterate
-            inverted_psm_map = {v: k for k, v in constants.TESSERACT_PSM_MODES.items()}
-            self.selected_options["psm"] = inverted_psm_map.get(selected_psm_display, constants.DEFAULT_TESSERACT_PSM)
-        else:
-            self.selected_options["psm"] = constants.DEFAULT_TESSERACT_PSM
-
-        # OEM
-        oem_dropdown = self.get_control("OEMDropdown")
-        if oem_dropdown:
-            selected_oem_display = oem_dropdown.getSelectedItem()
-            inverted_oem_map = {v: k for k, v in constants.TESSERACT_OEM_MODES.items()}
-            self.selected_options["oem"] = inverted_oem_map.get(selected_oem_display, constants.DEFAULT_TESSERACT_OEM)
-        else:
-            self.selected_options["oem"] = constants.DEFAULT_TESSERACT_OEM
-
-        # Preprocessing
-        self.selected_options["grayscale"] = bool(self.get_control("GrayscaleCheckbox").getState())
-        self.selected_options["binarize"] = bool(self.get_control("BinarizeCheckbox").getState())
-
-        logger.info(f"OCR Options selected: {self.selected_options}")
-
-        # Save last used options (excluding output mode, as it's often context-dependent)
-        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_DEFAULT_LANG, self.selected_options["lang"])
-        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_DEFAULT_PSM, str(self.selected_options["psm"])) # Ensure string for config
-        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_DEFAULT_OEM, str(self.selected_options["oem"])) # Ensure string for config
-        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_PREPROCESSING_GRAYSCALE, self.selected_options["grayscale"])
-        uno_utils.set_setting(self.ctx, constants.CONFIG_NODE_SETTINGS, constants.CFG_PREPROCESSING_BINARIZE, self.selected_options["binarize"])
-
-        # Set status to processing
-        status_label = self.get_control("StatusLabel")
-        if status_label: status_label.setText("Processing OCR...")
-        
-        # Perform OCR in a separate thread or ensure dialog remains responsive
-        # For simplicity here, we call it directly. Consider XJobExecutor for long tasks.
-        try:
-            ocr_result = tejocr_engine.perform_ocr(
-                ctx=self.ctx,
-                source_type=self.ocr_source_type,
-                image_path_or_obj=self.image_path, # This should be the image path for file, or image object for selection
-                lang=self.selected_options["lang"],
-                psm=self.selected_options["psm"],
-                oem=self.selected_options["oem"],
-                preprocess_options={
-                    "grayscale": self.selected_options["grayscale"],
-                    "binarize": self.selected_options["binarize"]
-                },
-                status_callback=lambda msg: status_label.setText(msg) if status_label else None
-            )
-            self.recognized_text = ocr_result
-            if ocr_result is None: # OCR failed or was cancelled by engine logic
-                if status_label: status_label.setText("OCR failed or no text found.")
-                # Message box already shown by perform_ocr typically
-                return False # Keep dialog open
-            else:
-                if status_label: status_label.setText(f"OCR successful. {len(ocr_result)} chars.")
-                return True # OCR successful, proceed to close dialog and use text
-
-        except Exception as e:
-            logger.error(f"Exception during perform_ocr from dialog: {e}", exc_info=True)
-            uno_utils.show_message_box("OCR Error", f"An unexpected error occurred during OCR: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
-            if status_label: status_label.setText("Error during OCR.")
-            return False # Keep dialog open
-
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx):
-        # dialog_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs", "tejocr_settings_dialog.xdl")
-        # dialog_file_url = unohelper.systemPathToFileUrl(dialog_file_path)
-        # self.dialog_url = uno_utils.get_extension_resource_url(ctx, "dialogs/tejocr_settings_dialog.xdl")
-        # Corrected URL for packaged extensions:
-        dialog_url = "private:dialogs/tejocr_settings_dialog.xdl"
+        # Use the correct dialog URL for packaged extensions
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_settings_dialog.xdl"
         super().__init__(ctx, dialog_url)
         self.initial_settings = {} # To store settings when dialog opens to check for changes
         self.available_languages_map_settings = {} # Separate map for settings dialog
+        self.dependency_status = None # Cache dependency check results
 
     def _init_controls(self):
         """Initialize controls and attach listeners for the Settings dialog."""
         logger.info("SettingsDialogHandler: _init_controls called.")
+        
+        # Attach button listeners
         self._add_listener_to_control("SaveButton", "save_settings") 
         self._add_listener_to_control("CancelButton", "cancel")
-        self._add_listener_to_control("HelpButtonSettings", "help") # Renamed from "help" to avoid conflict if base class handles it.
+        self._add_listener_to_control("HelpButtonSettings", "help")
         self._add_listener_to_control("BrowseButton", "browse_tesseract_path")
         self._add_listener_to_control("TestTesseractButton", "test_tesseract")
         self._add_listener_to_control("RefreshLanguagesButtonSettings", "refresh_languages_settings")
+        self._add_listener_to_control("CheckDependenciesButton", "check_dependencies")
+        self._add_listener_to_control("InstallGuideButton", "install_guide")
         
+        # Load current settings and check dependencies
         self._load_settings()
+        self._check_and_display_dependencies()
+
+    def _check_and_display_dependencies(self):
+        """Check all dependencies and update the status labels."""
+        logger.info("Checking dependencies for Settings dialog...")
+        
+        try:
+            # Import dependency checking function from dialogs module
+            from . import tejocr_dialogs
+            self.dependency_status = tejocr_dialogs._check_dependencies()
+            
+            # Update Tesseract status
+            tesseract_label = self.get_control("TesseractStatusLabel")
+            if tesseract_label:
+                tess_status = self.dependency_status.get('tesseract', 'Unknown')
+                if '✅' in tess_status or 'found' in tess_status.lower():
+                    tesseract_label.setText("✅ Tesseract: Available")
+                else:
+                    tesseract_label.setText("❌ Tesseract: Missing")
+            
+            # Update Python packages status
+            packages_label = self.get_control("PythonPackagesStatusLabel")
+            if packages_label:
+                pkg_status = self.dependency_status.get('python_packages', 'Unknown')
+                # Count how many packages are available
+                available_count = pkg_status.count('✅')
+                if available_count >= 3:  # NumPy, Pytesseract, Pillow
+                    packages_label.setText("✅ Python: All packages OK")
+                elif available_count > 0:
+                    packages_label.setText(f"⚠️ Python: {available_count}/3 packages OK")
+                else:
+                    packages_label.setText("❌ Python: Packages missing")
+                    
+        except Exception as e:
+            logger.error(f"Error checking dependencies in settings: {e}", exc_info=True)
+            # Set fallback status
+            tesseract_label = self.get_control("TesseractStatusLabel")
+            if tesseract_label:
+                tesseract_label.setText("⚠️ Tesseract: Check failed")
+            packages_label = self.get_control("PythonPackagesStatusLabel")
+            if packages_label:
+                packages_label.setText("⚠️ Python: Check failed")
 
     def _load_settings(self):
         """Load settings from config and populate dialog controls."""
         # Tesseract Path
         tesseract_path = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", self.ctx)
         path_field = self.get_control("TesseractPathTextField")
-        if path_field: path_field.setText(tesseract_path)
+        if path_field: 
+            path_field.setText(tesseract_path)
         self.initial_settings[constants.CFG_KEY_TESSERACT_PATH] = tesseract_path
 
         # Default Language
-        # Use the same language fetching logic as OptionsDialogHandler for consistency
-        langs = self._get_tesseract_languages_for_settings() # Use a specific method to avoid global PYTESSERACT_LANGUAGES issues if shared
+        langs = self._get_tesseract_languages_for_settings()
         self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE)
         current_default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
         self.initial_settings[constants.CFG_KEY_DEFAULT_LANG] = current_default_lang
@@ -506,7 +650,7 @@ class SettingsDialogHandler(BaseDialogHandler):
         self.initial_settings[constants.CFG_KEY_DEFAULT_BINARIZE] = binarize
         
         status_label = self.get_control("SettingsStatusLabel")
-        if status_label: status_label.setText("Settings loaded. Modify and click Save.")
+        if status_label: status_label.setText("Settings loaded successfully")
 
     def _get_tesseract_languages_for_settings(self):
         # This is similar to _get_tesseract_languages in OptionsDialogHandler
@@ -569,111 +713,226 @@ class SettingsDialogHandler(BaseDialogHandler):
         super().actionPerformed(event) # Handles save_settings, cancel, help (if not overridden)
         command = event.ActionCommand
         logger.debug(f"SettingsDialogHandler actionPerformed: {command}")
+        
         if command == "browse_tesseract_path":
             self._browse_tesseract_path()
         elif command == "test_tesseract":
             self._test_tesseract_path()
         elif command == "refresh_languages_settings":
-            self._settings_languages_cache = {} # Clear cache
-            langs = self._get_tesseract_languages_for_settings()
-            self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE)
-            uno_utils.show_message_box("Languages Refreshed", "The list of available OCR languages has been updated.", "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
-        elif command == "help": # Overriding base if XDL uses HelpButtonSettings
-             self._handle_help_action() # Call the base help action
+            self._refresh_languages()
+        elif command == "check_dependencies":
+            self._check_and_display_dependencies()
+            status_label = self.get_control("SettingsStatusLabel")
+            if status_label: 
+                status_label.setText("Dependencies checked")
+        elif command == "install_guide":
+            self._show_installation_guide()
+        elif command == "help":
+            self._handle_help_action()
+
+    def _refresh_languages(self):
+        """Refresh the language list by clearing cache and reloading."""
+        self._settings_languages_cache = None # Clear cache
+        langs = self._get_tesseract_languages_for_settings()
+        self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE)
+        uno_utils.show_message_box("Languages Refreshed", "The list of available OCR languages has been updated.", "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+
+    def _show_installation_guide(self):
+        """Show detailed installation guidance for missing dependencies."""
+        if not self.dependency_status:
+            self._check_and_display_dependencies()
+        
+        guide_text = f"""TejOCR Installation Guide
+
+{self.dependency_status.get('installation_guide', 'Installation guidance not available')}
+
+For more detailed instructions, visit:
+https://github.com/tesseract-ocr/tesseract/wiki
+
+Need help? Check the TejOCR documentation or contact support."""
+
+        uno_utils.show_message_box("Installation Guide", guide_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+
+    def _handle_help_action(self):
+        """Show help information for the Settings dialog."""
+        help_text = f"""{constants.EXTENSION_FULL_NAME} - Settings Help
+
+DEPENDENCY STATUS:
+• Shows current status of required components
+• Green ✅ means component is working
+• Red ❌ means component needs installation
+
+TESSERACT CONFIGURATION:
+• Set path to Tesseract executable
+• Use 'Browse' to find installation
+• Use 'Test' to verify it works
+
+DEFAULT OPTIONS:
+• Set preferences for OCR operations
+• Language: Default recognition language
+• Preprocessing: Image enhancement options
+
+BUTTONS:
+• Save: Saves settings permanently
+• Cancel: Discards changes
+• Help: Shows this help message"""
+        
+        uno_utils.show_message_box("Settings Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
 
     def _browse_tesseract_path(self):
-        """Opens a file picker to select the Tesseract executable."""
-        file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.ExecutablePicker", self.ctx)
-        if not file_picker:
-            # Fallback to FilePicker if ExecutablePicker is not available (older LO?)
-            file_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
-            if not file_picker:
-                uno_utils.show_message_box("Error", "Could not create file picker service.", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+        """Opens a file picker to browse for Tesseract executable."""
+        try:
+            # Create file picker for executable files
+            fp = uno_utils.create_instance("com.sun.star.ui.dialogs.FilePicker", self.ctx)
+            if not fp:
+                logger.warning("Could not create FilePicker for Tesseract browse")
                 return
-        
-        # file_picker.setTitle("Select Tesseract Executable") # Usually set by LO
-        current_path_str = self.get_control("TesseractPathTextField").getText()
-        if current_path_str and os.path.isdir(os.path.dirname(current_path_str)):
-            logger.debug(f"Setting display directory for Tesseract path browser: {os.path.dirname(current_path_str)}")
-            file_picker.setDisplayDirectory(unohelper.systemPathToFileUrl(os.path.dirname(current_path_str)))
-
-        if file_picker.execute() == 1: # OK
-            files = file_picker.getFiles()
-            if files and len(files) > 0:
-                selected_path = unohelper.fileUrlToSystemPath(files[0])
-                logger.info(f"Tesseract path selected via browser: {selected_path}")
-                self.get_control("TesseractPathTextField").setText(selected_path)
-                self._test_tesseract_path() # Automatically test new path
+                
+            fp.setTitle("Select Tesseract Executable")
+            
+            # Set filter for executable files (platform-specific)
+            import platform
+            system = platform.system().lower()
+            if system == "windows":
+                fp.appendFilter("Executable Files", "*.exe")
+                fp.appendFilter("All Files", "*.*")
+            else:
+                fp.appendFilter("All Files", "*")
+            
+            # Set default directory (try common installation paths)
+            default_paths = {
+                "darwin": ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"],
+                "linux": ["/usr/bin", "/usr/local/bin"],
+                "windows": ["C:\\Program Files\\Tesseract-OCR", "C:\\Program Files (x86)\\Tesseract-OCR"]
+            }
+            
+            for path in default_paths.get(system, []):
+                if os.path.exists(path):
+                    try:
+                        fp.setDisplayDirectory(unohelper.systemPathToFileUrl(path))
+                        break
+                    except:
+                        continue
+            
+            # Execute the file picker
+            if fp.execute() == 1:  # OK button pressed
+                selected_files = fp.getFiles()
+                if selected_files:
+                    selected_path = unohelper.fileUrlToSystemPath(selected_files[0])
+                    path_field = self.get_control("TesseractPathTextField")
+                    if path_field:
+                        path_field.setText(selected_path)
+                        # Auto-test the selected path
+                        self._test_tesseract_path()
+                        
+        except Exception as e:
+            logger.error(f"Error in browse Tesseract path: {e}", exc_info=True)
+            uno_utils.show_message_box("Browse Error", f"Could not open file browser: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
 
     def _test_tesseract_path(self):
+        """Test the currently entered Tesseract path."""
         path_field = self.get_control("TesseractPathTextField")
+        if not path_field:
+            return
+            
         tess_path = path_field.getText().strip()
         status_label = self.get_control("TesseractTestStatusLabel")
         
-        is_valid, message = tejocr_engine.check_tesseract_path(tess_path, self.ctx, show_gui_errors=False)
-        
-        if status_label:
-            if is_valid:
-                status_label.setText(f"✅ Valid: {message if message else 'Tesseract found and seems OK.'}")
+        try:
+            # Import tejocr_engine for testing
+            from . import tejocr_engine
+            is_valid, message = tejocr_engine.check_tesseract_path(tess_path, self.ctx, show_gui_errors=False)
+            
+            if status_label:
+                if is_valid:
+                    status_label.setText(f"✅ Valid: {message if message else 'Tesseract found and working'}")
+                else:
+                    status_label.setText(f"❌ Invalid: {message if message else 'Tesseract not found or failed'}")
             else:
-                status_label.setText(f"❌ Invalid: {message if message else 'Tesseract not found or version check failed.'}")
-        else:
-            logger.warning("TesseractTestStatusLabel not found in Settings Dialog. Cannot display test status.")
-            uno_utils.show_message_box(
-                "Tesseract Test",
-                f"""Path: {tess_path}
+                # Fallback to message box if label not found
+                uno_utils.show_message_box(
+                    "Tesseract Test",
+                    f"""Path: {tess_path}
 Status: {'Valid' if is_valid else 'Invalid'}
 Details: {message}""",
-                "infobox" if is_valid else "warningbox",
-                parent_frame=self.parent_frame,
-                ctx=self.ctx
-            )
+                    "infobox" if is_valid else "warningbox",
+                    parent_frame=self.parent_frame,
+                    ctx=self.ctx
+                )
+                
+        except Exception as e:
+            logger.error(f"Error testing Tesseract path: {e}", exc_info=True)
+            if status_label:
+                status_label.setText(f"❌ Error: Could not test path")
 
     def _handle_ok_action(self):
         """Save settings if they have changed."""
-        logger.info("SettingsDialog: OK/Save action initiated.")
-        # Tesseract Path
-        new_tesseract_path = self.get_control("TesseractPathTextField").getText()
-        if new_tesseract_path != self.initial_settings.get(constants.CFG_KEY_TESSERACT_PATH):
-            logger.info(f"Setting new Tesseract path: {new_tesseract_path}")
-            uno_utils.set_setting(constants.CFG_KEY_TESSERACT_PATH, new_tesseract_path, self.ctx)
-
-        # Default Language
-        lang_dropdown = self.get_control("DefaultLanguageDropdown")
-        if lang_dropdown and lang_dropdown.getItemCount() > 0:
-            selected_lang_display = lang_dropdown.getSelectedItem()
-            # Need to map display name back to code
-            # Re-fetch languages map used to populate this dropdown
-            current_langs_map = getattr(self, "_settings_languages_cache", None)
-            if not current_langs_map: # Should have been cached by _get_tesseract_languages_for_settings
-                 current_langs_map = self._get_tesseract_languages_for_settings()
-
-            selected_lang_code = None
-            for code, display in current_langs_map.items():
-                if display == selected_lang_display:
-                    selected_lang_code = code
-                    break
-            
-            if selected_lang_code and selected_lang_code != self.initial_settings.get(constants.CFG_KEY_DEFAULT_LANG):
-                uno_utils.set_setting(constants.CFG_KEY_DEFAULT_LANG, selected_lang_code, self.ctx)
-            elif not selected_lang_code:
-                logger.warning(f"Could not map selected language display '{selected_lang_display}' back to a code in settings save.")
-
-        # Default Preprocessing
-        new_grayscale = self.get_control("DefaultGrayscaleCheckbox").getState()
-        new_binarize = self.get_control("DefaultBinarizeCheckbox").getState()
-        if new_grayscale != self.initial_settings.get(constants.CFG_KEY_DEFAULT_GRAYSCALE):
-            uno_utils.set_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, new_grayscale, self.ctx)
-            logger.info(f"Setting new default grayscale: {new_grayscale}")
-        if new_binarize != self.initial_settings.get(constants.CFG_KEY_DEFAULT_BINARIZE):
-            uno_utils.set_setting(constants.CFG_KEY_DEFAULT_BINARIZE, new_binarize, self.ctx)
-            logger.info(f"Setting new default binarize: {new_binarize}")
+        logger.info("SettingsDialog: Save action initiated.")
         
-        # print("SettingsDialogHandler: OK/Save pressed. Settings saved.")
-        status_label = self.get_control("SettingsStatusLabel")
-        if status_label: status_label.setText("Settings saved successfully.")
-        # uno_utils.show_message_box("Settings Saved", "Your settings have been saved.", "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
-        return True # Indicate settings saved successfully
+        try:
+            changes_made = False
+            
+            # Tesseract Path
+            new_tesseract_path = self.get_control("TesseractPathTextField").getText().strip()
+            if new_tesseract_path != self.initial_settings.get(constants.CFG_KEY_TESSERACT_PATH):
+                logger.info(f"Updating Tesseract path: {new_tesseract_path}")
+                uno_utils.set_setting(constants.CFG_KEY_TESSERACT_PATH, new_tesseract_path, self.ctx)
+                changes_made = True
+
+            # Default Language
+            lang_dropdown = self.get_control("DefaultLanguageDropdown")
+            if lang_dropdown and lang_dropdown.getItemCount() > 0:
+                selected_lang_display = lang_dropdown.getSelectedItem()
+                # Map display name back to code
+                current_langs_map = getattr(self, "_settings_languages_cache", None)
+                if not current_langs_map:
+                     current_langs_map = self._get_tesseract_languages_for_settings()
+
+                selected_lang_code = None
+                for code, display in current_langs_map.items():
+                    if display == selected_lang_display:
+                        selected_lang_code = code
+                        break
+                
+                if selected_lang_code and selected_lang_code != self.initial_settings.get(constants.CFG_KEY_DEFAULT_LANG):
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_LANG, selected_lang_code, self.ctx)
+                    changes_made = True
+
+            # Default Preprocessing
+            grayscale_control = self.get_control("DefaultGrayscaleCheckbox")
+            binarize_control = self.get_control("DefaultBinarizeCheckbox")
+            
+            if grayscale_control:
+                new_grayscale = grayscale_control.getState()
+                if new_grayscale != self.initial_settings.get(constants.CFG_KEY_DEFAULT_GRAYSCALE):
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, new_grayscale, self.ctx)
+                    changes_made = True
+                    
+            if binarize_control:
+                new_binarize = binarize_control.getState()
+                if new_binarize != self.initial_settings.get(constants.CFG_KEY_DEFAULT_BINARIZE):
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_BINARIZE, new_binarize, self.ctx)
+                    changes_made = True
+            
+            # Update status
+            status_label = self.get_control("SettingsStatusLabel")
+            if changes_made:
+                if status_label: 
+                    status_label.setText("Settings saved successfully")
+                logger.info("Settings changes saved successfully")
+            else:
+                if status_label: 
+                    status_label.setText("No changes to save")
+            
+            return True  # Settings saved successfully
+            
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}", exc_info=True)
+            status_label = self.get_control("SettingsStatusLabel")
+            if status_label: 
+                status_label.setText("Error saving settings")
+            uno_utils.show_message_box("Save Error", f"Could not save settings: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+            return False  # Keep dialog open
 
 # --- Global Dialog Functions ---
 

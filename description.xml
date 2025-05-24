@@ -3,12 +3,12 @@
              xmlns:d="http://openoffice.org/extensions/description/2006"
              xmlns:xlink="http://www.w3.org/1999/xlink">
 
-    <version value="0.1.4" />
+    <version value="0.1.5" />
     <identifier value="org.libreoffice.TejOCR" />
 
     <display-name>
-        <name lang="en">TejOCR v0.1.4</name>
-        <name lang="hi-IN">तेजओसीआर v0.1.4</name>
+        <name lang="en">TejOCR v0.1.5</name>
+        <name lang="hi-IN">तेजओसीआर v0.1.5</name>
         <name lang="es-ES">TejOCR</name>
         <name lang="fr-FR">TejOCR</name>
         <name lang="de-DE">TejOCR</name>

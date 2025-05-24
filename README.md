@@ -7,39 +7,44 @@
   <img src="icons/main_logo.png" alt="TejOCR Logo" width="360" style="margin-bottom: -20px;"/>
 </div>
 
-# TejOCR v0.1.4 - LibreOffice OCR Extension
+# TejOCR v0.1.5 - LibreOffice OCR Extension
 
-🎉 **Phase 1 Complete: Core OCR Functionality Stable!** 
+🎉 **Phase 2 Complete: Professional UI/UX with Real Configurable Dialogs!** 
 
 TejOCR is a powerful LibreOffice extension that adds Optical Character Recognition (OCR) capabilities to your documents. Extract text from images directly within LibreOffice Writer.
 
-## ✅ What's Working in v0.1.4
+## ✅ What's New in v0.1.5
 
-**🚀 BOTH OCR WORKFLOWS FULLY FUNCTIONAL:**
-- ✅ **OCR from File**: Select image files and extract text
-- ✅ **OCR Selected Image**: Extract text from images already in your document
-- ✅ **Robust Error Handling**: Multi-strategy fallbacks prevent crashes
-- ✅ **Smart Text Insertion**: Automatically inserts extracted text in your document
+**🎨 COMPLETE UI/UX OVERHAUL:**
+- ✅ **Real Settings Dialog**: Configurable XDL-based settings with dependency checking
+- ✅ **Professional OCR Options Dialog**: Language selection, output modes, advanced options
+- ✅ **Smart Workflow Integration**: Seamless dialog flow for both OCR methods
+- ✅ **Enhanced User Experience**: Grouped controls, helpful hints, and error guidance
 
-**🔧 CRITICAL ISSUES RESOLVED:**
-- **No More Crashes**: Extension handles all error conditions gracefully
-- **Text Insertion Works**: Multiple fallback strategies ensure text gets inserted
-- **Image Export Fixed**: Selected images export reliably with GraphicProvider fallbacks
-- ✅ **Dependency Detection**: Accurate detection of Tesseract, NumPy, Pytesseract, Pillow
+**🔧 MAJOR IMPROVEMENTS:**
+- **Dependency Status Dashboard**: Live status checking with installation guidance
+- **Tesseract Path Configuration**: Browse, test, and validate Tesseract installation
+- **Advanced OCR Options**: Page segmentation modes, engine modes, preprocessing
+- **Multiple Output Modes**: Cursor, text box, replace image, clipboard
+- **Smart Defaults**: Remembers your preferences between sessions
 
 ## 🎯 Current Status
 
-**Phase 1 (Stability & Core OCR)**: ✅ **COMPLETE**
-- Core crashes eliminated
-- OCR engine fully functional
-- Dependency detection working
-- Safe error handling implemented
+**Phase 1 (Core Stability)**: ✅ **COMPLETE**
+- Core OCR functionality fully working
+- Multi-strategy error handling
+- Robust dependency detection
 
-**Phase 2 (UI/UX Enhancement)**: 🚧 **Next Priority**
-- Real settings dialog (XDL-based)
-- OCR options dialog with language selection  
-- Output mode selection (cursor/textbox/replace/clipboard)
-- Progress indicators and enhanced user experience
+**Phase 2 (Professional UI/UX)**: ✅ **COMPLETE**
+- Real XDL-based dialogs
+- Configurable settings system  
+- Professional user experience
+- Advanced OCR options
+
+**Phase 3 (Advanced Features)**: 🚧 **Next Priority**
+- Batch processing capabilities
+- Enhanced output formatting
+- Performance optimizations
 
 ## 🚀 Quick Start
 
@@ -72,7 +77,7 @@ TejOCR is a powerful LibreOffice extension that adds Optical Character Recogniti
 
 ### Installation
 
-1. **Download**: Get the latest `TejOCR-0.1.4.oxt` from releases
+1. **Download**: Get the latest `TejOCR-0.1.5.oxt` from releases
 2. **Install**: LibreOffice → Tools → Extension Manager → Add → Select the .oxt file
 3. **Restart**: Close and restart LibreOffice completely
 4. **Verify**: Look for "TejOCR" in the top menu bar
@@ -80,37 +85,35 @@ TejOCR is a powerful LibreOffice extension that adds Optical Character Recogniti
 ### Usage
 
 1. **Open LibreOffice Writer**
-2. **For File OCR**: Tools → TejOCR → OCR Image from File...
-3. **For Selected Image**: Insert image → Select it → Tools → TejOCR → OCR Selected Image
-4. **Check Settings**: Tools → TejOCR → Settings (shows dependency status)
+2. **Configure Settings**: Tools → TejOCR → Settings (first time setup)
+3. **For File OCR**: Tools → TejOCR → OCR Image from File → Select options → Start OCR
+4. **For Selected Image**: Insert image → Select it → Tools → TejOCR → OCR Selected Image → Select options → Start OCR
 
 ## 🔧 Troubleshooting
 
 ### Check Dependencies
-Go to **Tools → TejOCR → Settings** to see current status:
-- ✅ Tesseract: Should show installed version
-- ✅ Python packages: Should show NumPy, Pytesseract, Pillow as available
+Go to **Tools → TejOCR → Settings** to see real-time status:
+- ✅ Tesseract: Shows installed version and path
+- ✅ Python packages: Shows NumPy, Pytesseract, Pillow status
+- 📁 **Browse & Test**: Built-in path finder and validator
 
 ### Common Issues
 
-**"Tesseract not found"**:
-- Install Tesseract using package manager
-- Check that `tesseract --version` works in terminal
-
-**"NumPy not found"**:
-- Run the dependency installer: `python3 install_dependencies.py`
-- Or install manually to LibreOffice's Python as shown above
-
-**Extension doesn't appear**:
+**"Settings dialog won't open"**:
+- Check LibreOffice version (4.0+ required)
 - Restart LibreOffice completely
-- Check Extension Manager to verify installation
-- Look for error messages in terminal when starting LibreOffice
+- Check extension is properly installed
 
-### Debug Mode
-Start LibreOffice from terminal to see detailed logs:
-```bash
-/Applications/LibreOffice.app/Contents/MacOS/soffice --writer
-```
+**"OCR options not working"**:
+- Use Settings dialog to verify all dependencies
+- Check Tesseract path with built-in tester
+- Ensure image is properly selected
+
+### Advanced Configuration
+- **Language Selection**: Choose from all installed Tesseract languages
+- **Output Modes**: Customize where text appears
+- **Page Segmentation**: Optimize for different image types
+- **Preprocessing**: Enable image enhancement for better results
 
 ## 🏗️ Development
 
@@ -126,11 +129,14 @@ python3 build.py
 TejOCR/
 ├── python/tejocr/          # Main Python package
 │   ├── constants.py        # Version and configuration constants
-│   ├── tejocr_service.py   # Main UNO service
+│   ├── tejocr_service.py   # Main UNO service with dialog integration
 │   ├── tejocr_engine.py    # OCR processing engine
 │   ├── tejocr_output.py    # Text insertion handling
-│   ├── tejocr_dialogs.py   # User interface dialogs
+│   ├── tejocr_dialogs.py   # Professional XDL dialog handlers
 │   └── uno_utils.py        # UNO utilities and helpers
+├── dialogs/                # XDL dialog definitions
+│   ├── tejocr_settings_dialog.xdl     # Settings UI
+│   └── tejocr_options_dialog.xdl      # OCR options UI
 ├── icons/                  # Extension icons
 ├── description.xml         # Extension metadata
 ├── Addons.xcu             # LibreOffice menu/toolbar integration
@@ -149,7 +155,7 @@ This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE
 
 ---
 
-**Note**: This is v0.1.4 with Phase 1 (core stability) complete. Phase 2 (enhanced UI/UX) is coming next!
+**Note**: This is v0.1.5 with Phase 2 (Professional UI/UX) complete. Phase 3 (Advanced Features) is coming next!
 
 For detailed changes and technical information, see [CHANGELOG.md](CHANGELOG.md).
 

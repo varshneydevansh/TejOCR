@@ -107,7 +107,8 @@ CURRENT_LOG_LEVEL = "DEBUG"
 
 # --- Development Flags ---
 # When True, bypasses certain checks for placeholder UI testing
-DEVELOPMENT_MODE_STRICT_PLACEHOLDERS = True
+# When False, enables real OCR functionality
+DEVELOPMENT_MODE_STRICT_PLACEHOLDERS = False
 
 # Default file for logging, relative to user's temp directory subfolder
 LOG_FILENAME = "tejocr.log" 

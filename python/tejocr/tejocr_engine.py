@@ -168,6 +168,80 @@ def _preprocess_image(image_path, grayscale=False, binarize_method=None):
         logger.error(f"Error during image preprocessing for '{image_path}': {e}", exc_info=True)
         return image_path # Return original path if preprocessing fails
 
+def extract_text_from_selected_image(ctx, frame, lang="eng"):
+    """Extract text from currently selected image in LibreOffice."""
+    logger.info(f"Extracting text from selected image with language: {lang}")
+    
+    if not PYTESSERACT_AVAILABLE:
+        raise Exception("pytesseract library not available. Please install pytesseract.")
+    
+    if not PILLOW_AVAILABLE:
+        raise Exception("Pillow library not available. Please install Pillow.")
+    
+    # Get image from selection
+    temp_image_path = _get_image_from_selection(frame, ctx)
+    if not temp_image_path:
+        raise Exception("Could not extract image from selection.")
+    
+    try:
+        # Configure pytesseract path
+        tess_path = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx)
+        tess_exec = uno_utils.find_tesseract_executable(tess_path, ctx)
+        if not tess_exec:
+            raise Exception("Tesseract executable not found. Please check your installation.")
+        
+        original_cmd = pytesseract.pytesseract.tesseract_cmd
+        pytesseract.pytesseract.tesseract_cmd = tess_exec
+        
+        try:
+            # Perform OCR
+            logger.info(f"Running OCR on temp image: {temp_image_path}")
+            text = pytesseract.image_to_string(temp_image_path, lang=lang)
+            logger.info(f"OCR completed. Extracted {len(text)} characters.")
+            return text.strip()
+        finally:
+            pytesseract.pytesseract.tesseract_cmd = original_cmd
+            
+    finally:
+        # Clean up temp file
+        if temp_image_path and os.path.exists(temp_image_path):
+            try:
+                os.remove(temp_image_path)
+                logger.debug(f"Cleaned up temp file: {temp_image_path}")
+            except OSError:
+                pass
+
+def extract_text_from_image_file(ctx, image_path, lang="eng"):
+    """Extract text from an image file."""
+    logger.info(f"Extracting text from image file: {image_path} with language: {lang}")
+    
+    if not PYTESSERACT_AVAILABLE:
+        raise Exception("pytesseract library not available. Please install pytesseract.")
+    
+    if not PILLOW_AVAILABLE:
+        raise Exception("Pillow library not available. Please install Pillow.")
+    
+    if not os.path.exists(image_path):
+        raise Exception(f"Image file not found: {image_path}")
+    
+    # Configure pytesseract path
+    tess_path = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx)
+    tess_exec = uno_utils.find_tesseract_executable(tess_path, ctx)
+    if not tess_exec:
+        raise Exception("Tesseract executable not found. Please check your installation.")
+    
+    original_cmd = pytesseract.pytesseract.tesseract_cmd
+    pytesseract.pytesseract.tesseract_cmd = tess_exec
+    
+    try:
+        # Perform OCR
+        logger.info(f"Running OCR on image file: {image_path}")
+        text = pytesseract.image_to_string(image_path, lang=lang)
+        logger.info(f"OCR completed. Extracted {len(text)} characters.")
+        return text.strip()
+    finally:
+        pytesseract.pytesseract.tesseract_cmd = original_cmd
+
 def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False, show_gui_errors=True):
     """Checks if Tesseract is available at the given path or via auto-detection."""
     if not PYTESSERACT_AVAILABLE:

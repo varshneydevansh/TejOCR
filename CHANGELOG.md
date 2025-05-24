@@ -9,6 +9,46 @@ All notable changes to the TejOCR LibreOffice extension project are documented h
 
 ---
 
+## [0.1.3] - 2025-05-24 - Real OCR Functionality Enabled
+
+### 🎉 **MAJOR BREAKTHROUGH: Full Working OCR Implementation**
+
+**Finally! The extension now performs real OCR on images!**
+
+### Added - Real OCR Functionality
+- **✅ OCR Selected Image**: Now extracts actual text from selected images in LibreOffice Writer
+- **✅ OCR Image from File**: Opens file picker, processes image files, extracts text
+- **✅ Text Insertion**: Automatically inserts extracted text at cursor position
+- **✅ Smart Error Handling**: User-friendly error messages with helpful tips
+- **✅ Success Feedback**: Shows extraction results and character count
+
+### Enhanced - User Experience
+- **Simple Workflow**: Select image → Menu → Text appears at cursor (Mac-like simplicity!)
+- **File Processing**: Choose image file → Menu → Text appears at cursor
+- **No Complex Dialogs**: Streamlined experience focused on getting OCR done quickly
+- **Clear Feedback**: Success messages show character count and extraction status
+- **Helpful Error Messages**: Guide users when things go wrong
+
+### Technical Implementation
+- **Real Engine Functions**: `extract_text_from_selected_image()` and `extract_text_from_image_file()`
+- **Integrated pytesseract**: Proper path detection and configuration
+- **Temporary File Handling**: Safe image extraction and cleanup
+- **Robust Error Handling**: Comprehensive exception handling with user feedback
+- **Development Mode**: Set `DEVELOPMENT_MODE_STRICT_PLACEHOLDERS = False` for real functionality
+
+### Fixed - Core Issues
+- **✅ Settings UI**: Now shows proper dependency detection results in UI dialog
+- **✅ Real OCR**: No more placeholder messages - actual text extraction
+- **✅ File Picker**: Real file selection dialog for image processing
+- **✅ Text Output**: Working text insertion at cursor position
+
+### User Workflow Now
+1. **For Selected Images**: Select image in Writer → TejOCR Menu → OCR Selected Image → Text appears!
+2. **For Image Files**: TejOCR Menu → OCR Image from File → Choose file → Text appears!
+3. **Simple Settings**: View dependency status and installation guidance
+
+---
+
 ## [0.1.2] - 2025-05-24 - Enhanced Settings & Dependency Management
 
 ### 🎯 **Major UX Improvements - Focus on Common Users**

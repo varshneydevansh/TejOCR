@@ -706,35 +706,46 @@ def _check_dependencies():
     
     status['tesseract'] = f"Status: {tesseract_status}\nPath: {tesseract_path}"
     
-    # Check Python packages (simulate what would be available in LibreOffice)
+    # Check Python packages - Check what's actually available in current context
     python_packages = []
     
-    # Check pytesseract
+    # Check pytesseract - This should work in LibreOffice's Python
     try:
         import pytesseract
         version = getattr(pytesseract, '__version__', 'installed')
         python_packages.append(f"✅ pytesseract: {version}")
+        pytesseract_available = True
     except ImportError:
-        python_packages.append("❌ pytesseract: Not found")
+        python_packages.append("❌ pytesseract: Not found in LibreOffice Python")
+        pytesseract_available = False
     
-    # Check PIL/Pillow
+    # Check PIL/Pillow - This should work in LibreOffice's Python  
     try:
         import PIL
         python_packages.append(f"✅ Pillow: {PIL.__version__}")
+        pillow_available = True
     except ImportError:
-        python_packages.append("❌ Pillow: Not found")
+        python_packages.append("❌ Pillow: Not found in LibreOffice Python")
+        pillow_available = False
     
-    # UNO is expected to be missing outside LibreOffice
-    python_packages.append("⚪ uno: Available in LibreOffice (normal)")
+    # Check UNO - Should always be available in LibreOffice
+    try:
+        import uno
+        python_packages.append("✅ uno: Available in LibreOffice")
+        uno_available = True
+    except ImportError:
+        python_packages.append("❌ uno: Not available (unexpected)")
+        uno_available = False
     
     status['python_packages'] = '\n'.join(python_packages)
     
-    # Determine overall status
+    # More accurate readiness assessment
     tesseract_ok = "✅" in tesseract_status
-    pytesseract_ok = any("✅ pytesseract" in pkg for pkg in python_packages)
-    pillow_ok = any("✅ Pillow" in pkg for pkg in python_packages)
     
-    if tesseract_ok and pytesseract_ok and pillow_ok:
+    logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
+    
+    # Use the more accurate variables from above
+    if tesseract_ok and pytesseract_available and pillow_available:
         status['summary'] = "🎉 ALL DEPENDENCIES READY! OCR functionality available."
         status['next_steps'] = """NEXT STEPS:
 ═════════════════════════════
@@ -745,12 +756,12 @@ def _check_dependencies():
 
 Your TejOCR extension is ready for full functionality!"""
         
-    elif tesseract_ok and (pytesseract_ok or pillow_ok):
+    elif tesseract_ok and (pytesseract_available or pillow_available):
         status['summary'] = "⚠️  PARTIALLY READY - Some Python packages missing"
         missing = []
-        if not pytesseract_ok:
+        if not pytesseract_available:
             missing.append("pytesseract")
-        if not pillow_ok:
+        if not pillow_available:
             missing.append("Pillow")
         
         status['next_steps'] = f"""NEXT STEPS:
@@ -990,56 +1001,94 @@ Ready to implement real OCR functionality! 🚀"""
     
     logger.info("Settings information displayed via console")
     
-    # Try simple message display without complex UNO constants
+    # Enhanced UI message display with better error handling
     try:
         import uno
         if ctx is None:
             ctx = uno.getComponentContext()
         
-        service_manager = ctx.getServiceManager() 
+        service_manager = ctx.getServiceManager()
         toolkit = service_manager.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
         
         if toolkit:
+            # Robust parent window detection with multiple fallback methods
+            parent_peer = None
+            
+            # Method 1: Try parent_frame if provided
+            if parent_frame:
+                try:
+                    container_window = parent_frame.getContainerWindow()
+                    if container_window:
+                        parent_peer = container_window.getPeer()
+                        logger.debug("Settings dialog: Got parent_peer from provided parent_frame")
+                except Exception as e1:
+                    logger.debug(f"Settings dialog Method 1 failed: {e1}")
+            
+            # Method 2: Try desktop's current frame
+            if not parent_peer:
+                try:
+                    desktop = service_manager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+                    if desktop:
+                        current_frame = desktop.getCurrentFrame()
+                        if current_frame:
+                            container_window = current_frame.getContainerWindow()
+                            if container_window:
+                                parent_peer = container_window.getPeer()
+                                logger.debug("Settings dialog: Got parent_peer from desktop current frame")
+                except Exception as e2:
+                    logger.debug(f"Settings dialog Method 2 failed: {e2}")
+            
+            # Method 3: Try toolkit's desktop window as fallback
+            if not parent_peer:
+                try:
+                    desktop_window = toolkit.getDesktopWindow()
+                    if desktop_window:
+                        parent_peer = desktop_window
+                        logger.debug("Settings dialog: Got parent_peer from toolkit desktop window")
+                except Exception as e3:
+                    logger.debug(f"Settings dialog Method 3 failed: {e3}")
+            
+            # Create message box (works even with None parent in many cases)
             try:
-                # Get desktop window as parent
-                desktop = service_manager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
-                parent_peer = None
+                from com.sun.star.awt.MessageBoxType import INFOBOX
+                from com.sun.star.awt.MessageBoxButtons import BUTTONS_OK
                 
-                if desktop:
-                    current_frame = desktop.getCurrentFrame()
-                    if current_frame and current_frame.getContainerWindow():
-                        parent_peer = current_frame.getContainerWindow().getPeer()
-                
-                if not parent_peer and desktop: # Fallback if frame or window not available
-                    parent_peer = desktop.getDesktopWindow() # Alternative way to get a peer for desktop
-                
-                if not parent_peer and toolkit.getDesktopWindow(): # Further fallback using toolkit
-                     parent_peer = toolkit.getDesktopWindow()
-
-                if not parent_peer:
-                    logger.debug("Could not obtain a valid parent_peer for message box.")
-                    # No return here, console output is primary
-
-                # Create basic info message box using integer constants
-                msg_type = 1   # Info box type
-                buttons = 1    # OK button
+                msg_type = INFOBOX
+                buttons = BUTTONS_OK
                 
                 box = toolkit.createMessageBox(parent_peer, msg_type, buttons, "TejOCR Settings", settings_text)
                 if box:
-                    # Specific try-except for execute
                     try:
                         result = box.execute()
-                        logger.info(f"Settings dialog UI executed with result: {result}")
+                        logger.info(f"Settings dialog UI displayed successfully! Result: {result}")
+                        return True  # UI was successfully shown
                     except Exception as exec_error:
-                        logger.debug(f"Settings dialog UI execute() failed: {exec_error}. Console output remains primary.")
+                        logger.debug(f"Settings dialog execute failed: {exec_error}")
                 else:
-                    logger.warning("Settings dialog UI: toolkit.createMessageBox returned None. Console output remains primary.")
+                    logger.debug("Settings dialog: createMessageBox returned None")
                     
-            except Exception as display_error:
-                logger.debug(f"Settings dialog UI display attempt failed: {display_error}. Console output remains primary.")
-                
+            except ImportError:
+                # Fallback to integer constants if enum import fails
+                try:
+                    msg_type = 1   # Info box type
+                    buttons = 1    # OK button
+                    
+                    box = toolkit.createMessageBox(parent_peer, msg_type, buttons, "TejOCR Settings", settings_text)
+                    if box:
+                        try:
+                            result = box.execute()
+                            logger.info(f"Settings dialog UI displayed successfully with fallback! Result: {result}")
+                            return True
+                        except Exception as exec_error:
+                            logger.debug(f"Settings dialog fallback execute failed: {exec_error}")
+                    else:
+                        logger.debug("Settings dialog fallback: createMessageBox returned None")
+                        
+                except Exception as fallback_error:
+                    logger.debug(f"Settings dialog fallback creation failed: {fallback_error}")
+                    
     except Exception as e:
-        logger.debug(f"Settings dialog UNO general attempt failed: {e}. Console output remains primary.")
+        logger.debug(f"Settings dialog UNO attempt failed: {e}. Console output remains primary.")
     
     logger.info("Settings dialog function completed")
 

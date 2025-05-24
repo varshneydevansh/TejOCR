@@ -209,6 +209,10 @@ def _copy_text_to_clipboard(ctx, frame, text_to_insert):
         logger.error(f"Error copying text to clipboard: {e}", exc_info=True)
         uno_utils.show_message_box(_("Clipboard Error"), _("Could not copy text to clipboard: {error}").format(error=e), "errorbox", parent_frame=frame, ctx=ctx)
 
+def insert_text_at_cursor(ctx, frame, text_to_insert):
+    """Simple function to insert text at the current cursor position."""
+    return _insert_text_at_cursor(ctx, frame, text_to_insert)
+
 def handle_ocr_output(ctx, frame, recognized_text, output_mode):
     """Main dispatcher for handling OCR output based on the selected mode."""
     logger.info(f"Handling OCR output. Mode: {output_mode}, Text length: {len(recognized_text if recognized_text else '')}")

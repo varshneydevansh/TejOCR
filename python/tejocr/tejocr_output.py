@@ -9,10 +9,41 @@
 
 import uno
 import unohelper
-from com.sun.star.text import XTextDocument, XText, XTextRange, XTextContent
-from com.sun.star.container import XNamed
-from com.sun.star.datatransfer import XTransferable, DataFlavor
-from com.sun.star.datatransfer.clipboard import XClipboard
+
+# Safe import of UNO interfaces with fallbacks
+print("DEBUG: tejocr_output.py: Attempting UNO interface imports...")
+try:
+    from com.sun.star.text import XTextDocument, XText, XTextRange, XTextContent
+    print("DEBUG: tejocr_output.py: Successfully imported text interfaces")
+except ImportError as e:
+    print(f"DEBUG: tejocr_output.py: Warning - Could not import text interfaces: {e}")
+    # Define dummy classes to prevent module loading failure
+    class XTextDocument: pass
+    class XText: pass
+    class XTextRange: pass
+    class XTextContent: pass
+
+try:
+    from com.sun.star.container import XNamed
+    print("DEBUG: tejocr_output.py: Successfully imported XNamed")
+except ImportError as e:
+    print(f"DEBUG: tejocr_output.py: Warning - Could not import XNamed: {e}")
+    class XNamed: pass
+
+try:
+    from com.sun.star.datatransfer import XTransferable, DataFlavor
+    print("DEBUG: tejocr_output.py: Successfully imported datatransfer interfaces")
+except ImportError as e:
+    print(f"DEBUG: tejocr_output.py: Warning - Could not import datatransfer interfaces: {e}")
+    class XTransferable: pass
+    class DataFlavor: pass
+
+try:
+    from com.sun.star.datatransfer.clipboard import XClipboard
+    print("DEBUG: tejocr_output.py: Successfully imported XClipboard")
+except ImportError as e:
+    print(f"DEBUG: tejocr_output.py: Warning - Could not import XClipboard: {e}")
+    class XClipboard: pass
 
 from tejocr import uno_utils
 from tejocr import constants

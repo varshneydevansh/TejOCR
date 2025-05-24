@@ -184,54 +184,69 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
             else: # If no window can be found
                 logger.debug("show_message_box: Toolkit created but no suitable window found (getActiveTopWindow/getDesktopWindow).")
 
-    # Determine MessageBoxType from string
-    actual_box_type_str = "com.sun.star.awt.MessageBoxType.MESSAGEBOX" # Default
-    if type.lower() == "infobox":
-        actual_box_type_str = "com.sun.star.awt.MessageBoxType.INFOBOX"
-    elif type.lower() == "warningbox":
-        actual_box_type_str = "com.sun.star.awt.MessageBoxType.WARNINGBOX"
-    elif type.lower() == "errorbox":
-        actual_box_type_str = "com.sun.star.awt.MessageBoxType.ERRORBOX"
-    elif type.lower() == "querybox":
-        actual_box_type_str = "com.sun.star.awt.MessageBoxType.QUERYBOX"
-
+    # Determine MessageBoxType dynamically
+    box_type_str_map = {
+        "infobox": "INFOBOX",
+        "warningbox": "WARNINGBOX",
+        "errorbox": "ERRORBOX",
+        "querybox": "QUERYBOX",
+        "messagebox": "MESSAGEBOX" # Default
+    }
+    msg_box_type_name = box_type_str_map.get(type.lower(), "MESSAGEBOX")
+    actual_box_type_constant_str = f"com.sun.star.awt.MessageBoxType.{msg_box_type_name}"
+    
     try:
-        msg_type_enum = uno.getConstantByName(actual_box_type_str)
+        msg_type_enum = uno.getConstantByName(actual_box_type_constant_str)
     except Exception:
+        logger.warning(f"Failed to get MessageBoxType constant '{actual_box_type_constant_str}'. Falling back to MESSAGEBOX.")
         msg_type_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxType.MESSAGEBOX")
 
-
-    # Determine buttons
-    if buttons is None:
-        if type.lower() == "querybox":
-            # Default for querybox could be Yes/No if not specified, or just OK.
-            # For our specific enhanced Tesseract prompt, we'll pass explicit buttons.
-            # If used as a generic querybox without specific buttons, OK is a safe default.
+    # Determine buttons dynamically
+    if isinstance(buttons, str):
+        button_str_map = {
+            "ok": "BUTTONS_OK",
+            "ok_cancel": "BUTTONS_OK_CANCEL",
+            "yes_no": "BUTTONS_YES_NO",
+            "yes_no_cancel": "BUTTONS_YES_NO_CANCEL",
+            "retry_cancel": "BUTTONS_RETRY_CANCEL",
+            "abort_retry_ignore": "BUTTONS_ABORT_RETRY_IGNORE"
+        }
+        btn_name = button_str_map.get(buttons.lower(), "BUTTONS_OK")
+        buttons_constant_str = f"com.sun.star.awt.MessageBoxButtons.{btn_name}"
+        try:
+            buttons_enum = uno.getConstantByName(buttons_constant_str)
+        except Exception:
+            logger.warning(f"Failed to get MessageBoxButtons constant '{buttons_constant_str}'. Falling back to BUTTONS_OK.")
             buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
-        else:
-            buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
-    else:
-        buttons_enum = buttons # Assume 'buttons' is already the UNO constant
+    elif buttons is None: # Default to OK if not specified
+        buttons_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxButtons.BUTTONS_OK")
+    else: # Assume 'buttons' is already the UNO constant
+        buttons_enum = buttons
+        
+    msg_result_cancel_enum = 0 # Default return for error/cancel
+    try:
+        msg_result_cancel_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxResults.CANCEL")
+    except Exception:
+        logger.warning("Failed to get MessageBoxResults.CANCEL constant. Using 0 as fallback for cancel.")
 
     try:
         toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
         if not toolkit:
-            logger.error(f"show_message_box: {_('Failed to create Toolkit. Cannot show:')} {title} - {message}")
-            # Consider a non-UNO fallback here if essential, e.g., logging to a file or console.
-            return uno.getConstantByName("com.sun.star.awt.MessageBoxResults.CANCEL") # Simulate a cancel
+            logger.error(f"show_message_box: {_('Failed to create Toolkit (second attempt). Cannot show:')} {title} - {message}")
+            print(f"MESSAGE BOX (CONSOLE FALLBACK - TOOLKIT FAIL): {title} - {message}")
+            return msg_result_cancel_enum
 
         box = toolkit.createMessageBox(parent_peer, msg_type_enum, buttons_enum, str(title), str(message))
+        if not box:
+            logger.error(f"show_message_box: toolkit.createMessageBox returned None for: {title} - {message}")
+            print(f"MESSAGE BOX (CONSOLE FALLBACK - CREATE FAIL): {title} - {message}")
+            return msg_result_cancel_enum
+            
         return box.execute()
     except Exception as e:
-        logger.error(f"{_('Error showing message box')} '{title}': {e}", exc_info=True)
-        # Fallback message using print if logger itself fails or to ensure visibility during critical errors
-        print(f"MESSAGE BOX FALLBACK (ERROR): {title} - {message} - Exception: {e}")
-        # Return a value indicating failure, e.g., equivalent to Cancel or a custom error code.
-        # Using MessageBoxResults.CANCEL makes sense as the operation was effectively cancelled.
-        try:
-            return uno.getConstantByName("com.sun.star.awt.MessageBoxResults.CANCEL")
-        except Exception:
-            return 0 # Fallback if even getting CANCEL constant fails.
+        logger.error(f"show_message_box: Exception during create/execute: {e} for {title} - {message}", exc_info=True)
+        print(f"MESSAGE BOX (CONSOLE FALLBACK - EXECUTE ERROR): {title} - {message} - Exception: {e}")
+        return msg_result_cancel_enum
 
 def get_current_frame(ctx):
     """Gets the current desktop frame."""
@@ -246,7 +261,8 @@ def get_current_frame(ctx):
 def is_graphic_object_selected(frame, ctx):
     """Checks if a graphic object is currently selected in the frame."""
     # FOR TESTING: Uncomment the next line to force-return True
-    logger.debug("TESTING MODE: Forcing is_graphic_object_selected to return True"); return True
+    logger.debug("TESTING MODE: Forcing is_graphic_object_selected to return True");
+    return True
     
     if not frame:
         logger.debug("is_graphic_object_selected: No frame provided")

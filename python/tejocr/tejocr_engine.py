@@ -7,9 +7,9 @@
 
 """Core OCR processing, Tesseract interaction, and image handling."""
 
+import os
 import uno
 import unohelper
-import os
 import tempfile
 import shutil # For shutil.which & tesseract path checking
 

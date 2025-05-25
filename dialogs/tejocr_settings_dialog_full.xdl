@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" 
+            dlg:id="TejOCRSettingsDialog" 
+            dlg:left="100" dlg:top="50" 
+            dlg:width="450" dlg:height="400" 
+            dlg:closeable="true" dlg:moveable="true" 
+            dlg:title="TejOCR Settings">
+    <dlg:bulletinboard>
+        
+        <!-- Header -->
+        <dlg:fixedtext dlg:id="HeaderLabel" dlg:left="15" dlg:top="10" dlg:width="420" dlg:height="20" 
+                       dlg:value="Configure TejOCR extension settings and dependencies" 
+                       dlg:align="center"/>
+        
+        <!-- Dependency Status Section -->
+        <dlg:groupbox dlg:id="DependencyStatusGroup" dlg:left="15" dlg:top="35" dlg:width="420" dlg:height="80" dlg:value="Dependency Status">
+            <dlg:bulletinboard>
+                <dlg:fixedtext dlg:id="TesseractStatusLabel" dlg:left="10" dlg:top="20" dlg:width="200" dlg:height="15" dlg:value="Tesseract: Checking..."/>
+                <dlg:fixedtext dlg:id="PythonPackagesStatusLabel" dlg:left="220" dlg:top="20" dlg:width="180" dlg:height="15" dlg:value="Python: Checking..."/>
+                
+                <dlg:button dlg:id="CheckDependenciesButton" dlg:left="10" dlg:top="45" dlg:width="120" dlg:height="20" dlg:value="Check Dependencies" dlg:tabstop="true"/>
+                <dlg:button dlg:id="InstallGuideButton" dlg:left="140" dlg:top="45" dlg:width="120" dlg:height="20" dlg:value="Installation Guide" dlg:tabstop="true"/>
+                <dlg:button dlg:id="HelpMeInstallButton" dlg:left="270" dlg:top="45" dlg:width="120" dlg:height="20" dlg:value="Help Me Install" dlg:tabstop="true"/>
+            </dlg:bulletinboard>
+        </dlg:groupbox>
+
+        <!-- Tesseract Configuration Section -->
+        <dlg:groupbox dlg:id="TesseractConfigGroup" dlg:left="15" dlg:top="125" dlg:width="420" dlg:height="100" dlg:value="Tesseract Configuration">
+            <dlg:bulletinboard>
+                <dlg:fixedtext dlg:id="TesseractPathLabel" dlg:left="10" dlg:top="20" dlg:width="100" dlg:height="15" dlg:value="Tesseract Path:"/>
+                <dlg:textfield dlg:id="TesseractPathTextField" dlg:left="115" dlg:top="18" dlg:width="220" dlg:height="18" dlg:tabstop="true"/>
+                <dlg:button dlg:id="BrowseButton" dlg:left="345" dlg:top="18" dlg:width="60" dlg:height="18" dlg:value="Browse..." dlg:tabstop="true"/>
+                
+                <dlg:button dlg:id="TestTesseractButton" dlg:left="10" dlg:top="50" dlg:width="100" dlg:height="20" dlg:value="Test Path" dlg:tabstop="true"/>
+                <dlg:fixedtext dlg:id="TesseractTestStatusLabel" dlg:left="120" dlg:top="52" dlg:width="285" dlg:height="15" dlg:value="Click 'Test Path' to verify Tesseract configuration"/>
+                
+                <dlg:fixedtext dlg:id="TesseractHelpLabel" dlg:left="10" dlg:top="75" dlg:width="395" dlg:height="15" 
+                               dlg:value="Leave blank for auto-detection. Specify path only if Tesseract is not in system PATH."/>
+            </dlg:bulletinboard>
+        </dlg:groupbox>
+
+        <!-- Default OCR Options Section -->
+        <dlg:groupbox dlg:id="DefaultOptionsGroup" dlg:left="15" dlg:top="235" dlg:width="420" dlg:height="90" dlg:value="Default OCR Options">
+            <dlg:bulletinboard>
+                <dlg:fixedtext dlg:id="DefaultLanguageLabel" dlg:left="10" dlg:top="20" dlg:width="100" dlg:height="15" dlg:value="Default Language:"/>
+                <dlg:combobox dlg:id="DefaultLanguageDropdown" dlg:left="115" dlg:top="18" dlg:width="180" dlg:height="18" dlg:dropdown="true" dlg:tabstop="true"/>
+                <dlg:button dlg:id="RefreshLanguagesButtonSettings" dlg:left="305" dlg:top="18" dlg:width="100" dlg:height="18" dlg:value="Refresh List" dlg:tabstop="true"/>
+                
+                <dlg:fixedtext dlg:id="DefaultPreprocessingLabel" dlg:left="10" dlg:top="45" dlg:width="120" dlg:height="15" dlg:value="Default Preprocessing:"/>
+                <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:left="140" dlg:top="45" dlg:width="120" dlg:height="15" dlg:value="Convert to Grayscale" dlg:tabstop="true"/>
+                <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:left="270" dlg:top="45" dlg:width="135" dlg:height="15" dlg:value="Binarize (B&W)" dlg:tabstop="true"/>
+                
+                <dlg:fixedtext dlg:id="PreprocessingHelpLabel" dlg:left="10" dlg:top="65" dlg:width="395" dlg:height="15" 
+                               dlg:value="These options are applied by default to new OCR operations. You can override them per operation."/>
+            </dlg:bulletinboard>
+        </dlg:groupbox>
+
+        <!-- Status Section -->
+        <dlg:groupbox dlg:id="SettingsStatusGroup" dlg:left="15" dlg:top="335" dlg:width="420" dlg:height="35" dlg:value="Status">
+            <dlg:bulletinboard>
+                <dlg:fixedtext dlg:id="SettingsStatusLabel" dlg:left="10" dlg:top="15" dlg:width="395" dlg:height="15" dlg:value="Ready to configure settings"/>
+            </dlg:bulletinboard>
+        </dlg:groupbox>
+
+        <!-- Action Buttons -->
+        <dlg:button dlg:id="HelpButtonSettings" dlg:left="15" dlg:top="380" dlg:width="60" dlg:height="25" dlg:value="Help" dlg:tabstop="true"/>
+        <dlg:button dlg:id="CancelButton" dlg:left="285" dlg:top="380" dlg:width="70" dlg:height="25" dlg:value="Cancel" dlg:tabstop="true"/>
+        <dlg:button dlg:id="SaveButton" dlg:left="365" dlg:top="380" dlg:width="70" dlg:height="25" dlg:value="Save" dlg:default="true" dlg:tabstop="true"/>
+
+    </dlg:bulletinboard>
+</dlg:window> 

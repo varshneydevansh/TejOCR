@@ -51,12 +51,12 @@ TejOCR is a powerful LibreOffice extension that adds Optical Character Recogniti
 ### Prerequisites
 
 1. **Tesseract OCR** (Required):
-   ```bash
+```bash
    # macOS
-   brew install tesseract
-   
+brew install tesseract
+
    # Ubuntu/Debian
-   sudo apt install tesseract-ocr
+sudo apt install tesseract-ocr
    
    # Windows
    # Download from: https://github.com/UB-Mannheim/tesseract/wiki
@@ -68,7 +68,7 @@ TejOCR is a powerful LibreOffice extension that adds Optical Character Recogniti
    ```bash
    python3 install_dependencies.py
    ```
-   
+
    **Manual Installation**:
    ```bash
    # Get LibreOffice's Python path first
@@ -118,11 +118,11 @@ Go to **Tools → TejOCR → Settings** to see real-time status:
 ## 🏗️ Development
 
 ### Building from Source
-```bash
+   ```bash
 git clone <repository>
 cd TejOCR
 python3 build.py
-```
+   ```
 
 ### Project Structure
 ```

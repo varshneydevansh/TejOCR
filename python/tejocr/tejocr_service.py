@@ -165,7 +165,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         self.logger.info(f"TejOCRService __init__ called with ctx: {self.ctx is not None}")
         # No deferred imports block here anymore. Modules are loaded by _ensure_modules_loaded.
         self.logger.info("TejOCRService __init__ completed. Modules will be late-loaded.")
-
+            
     def initialize(self, args):
         self.logger.info("TejOCRService initializing...")
         if args:
@@ -366,7 +366,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         else:
             self.logger.debug("Toolbar action: No image selected, proceeding with OCR From File logic.")
             self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file)
-
+    
     def _handle_ocr_selected_image(self):
         self.logger.info("Handling OCR Selected Image action.")
         
@@ -376,41 +376,38 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             uno_utils.show_message_box("Selection Required", "Please select an image in your document first.", "warningbox", parent_frame=self.frame, ctx=self.ctx)
             return
 
-        # Ensure dependencies and show options dialog
-        if self._ensure_tesseract_is_ready_and_run():
-            try:
-                # Ensure dialogs module is loaded
-                if not _ensure_modules_loaded(self, dialogs=True):
-                    self.logger.error("Could not load dialogs module for OCR options")
-                    return
+        # Get OCR options from user via simple dialogs
+        try:
+            # Get language choice - FIXED: proper argument order
+            default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, "eng", self.ctx)
+            language = uno_utils.show_input_box(
+                title=_("OCR Language"),
+                message=_("Enter OCR language for this operation (default: {default}):").format(default=default_lang),
+                default_text=default_lang,
+                ctx=self.ctx,
+                parent_frame=self.frame
+            )
+            
+            if language is None:  # User cancelled
+                self.logger.info("OCR cancelled by user at language selection")
+                return
                 
-                # Create and show OCR options dialog for selected image
-                options_dialog = _tejocr_dialogs_module.OptionsDialogHandler(self.ctx, ocr_source_type="selected")
+            if not language.strip():  # Empty input, use default
+                language = default_lang
                 
-                if options_dialog._create_dialog(self.frame):
-                    result = options_dialog.execute()
-                    self.logger.info(f"OCR options dialog completed with result: {result}")
-                    
-                    if result and options_dialog.recognized_text:
-                        # Show success message
-                        char_count = len(options_dialog.recognized_text)
-                        uno_utils.show_message_box("OCR Complete", f"Successfully extracted {char_count} characters from selected image.", "infobox", parent_frame=self.frame, ctx=self.ctx)
-                    elif result:
-                        self.logger.warning("OCR dialog returned success but no text was found")
-                    else:
-                        self.logger.info("OCR options dialog was cancelled")
-                    
-                    # Clean up
-                    options_dialog.dispose()
-                else:
-                    self.logger.error("Failed to create OCR options dialog for selected image")
-                    # Fallback to direct OCR call
-                    self._fallback_direct_ocr_selected()
-                    
-            except Exception as e:
-                self.logger.error(f"Error in OCR selected image dialog: {e}", exc_info=True)
-                # Try fallback
-                self._fallback_direct_ocr_selected()
+            # Get output mode choice
+            output_mode = self._get_output_mode_choice()
+            if output_mode is None:  # User cancelled
+                self.logger.info("OCR cancelled by user at output mode selection")
+                return
+                
+            # Perform OCR with chosen options
+            self._perform_ocr_with_options("selected", None, language, output_mode)
+            
+        except Exception as e:
+            self.logger.error(f"Error in OCR selected image: {e}", exc_info=True)
+            # Try fallback
+            self._fallback_direct_ocr_selected()
 
     def _handle_ocr_image_from_file(self):
         self.logger.info("Handling OCR Image from File action.")
@@ -421,7 +418,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             if not file_picker:
                 uno_utils.show_message_box("Error", "Could not create file picker.", "errorbox", parent_frame=self.frame, ctx=self.ctx)
                 return
-            
+
             file_picker.setTitle("Select Image for OCR")
             
             # Set file filters for image files
@@ -435,50 +432,164 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                     image_path = unohelper.fileUrlToSystemPath(selected_files[0])
                     self.logger.info(f"Selected image file: {image_path}")
                     
-                    # Ensure dependencies and show options dialog
-                    if self._ensure_tesseract_is_ready_and_run():
-                        try:
-                            # Ensure dialogs module is loaded
-                            if not _ensure_modules_loaded(self, dialogs=True):
-                                self.logger.error("Could not load dialogs module for OCR options")
-                                return
+                    # Get OCR options from user via simple dialogs
+                    try:
+                        # Get language choice - FIXED: proper argument order
+                        default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, "eng", self.ctx)
+                        language = uno_utils.show_input_box(
+                            title=_("OCR Language"),
+                            message=_("Enter OCR language for this operation (default: {default}):").format(default=default_lang),
+                            default_text=default_lang,
+                            ctx=self.ctx,
+                            parent_frame=self.frame
+                        )
+                        
+                        if language is None:  # User cancelled
+                            self.logger.info("OCR cancelled by user at language selection")
+                            return
+
+                        if not language.strip():  # Empty input, use default
+                            language = default_lang
                             
-                            # Create and show OCR options dialog for file
-                            options_dialog = _tejocr_dialogs_module.OptionsDialogHandler(self.ctx, ocr_source_type="file", image_path=image_path)
+                        # Get output mode choice
+                        output_mode = self._get_output_mode_choice()
+                        if output_mode is None:  # User cancelled
+                            self.logger.info("OCR cancelled by user at output mode selection")
+                            return
                             
-                            if options_dialog._create_dialog(self.frame):
-                                result = options_dialog.execute()
-                                self.logger.info(f"OCR options dialog completed with result: {result}")
-                                
-                                if result and options_dialog.recognized_text:
-                                    # Show success message
-                                    char_count = len(options_dialog.recognized_text)
-                                    filename = os.path.basename(image_path)
-                                    uno_utils.show_message_box("OCR Complete", f"Successfully extracted {char_count} characters from {filename}.", "infobox", parent_frame=self.frame, ctx=self.ctx)
-                                elif result:
-                                    self.logger.warning("OCR dialog returned success but no text was found")
-                                else:
-                                    self.logger.info("OCR options dialog was cancelled")
-                                
-                                # Clean up
-                                options_dialog.dispose()
-                            else:
-                                self.logger.error("Failed to create OCR options dialog for file")
-                                # Fallback to direct OCR call
-                                self._fallback_direct_ocr_file(image_path)
-                                
-                        except Exception as e:
-                            self.logger.error(f"Error in OCR file dialog: {e}", exc_info=True)
-                            # Try fallback
-                            self._fallback_direct_ocr_file(image_path)
+                        # Perform OCR with chosen options
+                        self._perform_ocr_with_options("file", image_path, language, output_mode)
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error in OCR file dialog: {e}", exc_info=True)
+                        # Try fallback
+                        self._fallback_direct_ocr_file(image_path)
                 else:
                     self.logger.info("No file selected in file picker")
             else:
                 self.logger.info("File picker was cancelled")
-                
+
         except Exception as e:
             self.logger.error(f"Error in file picker: {e}", exc_info=True)
             uno_utils.show_message_box("File Picker Error", f"Could not open file picker: {e}", "errorbox", parent_frame=self.frame, ctx=self.ctx)
+
+    def _get_output_mode_choice(self):
+        """Gets user's choice for output mode using chained query boxes."""
+        try:
+            # First choice: Primary options
+            message1 = _(
+                "Choose output method:\n\n"
+                "YES = Insert at Cursor\n"
+                "NO = Copy to Clipboard\n" 
+                "CANCEL = More Options..."
+            )
+            
+            result1 = uno_utils.show_message_box(
+                title=_("OCR Output Mode"),
+                message=message1,
+                type="querybox",
+                buttons="yes_no_cancel",
+                parent_frame=self.frame,
+                ctx=self.ctx
+            )
+            
+            if result1 == 1:  # YES - Insert at Cursor
+                self.logger.debug("User chose: Insert at Cursor")
+                return "insert_at_cursor"
+            elif result1 == 2:  # NO - Copy to Clipboard
+                self.logger.debug("User chose: Copy to Clipboard")
+                return "copy_to_clipboard"
+            elif result1 == 0:  # CANCEL - More Options
+                # Second choice: Additional options
+                message2 = _(
+                    "More output options:\n\n"
+                    "YES = New Text Box\n"
+                    "NO = Insert at Cursor (default)\n"
+                    "CANCEL = Cancel operation"
+                )
+                
+                result2 = uno_utils.show_message_box(
+                    title=_("More Output Options"),
+                    message=message2,
+                    type="querybox",
+                    buttons="yes_no_cancel",
+                    parent_frame=self.frame,
+                    ctx=self.ctx
+                )
+                
+                if result2 == 1:  # YES - New Text Box
+                    self.logger.debug("User chose: New Text Box")
+                    return "new_text_box"
+                elif result2 == 2:  # NO - Insert at Cursor
+                    self.logger.debug("User chose: Insert at Cursor (from more options)")
+                    return "insert_at_cursor"
+                else:  # CANCEL
+                    self.logger.debug("User cancelled output mode selection")
+                    return None
+            else:
+                # Unknown result, default to cursor
+                self.logger.debug("Unknown result from output mode dialog, defaulting to cursor")
+                return "insert_at_cursor"
+                
+        except Exception as e:
+            self.logger.error(f"Error getting output mode choice: {e}")
+            return "insert_at_cursor"  # Default fallback
+
+    def _perform_ocr_with_options(self, source_type, image_path, language, output_mode):
+        """Perform OCR with the specified options."""
+        try:
+            if not _ensure_modules_loaded(self, engine=True, output=True):
+                return
+            
+            # Perform OCR based on source type
+            if source_type == "selected":
+                text = _tejocr_engine_module.extract_text_from_selected_image(self.ctx, self.frame, lang=language)
+                source_description = "selected image"
+            else:  # file
+                text = _tejocr_engine_module.extract_text_from_image_file(self.ctx, image_path, lang=language)
+                source_description = f"{os.path.basename(image_path)}"
+            
+            if text:
+                # Handle output based on chosen mode
+                if output_mode == "insert_at_cursor":
+                    _tejocr_output_module.insert_text_at_cursor(self.ctx, self.frame, text)
+                elif output_mode == "copy_to_clipboard":
+                    _tejocr_output_module.copy_text_to_clipboard(self.ctx, text)
+                elif output_mode == "new_text_box":
+                    _tejocr_output_module.create_text_box_with_text(self.ctx, self.frame, text)
+                
+                # Show success message
+                char_count = len(text)
+                mode_description = {
+                    "insert_at_cursor": "inserted at cursor",
+                    "copy_to_clipboard": "copied to clipboard", 
+                    "new_text_box": "added to new text box"
+                }.get(output_mode, "processed")
+                
+                uno_utils.show_message_box(
+                    "OCR Complete", 
+                    f"Successfully extracted {char_count} characters from {source_description} and {mode_description}.", 
+                    "infobox", 
+                    parent_frame=self.frame, 
+                    ctx=self.ctx
+                )
+            else:
+                uno_utils.show_message_box(
+                    "OCR Result", 
+                    f"No text found in {source_description}.", 
+                    "infobox", 
+                    parent_frame=self.frame, 
+                    ctx=self.ctx
+                )
+        except Exception as e:
+            self.logger.error(f"OCR processing failed: {e}", exc_info=True)
+            uno_utils.show_message_box(
+                "OCR Error", 
+                f"OCR processing failed: {e}", 
+                "errorbox", 
+                parent_frame=self.frame, 
+                ctx=self.ctx
+            )
 
     def _fallback_direct_ocr_selected(self):
         """Fallback method for direct OCR of selected image without dialog."""
@@ -486,9 +597,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             if not _ensure_modules_loaded(self, engine=True, output=True):
                 return
             
-            text = _tejocr_engine_module.extract_text_from_selected_image(self.ctx)
+            text = _tejocr_engine_module.extract_text_from_selected_image(self.ctx, self.frame)
             if text:
-                _tejocr_output_module.insert_text_at_cursor(text, self.ctx)
+                _tejocr_output_module.insert_text_at_cursor(self.ctx, self.frame, text)
                 uno_utils.show_message_box("OCR Complete", f"Extracted {len(text)} characters.", "infobox", parent_frame=self.frame, ctx=self.ctx)
             else:
                 uno_utils.show_message_box("OCR Result", "No text found in selected image.", "infobox", parent_frame=self.frame, ctx=self.ctx)
@@ -502,9 +613,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             if not _ensure_modules_loaded(self, engine=True, output=True):
                 return
             
-            text = _tejocr_engine_module.extract_text_from_image_file(image_path, self.ctx)
+            text = _tejocr_engine_module.extract_text_from_image_file(self.ctx, image_path)
             if text:
-                _tejocr_output_module.insert_text_at_cursor(text, self.ctx)
+                _tejocr_output_module.insert_text_at_cursor(self.ctx, self.frame, text)
                 filename = os.path.basename(image_path)
                 uno_utils.show_message_box("OCR Complete", f"Extracted {len(text)} characters from {filename}.", "infobox", parent_frame=self.frame, ctx=self.ctx)
             else:
@@ -517,56 +628,191 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
     def _handle_settings(self):
         self.logger.info("Handling Settings action.")
         
-        # Ensure dialogs module is loaded specifically for settings
+        # Ensure dialogs module is loaded
         if not _ensure_modules_loaded(self, dialogs=True): 
             self.logger.error("Critical error: Could not load dialogs module for settings.")
             return
         
         try:
-            # Create and show the real settings dialog
-            settings_dialog = _tejocr_dialogs_module.SettingsDialogHandler(self.ctx)
+            # Show dependency status first (existing working dialog)
+            self.logger.info("Showing dependency status dialog...")
+            _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
             
-            # Create the dialog and show it
-            if settings_dialog._create_dialog(self.frame):
-                result = settings_dialog.execute()
-                self.logger.info(f"Settings dialog completed with result: {result}")
+            # After dependency status, offer configuration options
+            self._handle_tesseract_path_configuration()
+            self._handle_default_language_configuration()
+            
+            # Show completion message
+            uno_utils.show_message_box(
+                "Settings", 
+                "Configuration completed successfully.", 
+                "infobox", 
+                parent_frame=self.frame, 
+                ctx=self.ctx
+            )
+            
+        except Exception as e_settings:
+            self.logger.critical(f"Critical error in settings: {e_settings}", exc_info=True)
+            uno_utils.show_message_box(
+                title="Settings Error", 
+                message=f"Settings configuration unavailable: {str(e_settings)}", 
+                type="errorbox", 
+                parent_frame=self.frame, 
+                ctx=self.ctx
+            )
+
+    def _handle_tesseract_path_configuration(self):
+        """Handle Tesseract path configuration via simple input dialog."""
+        try:
+            # Check if Tesseract needs configuration
+            if not _ensure_modules_loaded(self, engine=True):
+                return
                 
-                if result:
-                    self.logger.info("Settings were saved successfully")
-                    # Optionally show a brief confirmation
-                    uno_utils.show_message_box("Settings", "Settings saved successfully", "infobox", parent_frame=self.frame, ctx=self.ctx)
-                else:
-                    self.logger.info("Settings dialog was cancelled or closed without saving")
-                    
-                # Clean up
-                settings_dialog.dispose()
-            else:
-                self.logger.error("Failed to create settings dialog")
-                # Fallback to the old simple dialog
-                _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
+            is_ready, message = _tejocr_engine_module.is_tesseract_ready(self.ctx, show_gui_errors=False)
             
-        except Exception as e_settings_dlg:
-            self.logger.critical(f"Critical error in settings dialog: {e_settings_dlg}", exc_info=True)
-            print(f"CONSOLE DEBUG: CRITICAL ERROR in settings: {e_settings_dlg}")
-            
-            # Try to show a basic error message, but don't let this crash either
-            try:
-                uno_utils.show_message_box(
-                    title="Settings Error", 
-                    message=f"Settings dialog unavailable: {str(e_settings_dlg)}", 
-                    type="errorbox", 
-                    parent_frame=self.frame, 
+            # Ask user if they want to configure Tesseract path
+            configure_tesseract = False
+            if not is_ready:
+                result = uno_utils.show_message_box(
+                    title=_("Tesseract Configuration"),
+                    message=_("Tesseract was not found automatically. Would you like to specify the path manually?"),
+                    type="querybox",
+                    buttons=_("Yes|No"),
+                    parent_frame=self.frame,
                     ctx=self.ctx
                 )
-            except Exception as e_nested:
-                self.logger.critical(f"Even error message box failed: {e_nested}")
-                print(f"CONSOLE DEBUG: Even error dialog failed: {e_nested}")
-                # Last resort - fallback to old settings dialog
-                try:
-                    _tejocr_dialogs_module.show_settings_dialog(self.ctx, self.frame)
-                except:
-                    self.logger.critical("All settings dialog methods failed")
+                configure_tesseract = (result == 1)  # Yes button
+            else:
+                result = uno_utils.show_message_box(
+                    title=_("Tesseract Configuration"),
+                    message=_("Tesseract is currently working correctly. Would you like to change the path?"),
+                    type="querybox",
+                    buttons=_("Yes|No"),
+                    parent_frame=self.frame,
+                    ctx=self.ctx
+                )
+                configure_tesseract = (result == 1)  # Yes button
+            
+            if configure_tesseract:
+                # Get current path or empty string - FIXED: proper argument order
+                current_path = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", self.ctx)
+                
+                # Ask for new path
+                new_path = uno_utils.show_input_box(
+                    title=_("Tesseract Path"),
+                    message=_("Enter full path to Tesseract executable (or leave blank for auto-detect):"),
+                    default_text=current_path,
+                    ctx=self.ctx,
+                    parent_frame=self.frame
+                )
+                
+                if new_path is not None:  # User didn't cancel
+                    # Test the path
+                    test_path = new_path.strip() if new_path.strip() else None
+                    
+                    # Ask if user wants to test the path
+                    if test_path:
+                        test_result = uno_utils.show_message_box(
+                            title=_("Test Path"),
+                            message=_("Test this Tesseract path?\n\n{path}").format(path=test_path),
+                            type="querybox",
+                            buttons=_("Test|Skip|Cancel"),
+                            parent_frame=self.frame,
+                            ctx=self.ctx
+                        )
+                        
+                        if test_result == 1:  # Test button
+                            # Test the path
+                            test_ready, test_message = _tejocr_engine_module.is_tesseract_ready(
+                                self.ctx, 
+                                user_path=test_path, 
+                                show_gui_errors=True, 
+                                parent_frame=self.frame
+                            )
+                            
+                            if test_ready:
+                                # Save the working path
+                                uno_utils.set_setting(constants.CFG_KEY_TESSERACT_PATH, test_path, self.ctx)
+                                uno_utils.show_message_box(
+                                    "Success", 
+                                    f"Tesseract path tested successfully and saved: {test_path}", 
+                                    "infobox", 
+                                    parent_frame=self.frame, 
+                                    ctx=self.ctx
+                                )
+                            else:
+                                uno_utils.show_message_box(
+                                    "Test Failed", 
+                                    f"Tesseract test failed: {test_message}", 
+                                    "warningbox", 
+                                    parent_frame=self.frame, 
+                                    ctx=self.ctx
+                                )
+                        elif test_result == 2:  # Skip button
+                            # Save without testing
+                            uno_utils.set_setting(constants.CFG_KEY_TESSERACT_PATH, test_path, self.ctx)
+                            uno_utils.show_message_box(
+                                "Saved", 
+                                f"Tesseract path saved without testing: {test_path}", 
+                                "infobox", 
+                                parent_frame=self.frame, 
+                                ctx=self.ctx
+                            )
+                        # Cancel does nothing
+                    else:
+                        # Empty path - reset to auto-detect
+                        uno_utils.set_setting(constants.CFG_KEY_TESSERACT_PATH, "", self.ctx)
+                        uno_utils.show_message_box(
+                            "Reset", 
+                            "Tesseract path reset to auto-detect mode.", 
+                            "infobox", 
+                            parent_frame=self.frame, 
+                            ctx=self.ctx
+                        )
+                        
+        except Exception as e:
+            self.logger.error(f"Error in Tesseract path configuration: {e}", exc_info=True)
 
+    def _handle_default_language_configuration(self):
+        """Handle default language configuration via simple input dialog."""
+        try:
+            # Get current default language - FIXED: proper argument order
+            current_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, "eng", self.ctx)
+            
+            # Ask user for new default language
+            new_lang = uno_utils.show_input_box(
+                title=_("Default OCR Language"),
+                message=_("Enter default OCR language code (e.g., eng, hin, fra, deu, spa):\n\nCurrent: {current}").format(current=current_lang),
+                default_text=current_lang,
+                ctx=self.ctx,
+                parent_frame=self.frame
+            )
+            
+            if new_lang is not None and new_lang.strip():  # User entered something
+                new_lang = new_lang.strip().lower()
+                
+                # Basic validation - check if it looks like a language code
+                if len(new_lang) >= 2 and new_lang.isalpha():
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_LANG, new_lang, self.ctx)
+                    uno_utils.show_message_box(
+                        "Language Saved", 
+                        f"Default OCR language set to: {new_lang}", 
+                        "infobox", 
+                        parent_frame=self.frame, 
+                        ctx=self.ctx
+                    )
+                else:
+                    uno_utils.show_message_box(
+                        "Invalid Language", 
+                        f"'{new_lang}' does not look like a valid language code. Please use codes like 'eng', 'hin', 'fra', etc.", 
+                        "warningbox", 
+                        parent_frame=self.frame, 
+                        ctx=self.ctx
+                    )
+                    
+        except Exception as e:
+            self.logger.error(f"Error in default language configuration: {e}", exc_info=True)
+        
     def addStatusListener(self, Listener, URL):
         self.logger.debug(f"addStatusListener CALLED for URL: {URL.Complete if URL else 'None'}")
         if not _ensure_modules_loaded(self): 

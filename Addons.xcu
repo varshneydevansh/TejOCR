@@ -7,58 +7,58 @@
         <!-- Top-level menu definition -->
         <node oor:name="OfficeMenuBar">
             <node oor:name="org.libreoffice.TejOCR.TopLevelMenu" oor:op="fuse">
-                <prop oor:name="Title" oor:type="xs:string">
-                    <value xml:lang="en-US">~TejOCR</value>
-                    <value xml:lang="hi-IN">~तेजओसीआर</value>
-                    <value xml:lang="es-ES">~TejOCR</value>
-                    <value xml:lang="fr-FR">~TejOCR</value>
-                    <value xml:lang="de-DE">~TejOCR</value>
-                    <value xml:lang="zh-CN">~TejOCR</value>
-                </prop>
-                <prop oor:name="Context" oor:type="xs:string">
-                    <value>com.sun.star.text.TextDocument</value>
-                </prop>
-                <node oor:name="Submenu" oor:op="fuse">
-                    <node oor:name="Item1_OCRSelected" oor:op="replace">
-                        <prop oor:name="URL" oor:type="xs:string">
-                            <value>uno:org.libreoffice.TejOCR.OCRSelectedImage</value>
-                        </prop>
                         <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en-US">OCR Selected ~Image</value>
-                            <value xml:lang="hi-IN">चयनित छवि से ओसीआर</value>
-                            <value xml:lang="es-ES">OCR ~Imagen Seleccionada</value>
-                            <value xml:lang="fr-FR">OCR ~Image Sélectionnée</value>
-                            <value xml:lang="de-DE">OCR ~Ausgewähltes Bild</value>
-                            <value xml:lang="zh-CN">识别选定图像</value>
-                        </prop>
-                        <prop oor:name="Target" oor:type="xs:string">
-                            <value>_self</value>
+                            <value xml:lang="en-US">~TejOCR</value>
+                            <value xml:lang="hi-IN">~तेजओसीआर</value>
+                            <value xml:lang="es-ES">~TejOCR</value>
+                            <value xml:lang="fr-FR">~TejOCR</value>
+                            <value xml:lang="de-DE">~TejOCR</value>
+                            <value xml:lang="zh-CN">~TejOCR</value>
                         </prop>
                         <prop oor:name="Context" oor:type="xs:string">
                             <value>com.sun.star.text.TextDocument</value>
                         </prop>
+                <node oor:name="Submenu" oor:op="fuse">
+                    <node oor:name="Item1_OCRSelected" oor:op="replace">
+                    <prop oor:name="URL" oor:type="xs:string">
+                        <value>uno:org.libreoffice.TejOCR.OCRSelectedImage</value>
+                    </prop>
+                    <prop oor:name="Title" oor:type="xs:string">
+                            <value xml:lang="en-US">OCR Selected ~Image</value>
+                        <value xml:lang="hi-IN">चयनित छवि से ओसीआर</value>
+                        <value xml:lang="es-ES">OCR ~Imagen Seleccionada</value>
+                        <value xml:lang="fr-FR">OCR ~Image Sélectionnée</value>
+                        <value xml:lang="de-DE">OCR ~Ausgewähltes Bild</value>
+                        <value xml:lang="zh-CN">识别选定图像</value>
+                    </prop>
+                    <prop oor:name="Target" oor:type="xs:string">
+                        <value>_self</value>
+                    </prop>
+                    <prop oor:name="Context" oor:type="xs:string">
+                        <value>com.sun.star.text.TextDocument</value>
+                    </prop>
                         <prop oor:name="ImageIdentifier" oor:type="xs:string">
                              <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
                         </prop>
-                    </node>
+                </node>
                     <node oor:name="Item2_OCRFromFile" oor:op="replace">
-                        <prop oor:name="URL" oor:type="xs:string">
-                            <value>uno:org.libreoffice.TejOCR.OCRImageFromFile</value>
-                        </prop>
-                        <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en-US">OCR Image from ~File...</value>
-                            <value xml:lang="hi-IN">फ़ाइल से छवि ओसीआर...</value>
-                            <value xml:lang="es-ES">OCR Imagen desde ~Archivo...</value>
-                            <value xml:lang="fr-FR">OCR Image à partir d'un ~Fichier...</value>
-                            <value xml:lang="de-DE">OCR Bild aus ~Datei...</value>
-                            <value xml:lang="zh-CN">从文件识别图像...</value>
-                        </prop>
-                        <prop oor:name="Target" oor:type="xs:string">
-                            <value>_self</value>
-                        </prop>
-                        <prop oor:name="Context" oor:type="xs:string">
-                            <value>com.sun.star.text.TextDocument</value>
-                        </prop>
+                    <prop oor:name="URL" oor:type="xs:string">
+                        <value>uno:org.libreoffice.TejOCR.OCRImageFromFile</value>
+                    </prop>
+                    <prop oor:name="Title" oor:type="xs:string">
+                        <value xml:lang="en-US">OCR Image from ~File...</value>
+                        <value xml:lang="hi-IN">फ़ाइल से छवि ओसीआर...</value>
+                        <value xml:lang="es-ES">OCR Imagen desde ~Archivo...</value>
+                        <value xml:lang="fr-FR">OCR Image à partir d'un ~Fichier...</value>
+                        <value xml:lang="de-DE">OCR Bild aus ~Datei...</value>
+                        <value xml:lang="zh-CN">从文件识别图像...</value>
+                    </prop>
+                    <prop oor:name="Target" oor:type="xs:string">
+                        <value>_self</value>
+                    </prop>
+                    <prop oor:name="Context" oor:type="xs:string">
+                        <value>com.sun.star.text.TextDocument</value>
+                    </prop>
                          <prop oor:name="ImageIdentifier" oor:type="xs:string">
                              <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
                         </prop>
@@ -67,25 +67,25 @@
                         <prop oor:name="Type" oor:type="xs:string">
                             <value>separator</value>
                         </prop>
-                    </node>
+                </node>
                     <node oor:name="Item3_Settings" oor:op="replace">
-                        <prop oor:name="URL" oor:type="xs:string">
-                            <value>uno:org.libreoffice.TejOCR.Settings</value>
-                        </prop>
-                        <prop oor:name="Title" oor:type="xs:string">
-                            <value xml:lang="en-US">~Settings...</value>
-                            <value xml:lang="hi-IN">सेटिंग्स...</value>
-                            <value xml:lang="es-ES">~Configuración...</value>
-                            <value xml:lang="fr-FR">~Paramètres...</value>
-                            <value xml:lang="de-DE">~Einstellungen...</value>
-                            <value xml:lang="zh-CN">设置...</value>
-                        </prop>
-                        <prop oor:name="Target" oor:type="xs:string">
-                            <value>_self</value>
-                        </prop>
-                        <prop oor:name="Context" oor:type="xs:string">
-                            <value>com.sun.star.text.TextDocument</value>
-                        </prop>
+                    <prop oor:name="URL" oor:type="xs:string">
+                        <value>uno:org.libreoffice.TejOCR.Settings</value>
+                    </prop>
+                    <prop oor:name="Title" oor:type="xs:string">
+                        <value xml:lang="en-US">~Settings...</value>
+                        <value xml:lang="hi-IN">सेटिंग्स...</value>
+                        <value xml:lang="es-ES">~Configuración...</value>
+                        <value xml:lang="fr-FR">~Paramètres...</value>
+                        <value xml:lang="de-DE">~Einstellungen...</value>
+                        <value xml:lang="zh-CN">设置...</value>
+                    </prop>
+                    <prop oor:name="Target" oor:type="xs:string">
+                        <value>_self</value>
+                    </prop>
+                    <prop oor:name="Context" oor:type="xs:string">
+                        <value>com.sun.star.text.TextDocument</value>
+                    </prop>
                          <prop oor:name="ImageIdentifier" oor:type="xs:string">
                              <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
                         </prop>
@@ -126,26 +126,26 @@
                     </prop>
                     <node oor:name="ToolBarItems">
                         <node oor:name="TejOCRActualButton" oor:op="replace">
-                            <prop oor:name="URL" oor:type="xs:string">
-                                <value>uno:org.libreoffice.TejOCR.ToolbarAction</value>
-                            </prop>
-                            <prop oor:name="Title" oor:type="xs:string">
-                                <value xml:lang="en-US">TejOCR</value>
-                                <value xml:lang="hi-IN">तेजओसीआर</value>
-                                <value xml:lang="es-ES">TejOCR</value>
-                                <value xml:lang="fr-FR">TejOCR</value>
-                                <value xml:lang="de-DE">TejOCR</value>
-                                <value xml:lang="zh-CN">TejOCR</value>
-                            </prop>
+                    <prop oor:name="URL" oor:type="xs:string">
+                        <value>uno:org.libreoffice.TejOCR.ToolbarAction</value>
+                    </prop>
+                    <prop oor:name="Title" oor:type="xs:string">
+                        <value xml:lang="en-US">TejOCR</value>
+                        <value xml:lang="hi-IN">तेजओसीआर</value>
+                        <value xml:lang="es-ES">TejOCR</value>
+                        <value xml:lang="fr-FR">TejOCR</value>
+                        <value xml:lang="de-DE">TejOCR</value>
+                        <value xml:lang="zh-CN">TejOCR</value>
+                    </prop>
                             <prop oor:name="ImageIdentifier" oor:type="xs:string">
                                 <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_26.png</value>
                             </prop>
-                            <prop oor:name="Target" oor:type="xs:string">
-                                <value>_self</value>
-                            </prop>
-                            <prop oor:name="Context" oor:type="xs:string">
-                                <value>com.sun.star.text.TextDocument</value>
-                            </prop>
+                    <prop oor:name="Target" oor:type="xs:string">
+                        <value>_self</value>
+                    </prop>
+                    <prop oor:name="Context" oor:type="xs:string">
+                        <value>com.sun.star.text.TextDocument</value>
+                    </prop>
                         </node>
                     </node>
                 </node>

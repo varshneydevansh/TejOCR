@@ -12,7 +12,7 @@ import uno
 import unohelper
 
 # Standard Python imports
-import os 
+import os
 
 # Diagnostic print
 print(f"DEBUG: tejocr_dialogs.py: Right before UNO interface imports. uno module: {uno}")
@@ -182,8 +182,8 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
 # --- OCR Options Dialog Handler ---
 class OptionsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx, ocr_source_type="file", image_path=None): # ocr_source_type: "file" or "selected"
-        # Use the correct dialog URL for packaged extensions
-        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_options_dialog.xdl"
+        # Use the standard private:dialogs/ scheme that LibreOffice recognizes for extension XDL files
+        dialog_url = "private:dialogs/tejocr_options_dialog.xdl"
         super().__init__(ctx, dialog_url)
         self.ctx = ctx
         self.ocr_source_type = ocr_source_type  # "file" or "selected"
@@ -558,8 +558,8 @@ BUTTONS:
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx):
-        # Use the correct dialog URL for packaged extensions
-        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_settings_dialog.xdl"
+        # Use the standard private:dialogs/ scheme that LibreOffice recognizes for extension XDL files
+        dialog_url = "private:dialogs/tejocr_settings_dialog.xdl"
         super().__init__(ctx, dialog_url)
         self.initial_settings = {} # To store settings when dialog opens to check for changes
         self.available_languages_map_settings = {} # Separate map for settings dialog
@@ -787,7 +787,7 @@ BUTTONS:
             if not fp:
                 logger.warning("Could not create FilePicker for Tesseract browse")
                 return
-                
+        
             fp.setTitle("Select Tesseract Executable")
             
             # Set filter for executable files (platform-specific)
@@ -851,7 +851,7 @@ BUTTONS:
             else:
                 # Fallback to message box if label not found
                 uno_utils.show_message_box(
-                    "Tesseract Test",
+                "Tesseract Test",
                     f"""Path: {tess_path}
 Status: {'Valid' if is_valid else 'Invalid'}
 Details: {message}""",

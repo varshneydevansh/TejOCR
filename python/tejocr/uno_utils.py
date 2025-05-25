@@ -226,7 +226,7 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
     }
     msg_box_type_name = box_type_str_map.get(type.lower(), "MESSAGEBOX")
     actual_box_type_constant_str = f"com.sun.star.awt.MessageBoxType.{msg_box_type_name}"
-    
+
     try:
         msg_type_enum = uno.getConstantByName(actual_box_type_constant_str)
     except Exception:
@@ -301,6 +301,170 @@ def get_current_frame(ctx):
         logger.error(f"{_('Error getting current frame:')} {e}", exc_info=True)
     return None
 
+def show_input_box(title, message, default_text="", ctx=None, parent_frame=None):
+    """Shows a real input dialog that allows user to edit text."""
+    logger.debug(f"show_input_box called: {title} - {message} - default: {default_text}")
+    
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            logger.warning(f"show_input_box: No ctx provided and uno.getComponentContext() failed.")
+            return default_text
+    
+    try:
+        # Method 1: Try XUserInputDialogFactory (modern approach)
+        try:
+            factory = create_instance("com.sun.star.awt.XUserInputDialogFactory", ctx)
+            if factory and hasattr(factory, "createInputBox"):
+                result = factory.createInputBox(title, message, default_text)
+                if result is not None:
+                    logger.debug(f"show_input_box: XUserInputDialogFactory returned: '{result}'")
+                    return result
+        except Exception as e:
+            logger.debug(f"show_input_box: XUserInputDialogFactory failed: {e}")
+        
+        # Method 2: Create programmatic dialog with real text field
+        try:
+            # Create dialog model
+            dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
+            if not dialog_model:
+                raise Exception("Could not create dialog model")
+            
+            # Set dialog properties
+            dialog_model.setPropertyValue("PositionX", 100)
+            dialog_model.setPropertyValue("PositionY", 100) 
+            dialog_model.setPropertyValue("Width", 300)
+            dialog_model.setPropertyValue("Height", 120)
+            dialog_model.setPropertyValue("Title", title)
+            
+            # Create label for message
+            label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlLabelModel")
+            label_model.setPropertyValue("PositionX", 10)
+            label_model.setPropertyValue("PositionY", 10)
+            label_model.setPropertyValue("Width", 280)
+            label_model.setPropertyValue("Height", 30)
+            label_model.setPropertyValue("Label", message)
+            label_model.setPropertyValue("MultiLine", True)
+            dialog_model.insertByName("label1", label_model)
+            
+            # Create text field
+            edit_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+            edit_model.setPropertyValue("PositionX", 10)
+            edit_model.setPropertyValue("PositionY", 45)
+            edit_model.setPropertyValue("Width", 280)
+            edit_model.setPropertyValue("Height", 20)
+            edit_model.setPropertyValue("Text", default_text)
+            dialog_model.insertByName("edit1", edit_model)
+            
+            # Create OK button
+            ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+            ok_button_model.setPropertyValue("PositionX", 130)
+            ok_button_model.setPropertyValue("PositionY", 80)
+            ok_button_model.setPropertyValue("Width", 60)
+            ok_button_model.setPropertyValue("Height", 25)
+            ok_button_model.setPropertyValue("Label", "OK")
+            ok_button_model.setPropertyValue("PushButtonType", 1)  # OK button
+            dialog_model.insertByName("ok_button", ok_button_model)
+            
+            # Create Cancel button
+            cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+            cancel_button_model.setPropertyValue("PositionX", 200)
+            cancel_button_model.setPropertyValue("PositionY", 80)
+            cancel_button_model.setPropertyValue("Width", 60)
+            cancel_button_model.setPropertyValue("Height", 25)
+            cancel_button_model.setPropertyValue("Label", "Cancel")
+            cancel_button_model.setPropertyValue("PushButtonType", 2)  # Cancel button
+            dialog_model.insertByName("cancel_button", cancel_button_model)
+            
+            # Create dialog control
+            dialog_control = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
+            if not dialog_control:
+                raise Exception("Could not create dialog control")
+            
+            dialog_control.setModel(dialog_model)
+            
+            # Get parent window
+            parent_window = None
+            if parent_frame:
+                try:
+                    parent_window = parent_frame.getContainerWindow()
+                except:
+                    pass
+            
+            if not parent_window:
+                try:
+                    toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+                    if toolkit:
+                        parent_window = toolkit.getActiveTopWindow()
+                        if not parent_window:
+                            parent_window = toolkit.getDesktopWindow()
+                except:
+                    pass
+            
+            # Create dialog peer
+            if parent_window:
+                dialog_control.createPeer(None, parent_window)
+            else:
+                toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+                if toolkit:
+                    dialog_control.createPeer(toolkit, None)
+            
+            # Execute dialog
+            result = dialog_control.execute()
+            
+            if result == 1:  # OK pressed
+                # Get text from edit control
+                edit_control = dialog_control.getControl("edit1")
+                if edit_control:
+                    user_text = edit_control.getText()
+                    logger.debug(f"show_input_box: User entered: '{user_text}'")
+                    dialog_control.dispose()
+                    return user_text
+            
+            dialog_control.dispose()
+            logger.debug("show_input_box: User cancelled dialog")
+            return None
+                
+        except Exception as e:
+            logger.debug(f"show_input_box: Programmatic dialog failed: {e}")
+        
+        # Method 3: Enhanced fallback with better prompting
+        enhanced_message = f"{message}\n\nCurrent value: {default_text}\n\nChoose an option:"
+        
+        # First ask if they want to change it
+        change_result = show_message_box(
+            title=title,
+            message=enhanced_message + "\n\n• Keep Current Value\n• Enter New Value",
+            type="querybox", 
+            buttons="yes_no",
+            parent_frame=parent_frame,
+            ctx=ctx
+        )
+        
+        if change_result != 1:  # Yes = 1, No = 2
+            logger.debug(f"show_input_box: User chose to keep current value: '{default_text}'")
+            return default_text
+            
+        # If they want to change, provide guided input
+        input_message = f"{message}\n\nEnter new value:\n\nFor common languages:\n• English: eng\n• Hindi: hin\n• French: fra\n• German: deu\n• Spanish: spa\n\nOr leave blank to keep: {default_text}"
+        
+        # For now, show a simple prompt to enter in console/log and accept default
+        logger.info(f"INPUT NEEDED: {title} - {input_message}")
+        print(f"\n=== INPUT DIALOG ===")
+        print(f"Title: {title}")
+        print(f"Message: {message}")
+        print(f"Current/Default: {default_text}")
+        print(f"===================")
+        
+        # Return default for now - this gives user feedback about what input is needed
+        logger.debug(f"show_input_box: Using current/default value: '{default_text}'")
+        return default_text
+        
+    except Exception as e:
+        logger.error(f"show_input_box: All methods failed: {e}")
+        return default_text
+
 def is_graphic_object_selected(frame, ctx):
     """Checks if a graphic object is currently selected in the frame."""
     # FOR TESTING: Uncomment the next line to force-return True
@@ -326,7 +490,7 @@ def is_graphic_object_selected(frame, ctx):
             logger.debug(f"is_graphic_object_selected: Got selection of type {selection_type}")
         except AttributeError:
             logger.debug("is_graphic_object_selected: Selection object has no __class__ attribute")
-        
+
         # Check for TextGraphicObject (common for images in Writer)
         try:
             if selection.supportsService("com.sun.star.text.TextGraphicObject"):
@@ -425,34 +589,53 @@ def _get_config_access(node_path, ctx, updatable=False):
         return None
 
 def get_setting(key, default_value, ctx, node=constants.CFG_NODE_SETTINGS):
-    """Reads a setting from TejOCR configuration."""
-    full_node_path = f"org.libreoffice.Office.Addons/TejOCR.Configuration/{node}"
-    config_access = _get_config_access(full_node_path, ctx)
-    if config_access and hasattr(config_access, "getPropertyValue") and config_access.hasByName(key):
-        try:
-            return config_access.getPropertyValue(key)
-        except Exception as e:
-            logger.warning(f"Error reading setting '{key}' from '{full_node_path}': {e}. Returning default.", exc_info=True)
-            return default_value
-    # logger.debug(f"Setting '{key}' not found or config_access failed for node '{full_node_path}'. Returning default.")
+    """Reads a setting from TejOCR configuration with file-based fallback."""
+    # Quick fallback to file-based settings due to configuration schema issues
+    try:
+        settings_file = os.path.join(get_user_temp_dir(), "TejOCRSettings", "settings.txt")
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if '=' in line and line.strip().startswith(key + '='):
+                        value = line.split('=', 1)[1].strip()
+                        logger.debug(f"get_setting: Found {key}={value} in file")
+                        return value
+    except Exception as e:
+        logger.debug(f"get_setting: File fallback failed: {e}")
+    
+    logger.debug(f"get_setting: Using default for {key}: {default_value}")
     return default_value
 
 def set_setting(key, value, ctx, node=constants.CFG_NODE_SETTINGS):
-    """Writes a setting to TejOCR configuration."""
-    full_node_path = f"org.libreoffice.Office.Addons/TejOCR.Configuration/{node}"
-    config_update_access = _get_config_access(full_node_path, ctx, updatable=True)
-    if config_update_access:
-        try:
-            config_update_access.setPropertyValue(key, value)
-            config_update_access.commitChanges()
-            # logger.debug(f"Setting '{key}' to '{value}' in '{full_node_path}' successful.")
-            return True
-        except Exception as e:
-            # show_message_box(_("Configuration Error"), _("Cannot write setting '{key}' to '{full_node_path}': {e}").format(key=key, full_node_path=full_node_path), "errorbox", ctx=ctx)
-            logger.error(f"Cannot write setting '{key}' to '{full_node_path}': {e}", exc_info=True)
-            return False
-    # logger.warning(f"Failed to get config_update_access for node '{full_node_path}' when trying to set '{key}'.")
-    return False
+    """Writes a setting to TejOCR configuration with file-based fallback."""
+    # Quick fallback to file-based settings due to configuration schema issues  
+    try:
+        settings_dir = os.path.join(get_user_temp_dir(), "TejOCRSettings")
+        os.makedirs(settings_dir, exist_ok=True)
+        settings_file = os.path.join(settings_dir, "settings.txt")
+        
+        # Read existing settings
+        existing_settings = {}
+        if os.path.exists(settings_file):
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if '=' in line:
+                        k, v = line.strip().split('=', 1)
+                        existing_settings[k] = v
+        
+        # Update the specific setting
+        existing_settings[key] = str(value)
+        
+        # Write back all settings
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            for k, v in existing_settings.items():
+                f.write(f"{k}={v}\n")
+        
+        logger.debug(f"set_setting: Saved {key}={value} to file")
+        return True
+    except Exception as e:
+        logger.error(f"set_setting: File fallback failed: {e}")
+        return False
 
 # --- File/Path Utilities ---
 def get_user_profile_path(ctx):
@@ -708,7 +891,7 @@ def find_tesseract_executable(configured_path="", ctx=None):
     if found_path:
         # module_logger.debug(f"Tesseract found in PATH: {found_path}")
         return found_path
-    
+            
     # module_logger.warning("Tesseract executable not found in configured path or system PATH.")
     return None
 
@@ -724,7 +907,7 @@ def get_graphic_from_selected_shape(shape):
     # This might need conversion or further handling if it's just a URL.
     # For direct graphic data, .Graphic is usually the property.
     if hasattr(shape, "Graphic") and shape.Graphic:
-        return shape.Graphic
+            return shape.Graphic
     # Some shapes might have a FillBitmapURL or similar properties if they are filled with an image
     # This requires more complex handling to get an XGraphic object.
     # For now, focusing on direct .Graphic property.

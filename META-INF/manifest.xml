@@ -32,9 +32,15 @@
 
     <!-- Dialog Definition Files -->
     <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
+                         manifest:full-path="dialogs/test_dialog.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
                            manifest:full-path="dialogs/tejocr_options_dialog.xdl"/>
     <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
                            manifest:full-path="dialogs/tejocr_settings_dialog.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
+                         manifest:full-path="dialogs/tejocr_settings_dialog_full.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
+                         manifest:full-path="dialogs/tejocr_options_dialog_full.xdl"/>
 
     <!-- Icons -->
     <manifest:file-entry manifest:media-type="image/png"

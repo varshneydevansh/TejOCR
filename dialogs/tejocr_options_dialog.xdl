@@ -1,68 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD Dialog V1.0//EN" "dialog.dtd">
 <dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCROptionsDialog" dlg:left="100" dlg:top="50" dlg:width="350" dlg:height="380" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR Options">
     <dlg:bulletinboard>
         
         <!-- Source Information -->
-        <dlg:groupbox dlg:id="SourceInfoGroup" dlg:left="6" dlg:top="6" dlg:width="338" dlg:height="35" dlg:value="Source">
+        <dlg:groupbox dlg:id="SourceInfoGroup" dlg:left="10" dlg:top="10" dlg:width="330" dlg:height="40" dlg:value="Source">
             <dlg:bulletinboard>
-                <dlg:fixedtext dlg:id="SourceTypeLabel" dlg:left="8" dlg:top="12" dlg:width="100" dlg:height="12" dlg:value="Processing:"/>
-                <dlg:fixedtext dlg:id="SourceDescriptionLabel" dlg:left="115" dlg:top="12" dlg:width="215" dlg:height="12" dlg:value="Selected image in document"/>
+                <dlg:fixedtext dlg:id="SourceTypeLabel" dlg:left="10" dlg:top="18" dlg:width="80" dlg:height="15" dlg:value="Processing:"/>
+                <dlg:fixedtext dlg:id="SourceDescriptionLabel" dlg:left="100" dlg:top="18" dlg:width="220" dlg:height="15" dlg:value="Selected image in document"/>
             </dlg:bulletinboard>
         </dlg:groupbox>
 
         <!-- Language Selection -->
-        <dlg:groupbox dlg:id="LanguageGroup" dlg:left="6" dlg:top="47" dlg:width="338" dlg:height="45" dlg:value="Language Selection">
+        <dlg:groupbox dlg:id="LanguageGroup" dlg:left="10" dlg:top="60" dlg:width="330" dlg:height="60" dlg:value="Language Selection">
             <dlg:bulletinboard>
-                <dlg:fixedtext dlg:id="LanguageLabel" dlg:left="8" dlg:top="15" dlg:width="60" dlg:height="12" dlg:value="Language:"/>
-                <dlg:combobox dlg:id="LanguageDropdown" dlg:left="75" dlg:top="13" dlg:width="150" dlg:height="14" dlg:dropdown="true" dlg:tabstop="true" dlg:value=""/>
-                <dlg:button dlg:id="RefreshLanguagesButton" dlg:left="235" dlg:top="13" dlg:width="70" dlg:height="14" dlg:value="Refresh" dlg:tabstop="true"/>
-                <dlg:fixedtext dlg:id="LanguageHelpLabel" dlg:left="8" dlg:top="30" dlg:width="295" dlg:height="10" dlg:value="Select the language of text in the image for better recognition accuracy"/>
+                <dlg:fixedtext dlg:id="LanguageLabel" dlg:left="10" dlg:top="20" dlg:width="60" dlg:height="15" dlg:value="Language:"/>
+                <dlg:combobox dlg:id="LanguageDropdown" dlg:left="75" dlg:top="18" dlg:width="150" dlg:height="15" dlg:dropdown="true" dlg:tabstop="true" dlg:value=""/>
+                <dlg:button dlg:id="RefreshLanguagesButton" dlg:left="235" dlg:top="18" dlg:width="70" dlg:height="15" dlg:value="Refresh" dlg:tabstop="true"/>
+                <dlg:fixedtext dlg:id="LanguageHelpLabel" dlg:left="10" dlg:top="40" dlg:width="310" dlg:height="15" dlg:value="Select the language for better recognition accuracy"/>
             </dlg:bulletinboard>
         </dlg:groupbox>
 
         <!-- Output Mode -->
-        <dlg:groupbox dlg:id="OutputModeGroup" dlg:left="6" dlg:top="98" dlg:width="338" dlg:height="80" dlg:value="Output Mode">
+        <dlg:groupbox dlg:id="OutputModeGroup" dlg:left="10" dlg:top="130" dlg:width="330" dlg:height="100" dlg:value="Output Mode">
             <dlg:bulletinboard>
-                <dlg:radiobutton dlg:id="OutputAtCursorRadio" dlg:left="8" dlg:top="15" dlg:width="150" dlg:height="12" dlg:value="Insert at cursor position" dlg:tabstop="true" dlg:checked="true"/>
-                <dlg:radiobutton dlg:id="OutputNewTextboxRadio" dlg:left="8" dlg:top="30" dlg:width="150" dlg:height="12" dlg:value="Create new text box" dlg:tabstop="true"/>
-                <dlg:radiobutton dlg:id="OutputReplaceImageRadio" dlg:left="170" dlg:top="15" dlg:width="150" dlg:height="12" dlg:value="Replace selected image" dlg:tabstop="true"/>
-                <dlg:radiobutton dlg:id="OutputToClipboardRadio" dlg:left="170" dlg:top="30" dlg:width="150" dlg:height="12" dlg:value="Copy to clipboard" dlg:tabstop="true"/>
-                <dlg:fixedtext dlg:id="OutputHelpLabel" dlg:left="8" dlg:top="50" dlg:width="315" dlg:height="20" dlg:value="Choose where to place the recognized text. 'Replace image' only works for selected images." dlg:multiline="true"/>
+                <dlg:radiobutton dlg:id="OutputAtCursorRadio" dlg:left="10" dlg:top="20" dlg:width="150" dlg:height="15" dlg:value="Insert at cursor position" dlg:tabstop="true" dlg:checked="true"/>
+                <dlg:radiobutton dlg:id="OutputNewTextboxRadio" dlg:left="10" dlg:top="38" dlg:width="150" dlg:height="15" dlg:value="Create new text box" dlg:tabstop="true"/>
+                <dlg:radiobutton dlg:id="OutputReplaceImageRadio" dlg:left="170" dlg:top="20" dlg:width="150" dlg:height="15" dlg:value="Replace selected image" dlg:tabstop="true"/>
+                <dlg:radiobutton dlg:id="OutputToClipboardRadio" dlg:left="170" dlg:top="38" dlg:width="150" dlg:height="15" dlg:value="Copy to clipboard" dlg:tabstop="true"/>
+                <dlg:fixedtext dlg:id="OutputHelpLabel" dlg:left="10" dlg:top="60" dlg:width="310" dlg:height="30" dlg:value="Choose where to place the recognized text. 'Replace image' only works for selected images." dlg:multiline="true"/>
             </dlg:bulletinboard>
         </dlg:groupbox>
 
         <!-- Advanced Options -->
-        <dlg:groupbox dlg:id="AdvancedOptionsGroup" dlg:left="6" dlg:top="184" dlg:width="338" dlg:height="120" dlg:value="Advanced OCR Options">
+        <dlg:groupbox dlg:id="AdvancedOptionsGroup" dlg:left="10" dlg:top="240" dlg:width="330" dlg:height="80" dlg:value="Advanced OCR Options">
             <dlg:bulletinboard>
-                <!-- Page Segmentation Mode -->
-                <dlg:fixedtext dlg:id="PSMLabel" dlg:left="8" dlg:top="15" dlg:width="80" dlg:height="12" dlg:value="Page Mode:"/>
-                <dlg:combobox dlg:id="PSMDropdown" dlg:left="95" dlg:top="13" dlg:width="230" dlg:height="14" dlg:dropdown="true" dlg:tabstop="true"/>
+                <dlg:fixedtext dlg:id="PSMLabel" dlg:left="10" dlg:top="20" dlg:width="80" dlg:height="15" dlg:value="Page Mode:"/>
+                <dlg:combobox dlg:id="PSMDropdown" dlg:left="95" dlg:top="18" dlg:width="220" dlg:height="15" dlg:dropdown="true" dlg:tabstop="true"/>
                 
-                <!-- OCR Engine Mode -->
-                <dlg:fixedtext dlg:id="OEMLabel" dlg:left="8" dlg:top="35" dlg:width="80" dlg:height="12" dlg:value="Engine Mode:"/>
-                <dlg:combobox dlg:id="OEMDropdown" dlg:left="95" dlg:top="33" dlg:width="230" dlg:height="14" dlg:dropdown="true" dlg:tabstop="true"/>
+                <dlg:fixedtext dlg:id="OEMLabel" dlg:left="10" dlg:top="40" dlg:width="80" dlg:height="15" dlg:value="Engine Mode:"/>
+                <dlg:combobox dlg:id="OEMDropdown" dlg:left="95" dlg:top="38" dlg:width="220" dlg:height="15" dlg:dropdown="true" dlg:tabstop="true"/>
 
-                <!-- Preprocessing Options -->
-                <dlg:fixedtext dlg:id="PreprocessingLabel" dlg:left="8" dlg:top="55" dlg:width="100" dlg:height="12" dlg:value="Image Preprocessing:"/>
-                <dlg:checkbox dlg:id="GrayscaleCheckbox" dlg:left="15" dlg:top="70" dlg:width="130" dlg:height="12" dlg:value="Convert to grayscale" dlg:tabstop="true"/>
-                <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:left="15" dlg:top="85" dlg:width="130" dlg:height="12" dlg:value="Binarize (black/white)" dlg:tabstop="true"/>
-                
-                <dlg:fixedtext dlg:id="AdvancedHelpLabel" dlg:left="155" dlg:top="70" dlg:width="170" dlg:height="25" dlg:value="These options may improve OCR for specific image types. Use defaults if unsure." dlg:multiline="true"/>
+                <dlg:checkbox dlg:id="GrayscaleCheckbox" dlg:left="10" dlg:top="60" dlg:width="100" dlg:height="15" dlg:value="Grayscale" dlg:tabstop="true"/>
+                <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:left="120" dlg:top="60" dlg:width="100" dlg:height="15" dlg:value="Binarize" dlg:tabstop="true"/>
             </dlg:bulletinboard>
         </dlg:groupbox>
         
-        <!-- Progress and Status -->
-        <dlg:groupbox dlg:id="StatusGroup" dlg:left="6" dlg:top="310" dlg:width="338" dlg:height="30" dlg:value="Status">
+        <!-- Status -->
+        <dlg:groupbox dlg:id="StatusGroup" dlg:left="10" dlg:top="330" dlg:width="330" dlg:height="35" dlg:value="Status">
             <dlg:bulletinboard>
-                <dlg:fixedtext dlg:id="StatusLabel" dlg:left="8" dlg:top="12" dlg:width="320" dlg:height="12" dlg:value="Ready to start OCR processing"/>
+                <dlg:fixedtext dlg:id="StatusLabel" dlg:left="10" dlg:top="15" dlg:width="310" dlg:height="15" dlg:value="Ready to start OCR processing"/>
             </dlg:bulletinboard>
         </dlg:groupbox>
         
         <!-- Action Buttons -->
-        <dlg:button dlg:id="RunOCRButton" dlg:left="120" dlg:top="350" dlg:width="70" dlg:height="18" dlg:value="Start OCR" dlg:default="true" dlg:tabstop="true"/>
-        <dlg:button dlg:id="CancelButton" dlg:left="200" dlg:top="350" dlg:width="60" dlg:height="18" dlg:value="Cancel" dlg:tabstop="true"/>
-        <dlg:button dlg:id="HelpButton" dlg:left="270" dlg:top="350" dlg:width="50" dlg:height="18" dlg:value="Help" dlg:tabstop="true"/>
+        <dlg:button dlg:id="RunOCRButton" dlg:left="120" dlg:top="375" dlg:width="70" dlg:height="20" dlg:value="Start OCR" dlg:default="true" dlg:tabstop="true"/>
+        <dlg:button dlg:id="CancelButton" dlg:left="200" dlg:top="375" dlg:width="60" dlg:height="20" dlg:value="Cancel" dlg:tabstop="true"/>
+        <dlg:button dlg:id="HelpButton" dlg:left="270" dlg:top="375" dlg:width="50" dlg:height="20" dlg:value="Help" dlg:tabstop="true"/>
 
     </dlg:bulletinboard>
 </dlg:window> 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" dlg:id="TestDialog" dlg:title="Test" dlg:left="50" dlg:top="50" dlg:width="150" dlg:height="80">
+    <dlg:bulletinboard>
+        <dlg:fixedtext dlg:id="label1" dlg:left="5" dlg:top="5" dlg:width="140" dlg:height="10" dlg:value="XDL Loading Success!"/>
+        <dlg:button dlg:id="button1" dlg:left="50" dlg:top="25" dlg:width="50" dlg:height="15" dlg:value="OK" dlg:button-type="ok"/>
+    </dlg:bulletinboard>
+</dlg:window> 

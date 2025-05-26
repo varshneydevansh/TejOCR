@@ -156,42 +156,109 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert):
 def _insert_text_into_new_textbox(ctx, frame, text_to_insert):
     logger.info("Output mode: Insert into new text box")
     try:
-        model = frame.getController().getModel()
+        controller = frame.getController()
+        model = controller.getModel()
+        
         if not model.supportsService("com.sun.star.text.TextDocument"):
             uno_utils.show_message_box(_("Error"), _("Cannot insert text box: Active document is not a text document."), "errorbox", parent_frame=frame, ctx=ctx)
             return
 
-        text_doc = model.getText()
-        doc_services_supplier = uno_utils.create_instance("com.sun.star.document.OfficeDocument", ctx) # Generic document
-        if not doc_services_supplier:
-             doc_services_supplier = model # Fallback to model if specific service fails
-
+        # Create text frame using the document's service factory
         text_frame = model.createInstance("com.sun.star.text.TextFrame")
         if not text_frame:
             logger.error("Failed to create TextFrame instance.")
             uno_utils.show_message_box(_("Error"), _("Could not create text frame object."), "errorbox", parent_frame=frame, ctx=ctx)
             return
 
-        # Set text frame properties (size, position - can be basic for now)
-        shape = text_frame # TextFrame is also a Shape
-        size = shape.getSize()
-        size.Width = 10000  # 100mm
-        size.Height = 5000 # 50mm
-        shape.setSize(size)
-        # Position can be set relative to page or anchor, complex. Default might be okay.
+        # Set text frame properties
+        try:
+            # Set size (in 1/100mm units)
+            text_frame.setPropertyValue("Width", 8000)   # 80mm width
+            text_frame.setPropertyValue("Height", 3000)  # 30mm height
+            
+            # Set anchor type to "as character" so it flows with text
+            try:
+                anchor_type = uno.getConstantByName("com.sun.star.text.TextContentAnchorType.AS_CHARACTER")
+                text_frame.setPropertyValue("AnchorType", anchor_type)
+            except Exception:
+                # Fallback to numeric value if constant not found
+                text_frame.setPropertyValue("AnchorType", 1)  # AS_CHARACTER = 1
+            
+            # Set some visual properties
+            text_frame.setPropertyValue("BorderDistance", 100)  # 1mm border distance
+            text_frame.setPropertyValue("LeftBorderDistance", 100)
+            text_frame.setPropertyValue("RightBorderDistance", 100)
+            text_frame.setPropertyValue("TopBorderDistance", 100)
+            text_frame.setPropertyValue("BottomBorderDistance", 100)
+            
+        except Exception as prop_error:
+            logger.warning(f"Could not set all text frame properties: {prop_error}")
+            # Continue anyway with default properties
+
+        # Get document text and create proper cursor
+        text_doc = model.getText()
+        
+        # Try to get view cursor first, then fallback to text cursor
+        try:
+            view_cursor = controller.getViewCursor()
+            if view_cursor:
+                # Ensure cursor is in the same document
+                cursor_text = view_cursor.getText()
+                if cursor_text == text_doc:
+                    insertion_cursor = view_cursor
+                else:
+                    # Create new cursor at end of document
+                    insertion_cursor = text_doc.createTextCursor()
+                    insertion_cursor.gotoEnd(False)
+            else:
+                # Create new cursor at end of document
+                insertion_cursor = text_doc.createTextCursor()
+                insertion_cursor.gotoEnd(False)
+        except Exception:
+            # Fallback to document text cursor
+            insertion_cursor = text_doc.createTextCursor()
+            insertion_cursor.gotoEnd(False)
 
         # Insert the text frame into the document
-        view_cursor = frame.getController().getViewCursor()
-        text_doc.insertTextContent(view_cursor, text_frame, False)
+        text_doc.insertTextContent(insertion_cursor, text_frame, False)
 
         # Add text to the text frame
-        text_frame.getText().setString(text_to_insert)
+        frame_text = text_frame.getText()
+        frame_text.setString(text_to_insert)
 
-        logger.info(f"Inserted new text box with {len(text_to_insert)} characters.")
+        logger.info(f"Successfully inserted new text box with {len(text_to_insert)} characters.")
+        
+        # Show success message
+        uno_utils.show_message_box(
+            _("Text Box Created"), 
+            _("Text has been inserted into a new text box."), 
+            "infobox", 
+            parent_frame=frame, 
+            ctx=ctx
+        )
 
     except Exception as e:
         logger.error(f"Error inserting text into new text box: {e}", exc_info=True)
-        uno_utils.show_message_box(_("Text Box Error"), _("Could not insert text into new text box: {error}").format(error=e), "errorbox", parent_frame=frame, ctx=ctx)
+        # Fallback to cursor insertion if text box fails
+        logger.info("Text box creation failed, falling back to cursor insertion")
+        try:
+            _insert_text_at_cursor(ctx, frame, f"[Text Box Failed] {text_to_insert}")
+            uno_utils.show_message_box(
+                _("Text Box Error"), 
+                _("Could not create text box, text inserted at cursor instead.\n\nError: {error}").format(error=str(e)[:100]), 
+                "warningbox", 
+                parent_frame=frame, 
+                ctx=ctx
+            )
+        except Exception as fallback_error:
+            logger.error(f"Even fallback insertion failed: {fallback_error}")
+            uno_utils.show_message_box(
+                _("Text Box Error"), 
+                _("Could not insert text into new text box: {error}").format(error=e), 
+                "errorbox", 
+                parent_frame=frame, 
+                ctx=ctx
+            )
 
 def _replace_image_with_text(ctx, frame, text_to_insert):
     logger.info("Output mode: Replace image with text")
@@ -267,6 +334,14 @@ def _copy_text_to_clipboard(ctx, frame, text_to_insert):
 def insert_text_at_cursor(ctx, frame, text_to_insert):
     """Simple function to insert text at the current cursor position."""
     return _insert_text_at_cursor(ctx, frame, text_to_insert)
+
+def copy_text_to_clipboard(ctx, frame, text_to_insert):
+    """Public function to copy text to clipboard."""
+    return _copy_text_to_clipboard(ctx, frame, text_to_insert)
+
+def create_text_box_with_text(ctx, frame, text_to_insert):
+    """Public function to create a text box with text."""
+    return _insert_text_into_new_textbox(ctx, frame, text_to_insert)
 
 def handle_ocr_output(ctx, frame, recognized_text, output_mode):
     """Main dispatcher for handling OCR output based on the selected mode."""

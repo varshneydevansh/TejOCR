@@ -109,6 +109,10 @@ logger = get_logger("TejOCR.uno_utils")
 logger.info("uno_utils.py: Module loaded and logger initialized.")
 
 
+# --- Constants for dialog results ---
+OK_BUTTON = 1  # Standard result for OK from FilePicker/Dialogs
+CANCEL_BUTTON = 0  # Standard result for Cancel from dialogs
+
 # --- UNO Service Creation & Access ---
 # Removed global SMGR cache to ensure context-specific service managers
 # logger = get_logger("TejOCR.uno_utils") # This was the problematic line, now logger is initialized above.
@@ -216,27 +220,52 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
         except Exception as e:
             logger.debug(f"show_message_box: Error creating toolkit for parent peer: {e}")
 
-    # Determine MessageBoxType dynamically
+    # Determine MessageBoxType with better fallback handling
+    box_type_numeric_map = {
+        "infobox": 1,
+        "warningbox": 2, 
+        "errorbox": 3,
+        "querybox": 4,
+        "messagebox": 4  # Default
+    }
+    
+    # Try to get the constant, with multiple fallback strategies
+    msg_type_enum = None
+    type_lower = type.lower()
+    
+    # Strategy 1: Try the exact constant name
     box_type_str_map = {
         "infobox": "INFOBOX",
         "warningbox": "WARNINGBOX",
         "errorbox": "ERRORBOX",
         "querybox": "QUERYBOX",
-        "messagebox": "MESSAGEBOX" # Default
+        "messagebox": "MESSAGEBOX"
     }
-    msg_box_type_name = box_type_str_map.get(type.lower(), "MESSAGEBOX")
-    actual_box_type_constant_str = f"com.sun.star.awt.MessageBoxType.{msg_box_type_name}"
 
-    try:
-        msg_type_enum = uno.getConstantByName(actual_box_type_constant_str)
-    except Exception:
-        logger.warning(f"Failed to get MessageBoxType constant '{actual_box_type_constant_str}'. Falling back to MESSAGEBOX.")
+    if type_lower in box_type_str_map:
         try:
-            msg_type_enum = uno.getConstantByName("com.sun.star.awt.MessageBoxType.MESSAGEBOX")
+            constant_name = f"com.sun.star.awt.MessageBoxType.{box_type_str_map[type_lower]}"
+            msg_type_enum = uno.getConstantByName(constant_name)
         except Exception:
-            # Ultimate fallback to numeric value
-            msg_type_enum = 4  # MESSAGEBOX
-            logger.warning("Using numeric fallback for MessageBoxType")
+            pass
+    
+    # Strategy 2: Try alternative constant names
+    if msg_type_enum is None:
+        alternative_names = [
+            f"com.sun.star.awt.MessageBoxType.{type_lower.upper()}",
+            f"com.sun.star.awt.MessageBoxType.{type_lower.capitalize()}",
+        ]
+        for alt_name in alternative_names:
+            try:
+                msg_type_enum = uno.getConstantByName(alt_name)
+                break
+            except Exception:
+                continue
+    
+    # Strategy 3: Numeric fallback
+    if msg_type_enum is None:
+        msg_type_enum = box_type_numeric_map.get(type_lower, 4)
+        logger.debug(f"Using numeric fallback for MessageBoxType '{type}': {msg_type_enum}")
 
     # Determine buttons dynamically
     if isinstance(buttons, str):
@@ -302,7 +331,7 @@ def get_current_frame(ctx):
     return None
 
 def show_input_box(title, message, default_text="", ctx=None, parent_frame=None):
-    """Shows a real input dialog that allows user to edit text."""
+    """Shows a truly interactive input dialog with an editable text field."""
     logger.debug(f"show_input_box called: {title} - {message} - default: {default_text}")
     
     if ctx is None:
@@ -313,157 +342,607 @@ def show_input_box(title, message, default_text="", ctx=None, parent_frame=None)
             return default_text
     
     try:
-        # Method 1: Try XUserInputDialogFactory (modern approach)
-        try:
-            factory = create_instance("com.sun.star.awt.XUserInputDialogFactory", ctx)
-            if factory and hasattr(factory, "createInputBox"):
-                result = factory.createInputBox(title, message, default_text)
-                if result is not None:
-                    logger.debug(f"show_input_box: XUserInputDialogFactory returned: '{result}'")
-                    return result
-        except Exception as e:
-            logger.debug(f"show_input_box: XUserInputDialogFactory failed: {e}")
-        
-        # Method 2: Create programmatic dialog with real text field
-        try:
-            # Create dialog model
-            dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
-            if not dialog_model:
-                raise Exception("Could not create dialog model")
-            
-            # Set dialog properties
-            dialog_model.setPropertyValue("PositionX", 100)
-            dialog_model.setPropertyValue("PositionY", 100) 
-            dialog_model.setPropertyValue("Width", 300)
-            dialog_model.setPropertyValue("Height", 120)
-            dialog_model.setPropertyValue("Title", title)
-            
-            # Create label for message
-            label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlLabelModel")
-            label_model.setPropertyValue("PositionX", 10)
-            label_model.setPropertyValue("PositionY", 10)
-            label_model.setPropertyValue("Width", 280)
-            label_model.setPropertyValue("Height", 30)
-            label_model.setPropertyValue("Label", message)
-            label_model.setPropertyValue("MultiLine", True)
-            dialog_model.insertByName("label1", label_model)
-            
-            # Create text field
-            edit_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
-            edit_model.setPropertyValue("PositionX", 10)
-            edit_model.setPropertyValue("PositionY", 45)
-            edit_model.setPropertyValue("Width", 280)
-            edit_model.setPropertyValue("Height", 20)
-            edit_model.setPropertyValue("Text", default_text)
-            dialog_model.insertByName("edit1", edit_model)
-            
-            # Create OK button
-            ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-            ok_button_model.setPropertyValue("PositionX", 130)
-            ok_button_model.setPropertyValue("PositionY", 80)
-            ok_button_model.setPropertyValue("Width", 60)
-            ok_button_model.setPropertyValue("Height", 25)
-            ok_button_model.setPropertyValue("Label", "OK")
-            ok_button_model.setPropertyValue("PushButtonType", 1)  # OK button
-            dialog_model.insertByName("ok_button", ok_button_model)
-            
-            # Create Cancel button
-            cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-            cancel_button_model.setPropertyValue("PositionX", 200)
-            cancel_button_model.setPropertyValue("PositionY", 80)
-            cancel_button_model.setPropertyValue("Width", 60)
-            cancel_button_model.setPropertyValue("Height", 25)
-            cancel_button_model.setPropertyValue("Label", "Cancel")
-            cancel_button_model.setPropertyValue("PushButtonType", 2)  # Cancel button
-            dialog_model.insertByName("cancel_button", cancel_button_model)
-            
-            # Create dialog control
-            dialog_control = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
-            if not dialog_control:
-                raise Exception("Could not create dialog control")
-            
-            dialog_control.setModel(dialog_model)
-            
-            # Get parent window
-            parent_window = None
-            if parent_frame:
-                try:
-                    parent_window = parent_frame.getContainerWindow()
-                except:
-                    pass
-            
-            if not parent_window:
-                try:
-                    toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
-                    if toolkit:
-                        parent_window = toolkit.getActiveTopWindow()
-                        if not parent_window:
-                            parent_window = toolkit.getDesktopWindow()
-                except:
-                    pass
-            
-            # Create dialog peer
-            if parent_window:
-                dialog_control.createPeer(None, parent_window)
-            else:
-                toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
-                if toolkit:
-                    dialog_control.createPeer(toolkit, None)
-            
-            # Execute dialog
-            result = dialog_control.execute()
-            
-            if result == 1:  # OK pressed
-                # Get text from edit control
-                edit_control = dialog_control.getControl("edit1")
-                if edit_control:
-                    user_text = edit_control.getText()
-                    logger.debug(f"show_input_box: User entered: '{user_text}'")
-                    dialog_control.dispose()
-                    return user_text
-            
-            dialog_control.dispose()
-            logger.debug("show_input_box: User cancelled dialog")
-            return None
-                
-        except Exception as e:
-            logger.debug(f"show_input_box: Programmatic dialog failed: {e}")
-        
-        # Method 3: Enhanced fallback with better prompting
-        enhanced_message = f"{message}\n\nCurrent value: {default_text}\n\nChoose an option:"
-        
-        # First ask if they want to change it
-        change_result = show_message_box(
-            title=title,
-            message=enhanced_message + "\n\n• Keep Current Value\n• Enter New Value",
-            type="querybox", 
-            buttons="yes_no",
-            parent_frame=parent_frame,
-            ctx=ctx
+        # Create dialog model
+        dialog_model = ctx.getServiceManager().createInstanceWithContext(
+            "com.sun.star.awt.UnoControlDialogModel", ctx
         )
         
-        if change_result != 1:  # Yes = 1, No = 2
-            logger.debug(f"show_input_box: User chose to keep current value: '{default_text}'")
+        if not dialog_model:
+            logger.error("Failed to create dialog model")
+            return default_text
+        
+        # Set dialog properties
+        dialog_model.setPropertyValue("PositionX", 100)
+        dialog_model.setPropertyValue("PositionY", 100)
+        dialog_model.setPropertyValue("Width", 300)
+        dialog_model.setPropertyValue("Height", 120)
+        dialog_model.setPropertyValue("Title", title)
+        dialog_model.setPropertyValue("Closeable", True)
+        dialog_model.setPropertyValue("Moveable", True)
+        
+        # Create label for message
+        label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        label_model.setPropertyValue("PositionX", 10)
+        label_model.setPropertyValue("PositionY", 10)
+        label_model.setPropertyValue("Width", 280)
+        label_model.setPropertyValue("Height", 30)
+        label_model.setPropertyValue("Label", message)
+        label_model.setPropertyValue("MultiLine", True)
+        dialog_model.insertByName("label", label_model)
+        
+        # Create text input field
+        text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        text_model.setPropertyValue("PositionX", 10)
+        text_model.setPropertyValue("PositionY", 45)
+        text_model.setPropertyValue("Width", 280)
+        text_model.setPropertyValue("Height", 15)
+        text_model.setPropertyValue("Text", default_text)
+        dialog_model.insertByName("textfield", text_model)
+        
+        # Create OK button
+        ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        ok_button_model.setPropertyValue("PositionX", 150)
+        ok_button_model.setPropertyValue("PositionY", 75)
+        ok_button_model.setPropertyValue("Width", 60)
+        ok_button_model.setPropertyValue("Height", 20)
+        ok_button_model.setPropertyValue("Label", "OK")
+        ok_button_model.setPropertyValue("PushButtonType", 1)  # OK button
+        dialog_model.insertByName("ok_button", ok_button_model)
+        
+        # Create Cancel button
+        cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        cancel_button_model.setPropertyValue("PositionX", 220)
+        cancel_button_model.setPropertyValue("PositionY", 75)
+        cancel_button_model.setPropertyValue("Width", 60)
+        cancel_button_model.setPropertyValue("Height", 20)
+        cancel_button_model.setPropertyValue("Label", "Cancel")
+        cancel_button_model.setPropertyValue("PushButtonType", 2)  # Cancel button
+        dialog_model.insertByName("cancel_button", cancel_button_model)
+        
+        # Create dialog control
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+        if not toolkit:
+            logger.error("Failed to create toolkit")
             return default_text
             
-        # If they want to change, provide guided input
-        input_message = f"{message}\n\nEnter new value:\n\nFor common languages:\n• English: eng\n• Hindi: hin\n• French: fra\n• German: deu\n• Spanish: spa\n\nOr leave blank to keep: {default_text}"
+        dialog = toolkit.createWindow(dialog_model)
+        if not dialog:
+            logger.error("Failed to create dialog window")
+            return default_text
         
-        # For now, show a simple prompt to enter in console/log and accept default
-        logger.info(f"INPUT NEEDED: {title} - {input_message}")
-        print(f"\n=== INPUT DIALOG ===")
-        print(f"Title: {title}")
-        print(f"Message: {message}")
-        print(f"Current/Default: {default_text}")
-        print(f"===================")
+        # Execute dialog
+        result = dialog.execute()
         
-        # Return default for now - this gives user feedback about what input is needed
-        logger.debug(f"show_input_box: Using current/default value: '{default_text}'")
-        return default_text
+        # Get the text if OK was pressed
+        user_input = default_text
+        if result == 1:  # OK button
+            text_control = dialog.getControl("textfield")
+            if text_control:
+                user_input = text_control.getText()
+        
+        # Clean up
+        dialog.dispose()
+        
+        logger.debug(f"show_input_box result: {user_input if result == 1 else 'cancelled'}")
+        return user_input if result == 1 else None
         
     except Exception as e:
-        logger.error(f"show_input_box: All methods failed: {e}")
+        logger.error(f"show_input_box: Failed to create interactive dialog: {e}", exc_info=True)
+        # Fallback to simple message box approach for critical cases
+        logger.info("Falling back to simplified choice-based input")
+        
+        # For language selection, offer common choices
+        if "language" in message.lower() or "lang" in title.lower():
+            try:
+                from tejocr import tejocr_engine
+                available_langs = tejocr_engine.get_available_languages()
+                if "eng" in available_langs:
+                    result = show_message_box(
+                        title=title,
+                        message=f"{message}\n\nUse English (recommended)?",
+                        type="querybox",
+                        buttons="yes_no_cancel",
+                        parent_frame=parent_frame,
+                        ctx=ctx
+                    )
+                    if result == 2:  # YES
+                        return "eng"
+                    elif result == 3:  # NO
+                        return default_text
+                    else:  # CANCEL
+                        return None
+            except Exception:
+                pass
+        
+        # For paths, offer auto-detect
+        elif "path" in message.lower() or "tesseract" in message.lower():
+            result = show_message_box(
+                title=title,
+                message=f"{message}\n\nUse auto-detect?",
+                type="querybox",
+                buttons="yes_no_cancel",
+                parent_frame=parent_frame,
+                ctx=ctx
+            )
+            if result == 2:  # YES
+                return ""  # Auto-detect
+            elif result == 3:  # NO
+                return default_text
+            else:  # CANCEL
+                return None
+        
+        # Generic fallback
         return default_text
+
+# Note: Interactive dialog functions have been moved to tejocr_interactive_dialogs.py
+def show_interactive_settings_dialog_deprecated(ctx, parent_frame=None):
+    """Shows a comprehensive interactive settings dialog."""
+    logger.debug("show_interactive_settings_dialog called")
+    
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            logger.warning("No ctx provided and uno.getComponentContext() failed.")
+            return False
+    
+    try:
+        # Create dialog model
+        dialog_model = ctx.getServiceManager().createInstanceWithContext(
+            "com.sun.star.awt.UnoControlDialogModel", ctx
+        )
+        
+        if not dialog_model:
+            logger.error("Failed to create settings dialog model")
+            return False
+        
+        # Set dialog properties
+        dialog_model.setPropertyValue("PositionX", 50)
+        dialog_model.setPropertyValue("PositionY", 50)
+        dialog_model.setPropertyValue("Width", 400)
+        dialog_model.setPropertyValue("Height", 300)
+        dialog_model.setPropertyValue("Title", "TejOCR Settings")
+        dialog_model.setPropertyValue("Closeable", True)
+        dialog_model.setPropertyValue("Moveable", True)
+        
+        # Title label
+        title_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        title_model.setPropertyValue("PositionX", 10)
+        title_model.setPropertyValue("PositionY", 10)
+        title_model.setPropertyValue("Width", 380)
+        title_model.setPropertyValue("Height", 15)
+        title_model.setPropertyValue("Label", "TejOCR Configuration")
+        title_model.setPropertyValue("FontWeight", 150)  # Bold
+        title_model.setPropertyValue("Align", 1)  # Center
+        dialog_model.insertByName("title", title_model)
+        
+        # Dependencies status
+        deps_label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        deps_label_model.setPropertyValue("PositionX", 10)
+        deps_label_model.setPropertyValue("PositionY", 35)
+        deps_label_model.setPropertyValue("Width", 380)
+        deps_label_model.setPropertyValue("Height", 40)
+        
+        # Check dependencies
+        deps_status = "Checking dependencies..."
+        try:
+            from tejocr import tejocr_engine
+            is_ready, message = tejocr_engine.is_tesseract_ready(ctx, show_gui_errors=False)
+            if is_ready:
+                deps_status = "✅ All dependencies ready! OCR functionality available."
+            else:
+                deps_status = f"❌ Dependencies missing: {message}"
+        except Exception as e:
+            deps_status = f"⚠️ Could not check dependencies: {e}"
+        
+        deps_label_model.setPropertyValue("Label", deps_status)
+        deps_label_model.setPropertyValue("MultiLine", True)
+        dialog_model.insertByName("deps_status", deps_label_model)
+        
+        # Tesseract path section
+        path_label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        path_label_model.setPropertyValue("PositionX", 10)
+        path_label_model.setPropertyValue("PositionY", 85)
+        path_label_model.setPropertyValue("Width", 100)
+        path_label_model.setPropertyValue("Height", 15)
+        path_label_model.setPropertyValue("Label", "Tesseract Path:")
+        dialog_model.insertByName("path_label", path_label_model)
+        
+        # Get current path
+        current_path = get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx)
+        
+        path_text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        path_text_model.setPropertyValue("PositionX", 120)
+        path_text_model.setPropertyValue("PositionY", 85)
+        path_text_model.setPropertyValue("Width", 200)
+        path_text_model.setPropertyValue("Height", 15)
+        path_text_model.setPropertyValue("Text", current_path)
+        dialog_model.insertByName("path_text", path_text_model)
+        
+        # Auto-detect button
+        auto_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        auto_button_model.setPropertyValue("PositionX", 330)
+        auto_button_model.setPropertyValue("PositionY", 85)
+        auto_button_model.setPropertyValue("Width", 60)
+        auto_button_model.setPropertyValue("Height", 15)
+        auto_button_model.setPropertyValue("Label", "Auto-detect")
+        dialog_model.insertByName("auto_button", auto_button_model)
+        
+        # Default language section
+        lang_label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        lang_label_model.setPropertyValue("PositionX", 10)
+        lang_label_model.setPropertyValue("PositionY", 115)
+        lang_label_model.setPropertyValue("Width", 100)
+        lang_label_model.setPropertyValue("Height", 15)
+        lang_label_model.setPropertyValue("Label", "Default Language:")
+        dialog_model.insertByName("lang_label", lang_label_model)
+        
+        # Get current language
+        current_lang = get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, ctx)
+        
+        lang_text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        lang_text_model.setPropertyValue("PositionX", 120)
+        lang_text_model.setPropertyValue("PositionY", 115)
+        lang_text_model.setPropertyValue("Width", 100)
+        lang_text_model.setPropertyValue("Height", 15)
+        lang_text_model.setPropertyValue("Text", current_lang)
+        dialog_model.insertByName("lang_text", lang_text_model)
+        
+        # Language help
+        lang_help_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        lang_help_model.setPropertyValue("PositionX", 230)
+        lang_help_model.setPropertyValue("PositionY", 115)
+        lang_help_model.setPropertyValue("Width", 160)
+        lang_help_model.setPropertyValue("Height", 15)
+        lang_help_model.setPropertyValue("Label", "(e.g., eng, hin, fra, deu, spa)")
+        dialog_model.insertByName("lang_help", lang_help_model)
+        
+        # Installation help button
+        help_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        help_button_model.setPropertyValue("PositionX", 10)
+        help_button_model.setPropertyValue("PositionY", 150)
+        help_button_model.setPropertyValue("Width", 120)
+        help_button_model.setPropertyValue("Height", 25)
+        help_button_model.setPropertyValue("Label", "Installation Help")
+        dialog_model.insertByName("help_button", help_button_model)
+        
+        # Test dependencies button
+        test_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        test_button_model.setPropertyValue("PositionX", 140)
+        test_button_model.setPropertyValue("PositionY", 150)
+        test_button_model.setPropertyValue("Width", 120)
+        test_button_model.setPropertyValue("Height", 25)
+        test_button_model.setPropertyValue("Label", "Test Dependencies")
+        dialog_model.insertByName("test_button", test_button_model)
+        
+        # Status label
+        status_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        status_model.setPropertyValue("PositionX", 10)
+        status_model.setPropertyValue("PositionY", 190)
+        status_model.setPropertyValue("Width", 380)
+        status_model.setPropertyValue("Height", 40)
+        status_model.setPropertyValue("Label", "Ready to configure settings.")
+        status_model.setPropertyValue("MultiLine", True)
+        dialog_model.insertByName("status", status_model)
+        
+        # Save button
+        save_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        save_button_model.setPropertyValue("PositionX", 200)
+        save_button_model.setPropertyValue("PositionY", 250)
+        save_button_model.setPropertyValue("Width", 80)
+        save_button_model.setPropertyValue("Height", 25)
+        save_button_model.setPropertyValue("Label", "Save Settings")
+        save_button_model.setPropertyValue("PushButtonType", 1)  # OK button
+        dialog_model.insertByName("save_button", save_button_model)
+        
+        # Cancel button
+        cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        cancel_button_model.setPropertyValue("PositionX", 290)
+        cancel_button_model.setPropertyValue("PositionY", 250)
+        cancel_button_model.setPropertyValue("Width", 80)
+        cancel_button_model.setPropertyValue("Height", 25)
+        cancel_button_model.setPropertyValue("Label", "Cancel")
+        cancel_button_model.setPropertyValue("PushButtonType", 2)  # Cancel button
+        dialog_model.insertByName("cancel_button", cancel_button_model)
+        
+        # Create dialog control
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+        if not toolkit:
+            logger.error("Failed to create toolkit for settings dialog")
+            return False
+            
+        dialog = toolkit.createWindow(dialog_model)
+        if not dialog:
+            logger.error("Failed to create settings dialog window")
+            return False
+        
+        # Add action listeners for buttons
+        class SettingsActionListener(unohelper.Base):
+            def __init__(self, dialog_ref, ctx_ref):
+                self.dialog = dialog_ref
+                self.ctx = ctx_ref
+            
+            def actionPerformed(self, event):
+                try:
+                    button_name = event.Source.getModel().getName()
+                    status_control = self.dialog.getControl("status")
+                    
+                    if button_name == "auto_button":
+                        # Auto-detect Tesseract
+                        detected_path = find_tesseract_executable()
+                        if detected_path:
+                            path_control = self.dialog.getControl("path_text")
+                            path_control.setText(detected_path)
+                            status_control.setText(f"✅ Auto-detected: {detected_path}")
+                        else:
+                            status_control.setText("❌ Could not auto-detect Tesseract path")
+                    
+                    elif button_name == "help_button":
+                        # Show installation help
+                        help_text = (
+                            "TejOCR Installation Guide:\n\n"
+                            "macOS: brew install tesseract tesseract-lang\n"
+                            "Ubuntu: sudo apt install tesseract-ocr tesseract-ocr-[lang]\n"
+                            "Windows: Download from GitHub releases\n\n"
+                            "For more languages:\n"
+                            "Visit: https://tesseract-ocr.github.io/tessdoc/"
+                        )
+                        show_message_box("Installation Help", help_text, "infobox", ctx=self.ctx)
+                    
+                    elif button_name == "test_button":
+                        # Test current settings
+                        path_control = self.dialog.getControl("path_text")
+                        test_path = path_control.getText().strip()
+                        
+                        try:
+                            from tejocr import tejocr_engine
+                            if test_path:
+                                success, message = tejocr_engine.check_tesseract_path(
+                                    test_path, ctx=self.ctx, show_success=False, show_gui_errors=False
+                                )
+                            else:
+                                success, message = tejocr_engine.is_tesseract_ready(
+                                    self.ctx, show_gui_errors=False
+                                )
+                            if not success:
+                                status_control.setText(f"❌ Test failed: {message}")
+                                return
+                            
+                            # Test language availability
+                            langs = tejocr_engine.get_available_languages()
+                            
+                            if success:
+                                status_control.setText("✅ Test successful! Dependencies are working.")
+                            else:
+                                status_control.setText(f"❌ Test failed: {message}")
+                        except Exception as e:
+                            status_control.setText(f"❌ Test error: {e}")
+                    
+                except Exception as e:
+                    logger.error(f"Settings dialog action error: {e}")
+        
+        # Add listeners
+        action_listener = SettingsActionListener(dialog, ctx)
+        dialog.getControl("auto_button").addActionListener(action_listener)
+        dialog.getControl("help_button").addActionListener(action_listener)
+        dialog.getControl("test_button").addActionListener(action_listener)
+        
+        # Execute dialog
+        result = dialog.execute()
+        
+        # Save settings if OK was pressed
+        settings_saved = False
+        if result == 1:  # OK/Save button
+            try:
+                # Save Tesseract path
+                path_control = dialog.getControl("path_text")
+                new_path = path_control.getText().strip()
+                set_setting(constants.CFG_KEY_TESSERACT_PATH, new_path, ctx)
+                
+                # Save default language
+                lang_control = dialog.getControl("lang_text")
+                new_lang = lang_control.getText().strip().lower()
+                if new_lang and len(new_lang) >= 2:
+                    set_setting(constants.CFG_KEY_DEFAULT_LANG, new_lang, ctx)
+                
+                settings_saved = True
+                logger.info(f"Settings saved: path='{new_path}', language='{new_lang}'")
+                
+            except Exception as e:
+                logger.error(f"Error saving settings: {e}")
+        
+        # Clean up
+        dialog.dispose()
+        
+        return settings_saved
+        
+    except Exception as e:
+        logger.error(f"show_interactive_settings_dialog: Failed to create dialog: {e}", exc_info=True)
+        return False
+
+def show_interactive_ocr_options_dialog_deprecated(ctx, parent_frame=None, source_type="selected", image_path=None):
+    """Shows an interactive OCR options dialog."""
+    logger.debug(f"show_interactive_ocr_options_dialog called: {source_type}")
+    
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            logger.warning("No ctx provided and uno.getComponentContext() failed.")
+            return None, None
+    
+    try:
+        # Create dialog model
+        dialog_model = ctx.getServiceManager().createInstanceWithContext(
+            "com.sun.star.awt.UnoControlDialogModel", ctx
+        )
+        
+        if not dialog_model:
+            logger.error("Failed to create OCR options dialog model")
+            return None, None
+        
+        # Set dialog properties
+        dialog_model.setPropertyValue("PositionX", 100)
+        dialog_model.setPropertyValue("PositionY", 100)
+        dialog_model.setPropertyValue("Width", 350)
+        dialog_model.setPropertyValue("Height", 200)
+        dialog_model.setPropertyValue("Title", "OCR Options")
+        dialog_model.setPropertyValue("Closeable", True)
+        dialog_model.setPropertyValue("Moveable", True)
+        
+        # Title
+        title_text = "Extract Text from Image" if source_type == "selected" else f"Extract Text from {os.path.basename(image_path) if image_path else 'File'}"
+        title_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        title_model.setPropertyValue("PositionX", 10)
+        title_model.setPropertyValue("PositionY", 10)
+        title_model.setPropertyValue("Width", 330)
+        title_model.setPropertyValue("Height", 15)
+        title_model.setPropertyValue("Label", title_text)
+        title_model.setPropertyValue("FontWeight", 150)  # Bold
+        title_model.setPropertyValue("Align", 1)  # Center
+        dialog_model.insertByName("title", title_model)
+        
+        # Language section
+        lang_label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        lang_label_model.setPropertyValue("PositionX", 10)
+        lang_label_model.setPropertyValue("PositionY", 40)
+        lang_label_model.setPropertyValue("Width", 80)
+        lang_label_model.setPropertyValue("Height", 15)
+        lang_label_model.setPropertyValue("Label", "Language:")
+        dialog_model.insertByName("lang_label", lang_label_model)
+        
+        # Get default language
+        default_lang = get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, ctx)
+        # Prefer English if available
+        if default_lang != "eng":
+            try:
+                from tejocr import tejocr_engine
+                available_langs = tejocr_engine.get_available_languages()
+                if "eng" in available_langs:
+                    default_lang = "eng"
+            except Exception:
+                default_lang = "eng"
+        
+        lang_text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        lang_text_model.setPropertyValue("PositionX", 100)
+        lang_text_model.setPropertyValue("PositionY", 40)
+        lang_text_model.setPropertyValue("Width", 80)
+        lang_text_model.setPropertyValue("Height", 15)
+        lang_text_model.setPropertyValue("Text", default_lang)
+        dialog_model.insertByName("lang_text", lang_text_model)
+        
+        # Language help
+        lang_help_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        lang_help_model.setPropertyValue("PositionX", 190)
+        lang_help_model.setPropertyValue("PositionY", 40)
+        lang_help_model.setPropertyValue("Width", 150)
+        lang_help_model.setPropertyValue("Height", 15)
+        lang_help_model.setPropertyValue("Label", "(eng, hin, fra, deu, spa, etc.)")
+        dialog_model.insertByName("lang_help", lang_help_model)
+        
+        # Output mode section
+        output_label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        output_label_model.setPropertyValue("PositionX", 10)
+        output_label_model.setPropertyValue("PositionY", 70)
+        output_label_model.setPropertyValue("Width", 100)
+        output_label_model.setPropertyValue("Height", 15)
+        output_label_model.setPropertyValue("Label", "Where to put text:")
+        dialog_model.insertByName("output_label", output_label_model)
+        
+        # Radio buttons for output mode
+        cursor_radio_model = dialog_model.createInstance("com.sun.star.awt.UnoControlRadioButtonModel")
+        cursor_radio_model.setPropertyValue("PositionX", 20)
+        cursor_radio_model.setPropertyValue("PositionY", 90)
+        cursor_radio_model.setPropertyValue("Width", 100)
+        cursor_radio_model.setPropertyValue("Height", 15)
+        cursor_radio_model.setPropertyValue("Label", "Insert at cursor")
+        cursor_radio_model.setPropertyValue("State", 1)  # Selected by default
+        dialog_model.insertByName("cursor_radio", cursor_radio_model)
+        
+        clipboard_radio_model = dialog_model.createInstance("com.sun.star.awt.UnoControlRadioButtonModel")
+        clipboard_radio_model.setPropertyValue("PositionX", 130)
+        clipboard_radio_model.setPropertyValue("PositionY", 90)
+        clipboard_radio_model.setPropertyValue("Width", 100)
+        clipboard_radio_model.setPropertyValue("Height", 15)
+        clipboard_radio_model.setPropertyValue("Label", "Copy to clipboard")
+        dialog_model.insertByName("clipboard_radio", clipboard_radio_model)
+        
+        textbox_radio_model = dialog_model.createInstance("com.sun.star.awt.UnoControlRadioButtonModel")
+        textbox_radio_model.setPropertyValue("PositionX", 240)
+        textbox_radio_model.setPropertyValue("PositionY", 90)
+        textbox_radio_model.setPropertyValue("Width", 100)
+        textbox_radio_model.setPropertyValue("Height", 15)
+        textbox_radio_model.setPropertyValue("Label", "Create text box")
+        dialog_model.insertByName("textbox_radio", textbox_radio_model)
+        
+        # Start OCR button
+        start_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        start_button_model.setPropertyValue("PositionX", 150)
+        start_button_model.setPropertyValue("PositionY", 130)
+        start_button_model.setPropertyValue("Width", 80)
+        start_button_model.setPropertyValue("Height", 25)
+        start_button_model.setPropertyValue("Label", "Start OCR")
+        start_button_model.setPropertyValue("PushButtonType", 1)  # OK button
+        dialog_model.insertByName("start_button", start_button_model)
+        
+        # Cancel button
+        cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        cancel_button_model.setPropertyValue("PositionX", 240)
+        cancel_button_model.setPropertyValue("PositionY", 130)
+        cancel_button_model.setPropertyValue("Width", 80)
+        cancel_button_model.setPropertyValue("Height", 25)
+        cancel_button_model.setPropertyValue("Label", "Cancel")
+        cancel_button_model.setPropertyValue("PushButtonType", 2)  # Cancel button
+        dialog_model.insertByName("cancel_button", cancel_button_model)
+        
+        # Create dialog control
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+        if not toolkit:
+            logger.error("Failed to create toolkit for OCR options dialog")
+            return None, None
+            
+        dialog = toolkit.createWindow(dialog_model)
+        if not dialog:
+            logger.error("Failed to create OCR options dialog window")
+            return None, None
+        
+        # Execute dialog
+        result = dialog.execute()
+        
+        # Get results if OK was pressed
+        language = None
+        output_mode = None
+        
+        if result == 1:  # Start OCR button
+            # Get language
+            lang_control = dialog.getControl("lang_text")
+            language = lang_control.getText().strip().lower()
+            if not language:
+                language = default_lang
+            
+            # Get output mode
+            cursor_control = dialog.getControl("cursor_radio")
+            clipboard_control = dialog.getControl("clipboard_radio")
+            textbox_control = dialog.getControl("textbox_radio")
+            
+            if cursor_control.getState():
+                output_mode = constants.OUTPUT_MODE_CURSOR
+            elif clipboard_control.getState():
+                output_mode = constants.OUTPUT_MODE_CLIPBOARD
+            elif textbox_control.getState():
+                output_mode = constants.OUTPUT_MODE_TEXTBOX
+            else:
+                output_mode = constants.OUTPUT_MODE_CURSOR  # Default
+        
+        # Clean up
+        dialog.dispose()
+        
+        logger.debug(f"OCR options result: language={language}, output_mode={output_mode}")
+        return language, output_mode
+                
+    except Exception as e:
+        logger.error(f"show_interactive_ocr_options_dialog: Failed to create dialog: {e}", exc_info=True)
+        return None, None
 
 def is_graphic_object_selected(frame, ctx):
     """Checks if a graphic object is currently selected in the frame."""
@@ -875,7 +1354,7 @@ def get_graphic_from_selection(selection, ctx):
 
 # --- System Utilities ---
 
-def find_tesseract_executable(configured_path="", ctx=None):
+def find_tesseract_executable(configured_path=""):
     """Tries to find the Tesseract OCR executable.
     1. Checks the configured_path if provided.
     2. Checks common system PATH locations.

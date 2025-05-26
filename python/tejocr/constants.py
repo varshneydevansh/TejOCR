@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.1.5"
+EXTENSION_VERSION = "0.1.6"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 
@@ -19,6 +19,7 @@ CFG_KEY_TESSERACT_PATH = "TesseractPath"
 CFG_KEY_DEFAULT_LANG = "DefaultOcrLanguage"
 CFG_KEY_DEFAULT_GRAYSCALE = "DefaultPreprocessingGrayscale"
 CFG_KEY_DEFAULT_BINARIZE = "DefaultPreprocessingBinarize"
+CFG_KEY_IMPROVE_IMAGE_DEFAULT = "DefaultImproveImageQuality" # For image enhancement options
 CFG_KEY_LAST_SELECTED_LANG = "LastSelectedOcrLanguage" # For OCR Options Dialog
 CFG_KEY_LAST_OUTPUT_MODE = "LastOutputMode" # For OCR Options Dialog
 
@@ -26,6 +27,7 @@ CFG_KEY_LAST_OUTPUT_MODE = "LastOutputMode" # For OCR Options Dialog
 DEFAULT_OCR_LANGUAGE = "eng"  # Default to English
 DEFAULT_PREPROC_GRAYSCALE = False
 DEFAULT_PREPROC_BINARIZE = False
+DEFAULT_IMPROVE_IMAGE = False # Default to no image enhancement
 DEFAULT_TESSERACT_PATH = "" # Empty, to trigger auto-detection or user input
 
 # --- Tesseract PSM (Page Segmentation Modes) --- 
@@ -116,4 +118,7 @@ CURRENT_LOG_LEVEL = "DEBUG"
 DEVELOPMENT_MODE_STRICT_PLACEHOLDERS = False
 
 # Default file for logging, relative to user's temp directory subfolder
-LOG_FILENAME = "tejocr.log" 
+LOG_FILENAME = "tejocr.log"
+
+# --- DEBUG CONSTANT FOR TESTING UPDATES ---
+DEBUG_CONSTANT_VERSION = "v2_constants_test" 

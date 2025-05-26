@@ -1,0 +1,13 @@
+{
+  "build_time": "2025-05-26 21:22:07",
+  "version": "0.1.5",
+  "workspace": "/Users/devanshvarshney/TejOCR",
+  "results": {
+    "Phase 1: Critical Tests": true,
+    "Phase 2: File Structure": true,
+    "Phase 2: Python Syntax": true,
+    "Phase 3: Package Creation": true,
+    "Phase 4: Extension Installation": true,
+    "Phase 4: LibreOffice Testing": true
+  }
+}

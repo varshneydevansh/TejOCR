@@ -78,6 +78,16 @@ def _initialize_pytesseract():
             pytesseract.pytesseract.tesseract_cmd = tesseract_path
             logger.info(f"Pytesseract initialized successfully with tesseract at: {tesseract_path}")
             
+            # Set TESSDATA_PREFIX if not already set
+            if not os.environ.get("TESSDATA_PREFIX"):
+                tess_dir = os.path.dirname(tesseract_path)  # e.g., /opt/homebrew/bin
+                potential_tessdata_prefix = os.path.abspath(os.path.join(tess_dir, "..", "share", "tessdata"))
+                if os.path.isdir(potential_tessdata_prefix):
+                    logger.info(f"Setting TESSDATA_PREFIX to: {potential_tessdata_prefix}")
+                    os.environ["TESSDATA_PREFIX"] = potential_tessdata_prefix
+                else:
+                    logger.warning(f"Could not auto-determine TESSDATA_PREFIX from {tesseract_path}. Assumed path {potential_tessdata_prefix} not found.")
+            
             # Test that it actually works
             try:
                 version_info = pytesseract.get_tesseract_version()
@@ -262,122 +272,218 @@ def _get_image_from_selection(frame, ctx):
         if os.path.exists(temp_image_file): os.remove(temp_image_file) # Clean up failed export
         return None
 
-def _preprocess_image(image_path, grayscale=False, binarize_method=None):
+def _preprocess_image(image_path, improve_quality=False, grayscale=False, binarize_method=None):
     """Applies preprocessing steps to the image using Pillow.
-    binarize_method: None or 'otsu'.
+    improve_quality: Applies a general set of enhancements if True.
+    grayscale: Specifically convert to grayscale (can be part of improve_quality).
+    binarize_method: None or 'otsu' (placeholder for more advanced binarization).
     Returns path to the processed image (might be same as input or a new temp file).
     """
     if not PILLOW_AVAILABLE:
-        if grayscale or binarize_method:
-            logger.info("Pillow not available, skipping preprocessing.")
+        if improve_quality or grayscale or binarize_method:
+            logger.info("Pillow not available, skipping all image preprocessing.")
         return image_path # Cannot preprocess
 
     try:
+        logger.debug(f"Preprocessing image: '{image_path}'. Improve: {improve_quality}, Grayscale: {grayscale}, Binarize: {binarize_method}")
         img = Image.open(image_path)
         original_format = img.format
-        processed = False
+        processed_img = img # Start with the original image
+        image_was_modified = False
 
-        if grayscale:
-            img = ImageOps.grayscale(img)
-            processed = True
+        # Ensure image is in a mode that supports the filters (e.g., RGB, L)
+        if processed_img.mode == 'P': # Palette mode
+            logger.debug(f"Converting image from Palette mode (P) to RGB for preprocessing.")
+            processed_img = processed_img.convert("RGB")
+            image_was_modified = True # Conversion itself is a modification
+        elif processed_img.mode == 'RGBA':
+             logger.debug(f"Converting image from RGBA to RGB (removing alpha channel) for preprocessing.")
+             background = Image.new("RGB", processed_img.size, (255, 255, 255)) # White background
+             background.paste(processed_img, mask=processed_img.split()[3]) # 3 is the alpha channel
+             processed_img = background
+             image_was_modified = True
+
+        if improve_quality:
+            logger.debug("Applying general image quality improvements.")
+            # 1. Convert to Grayscale (often good for OCR)
+            processed_img = ImageOps.grayscale(processed_img)
+            # 2. Apply a mild sharpen filter
+            processed_img = processed_img.filter(ImageFilter.SHARPEN)
+            # 3. Enhance contrast (simple auto-contrast)
+            processed_img = ImageOps.autocontrast(processed_img, cutoff=1) # cutoff can be tuned
+            image_was_modified = True
         
-        if binarize_method == 'otsu':
-            # For Otsu, typically image should be grayscale first
-            if not grayscale:
-                img_gray = ImageOps.grayscale(img)
+        if grayscale and not improve_quality: # Apply grayscale only if improve_quality didn't already do it
+            logger.debug("Applying explicit grayscale conversion.")
+            processed_img = ImageOps.grayscale(processed_img)
+            image_was_modified = True
+        
+        if binarize_method == 'otsu': # Placeholder for Otsu, currently simple binarization
+            logger.debug("Applying binarization (current: simple threshold).")
+            # Ensure grayscale before binarizing if not already
+            if processed_img.mode != 'L':
+                img_for_binarize = ImageOps.grayscale(processed_img)
             else:
-                img_gray = img
-            # Pillow doesn't have Otsu directly. A common way is via OpenCV or scikit-image.
-            # For a pure Pillow approach, a simple thresholding or adaptive thresholding can be used.
-            # For simplicity here, we'll just invert if it's dark text on light bg for some basic binarization effect
-            # This is NOT Otsu, just a placeholder for a more advanced binarization step.
-            # img = img_gray.point(lambda x: 0 if x < 128 else 255, '1') # Example simple threshold
-            # A better placeholder for "binarization" without external libs for Otsu:
-            img = img_gray.convert('1') # Convert to bilevel (1-bit pixels) using a default threshold
-            processed = True
+                img_for_binarize = processed_img
+            
+            processed_img = img_for_binarize.convert('1') # Convert to bilevel (1-bit pixels) using a default threshold
+            image_was_modified = True
 
-        if processed:
+        if image_was_modified:
             # Save to a new temp file to avoid overwriting original if it was from user's disk
-            processed_path = _get_temp_image_path(suffix=f".{original_format.lower() if original_format else 'png'}")
-            img.save(processed_path)
-            # If the original image_path was a temp file, remove it
+            # and to ensure the format is OCR-friendly (like PNG)
+            processed_path = _get_temp_image_path(suffix=".png") # Save as PNG for consistency
+            processed_img.save(processed_path, "PNG")
+            logger.info(f"Image processed and saved to new temporary file: {processed_path}")
+            
+            # If the original image_path was a temp file (not the one we just created), remove it
             if image_path.startswith(tempfile.gettempdir()) and image_path != processed_path:
-                 try: os.remove(image_path) # clean up intermediate temp file
-                 except OSError: pass
+                 try: 
+                     logger.debug(f"Removing original temporary image: {image_path}")
+                     os.remove(image_path)
+                 except OSError as e_remove:
+                     logger.warning(f"Could not remove original temporary image '{image_path}': {e_remove}")
             return processed_path
         else:
-            return image_path
+            logger.debug("No preprocessing steps were applied or required modification.")
+            return image_path # Return original if no changes made
 
     except Exception as e:
         logger.error(f"Error during image preprocessing for '{image_path}': {e}", exc_info=True)
         return image_path # Return original path if preprocessing fails
 
-def extract_text_from_selected_image(ctx, frame, lang="eng"):
+def extract_text_from_selected_image(ctx, frame, lang="eng", improve_image=False):
     """Extract text from currently selected image in LibreOffice."""
     if not _initialize_pytesseract():
         logger.error("Cannot extract text: Pytesseract not available")
+        # uno_utils.show_message_box(_("Pytesseract Error"), _("Pytesseract library is not available. Please check installation."), "errorbox", parent_frame=frame, ctx=ctx)
         return None
     
+    exported_temp_image_path = None # Path of the image exported from selection
+    processed_image_path = None # Path of the image after preprocessing (if any)
+    final_image_path_for_ocr = None
+
     try:
-        # Get the selected image
         controller = frame.getController()
-        if not controller:
-            logger.error("No controller available")
-            return None
-            
+        if not controller: logger.error("No controller available"); return None
         selection = controller.getSelection()
-        if not selection:
-            logger.error("No selection available") 
-            return None
+        if not selection: logger.error("No selection available"); return None
         
-        # Extract graphic from selection
         graphic = uno_utils.get_graphic_from_selection(selection, ctx)
-        if not graphic:
-            logger.error("Could not extract graphic from selection")
+        if not graphic: logger.error("Could not extract graphic from selection"); return None
+        
+        exported_temp_image_path = uno_utils.create_temp_file_from_graphic(graphic, ctx)
+        if not exported_temp_image_path:
+            logger.error("Could not create temporary image file from graphic")
+            # uno_utils.show_message_box(_("Image Export Error"), _("Failed to export selected image for OCR."), "errorbox", parent_frame=frame, ctx=ctx)
             return None
         
-        # Export graphic to temporary file
-        temp_image_path = uno_utils.create_temp_file_from_graphic(graphic, ctx)
-        if not temp_image_path:
-            logger.error("Could not create temporary image file")
+        final_image_path_for_ocr = exported_temp_image_path # Default to exported path
+
+        if improve_image and PILLOW_AVAILABLE:
+            logger.info(f"Preprocessing selected image (originally: {exported_temp_image_path}) as improve_image is True.")
+            processed_image_path = _preprocess_image(exported_temp_image_path, improve_quality=True)
+            if processed_image_path and processed_image_path != exported_temp_image_path:
+                logger.debug(f"Using preprocessed image: {processed_image_path}")
+                final_image_path_for_ocr = processed_image_path
+            elif not processed_image_path:
+                logger.warning(f"Preprocessing returned None for {exported_temp_image_path}. Using original temp image.")
+            # If processed_image_path is same as exported_temp_image_path, no change, final_image_path_for_ocr is already correct
+        elif improve_image and not PILLOW_AVAILABLE:
+            logger.warning("Image improvement requested but Pillow is not available. OCR will proceed without it.")
+            # uno_utils.show_message_box(_("Pillow Missing"), _("Image improvement requires Pillow library, which is not found. OCR will proceed on the original image."), "warningbox", parent_frame=frame, ctx=ctx)
+
+        if not final_image_path_for_ocr or not os.path.exists(final_image_path_for_ocr):
+            logger.error(f"Final image path for OCR is invalid or does not exist: {final_image_path_for_ocr}")
             return None
+
+        logger.info(f"Performing OCR on selected image (using '{final_image_path_for_ocr}') with language: {lang}")
+        text = pytesseract.image_to_string(final_image_path_for_ocr, lang=lang)
+        logger.info(f"OCR completed. Extracted {len(text)} characters.")
+        return text.strip()
         
-        try:
-            # Perform OCR on the temporary image file
-            logger.info(f"Performing OCR on selected image with language: {lang}")
-            text = pytesseract.image_to_string(temp_image_path, lang=lang)
-            logger.info(f"OCR completed. Extracted {len(text)} characters.")
-            return text.strip()
-        finally:
-            # Clean up temporary file
-            try:
-                if os.path.exists(temp_image_path):
-                    os.remove(temp_image_path)
-            except Exception as e:
-                logger.warning(f"Could not remove temporary file {temp_image_path}: {e}")
-        
+    except pytesseract.TesseractError as tess_err:
+        logger.error(f"Tesseract error for selected image: {tess_err}", exc_info=True)
+        # Fallback for language error can be added here if desired, as before
+        # uno_utils.show_message_box(_("Tesseract Error"), str(tess_err), "errorbox", parent_frame=frame, ctx=ctx)
+        return None
     except Exception as e:
         logger.error(f"Error extracting text from selected image: {e}", exc_info=True)
+        # uno_utils.show_message_box(_("OCR Error"), _("An unexpected error occurred: {error}").format(error=e), "errorbox", parent_frame=frame, ctx=ctx)
         return None
+    finally:
+        # Clean up: exported_temp_image_path is the one from create_temp_file_from_graphic
+        if exported_temp_image_path and os.path.exists(exported_temp_image_path):
+            try: 
+                os.remove(exported_temp_image_path)
+                logger.debug(f"Cleaned up temporary exported image: {exported_temp_image_path}")
+            except Exception as e_remove:
+                logger.warning(f"Could not remove temporary exported image {exported_temp_image_path}: {e_remove}")
+        
+        # Clean up: processed_image_path is the one from _preprocess_image
+        # Only remove if it's different from exported_temp_image_path and exists
+        if processed_image_path and processed_image_path != exported_temp_image_path and os.path.exists(processed_image_path):
+            try: 
+                os.remove(processed_image_path)
+                logger.debug(f"Cleaned up temporary preprocessed image: {processed_image_path}")
+            except Exception as e_remove:
+                logger.warning(f"Could not remove temporary preprocessed image {processed_image_path}: {e_remove}")
 
-def extract_text_from_image_file(ctx, image_path, lang="eng"):
+def extract_text_from_image_file(ctx, image_path, lang="eng", improve_image=False):
     """Extract text from an image file."""
     if not _initialize_pytesseract():
         logger.error("Cannot extract text: Pytesseract not available")
+        # uno_utils.show_message_box(_("Pytesseract Error"), _("Pytesseract library is not available. Please check installation."), "errorbox", ctx=ctx) # Assuming no frame here
         return None
     
     if not os.path.exists(image_path):
         logger.error(f"Image file does not exist: {image_path}")
+        # uno_utils.show_message_box(_("File Not Found"), _("Image file not found: {path}").format(path=image_path), "errorbox", ctx=ctx)
         return None
     
+    processed_image_path = None # Path of the image after preprocessing (if any)
+    final_image_path_for_ocr = image_path # Default to original user-provided path
+
     try:
-        logger.info(f"Performing OCR on image file: {image_path} with language: {lang}")
-        text = pytesseract.image_to_string(image_path, lang=lang)
-        logger.info(f"OCR completed. Extracted {len(text)} characters from {os.path.basename(image_path)}")
+        if improve_image and PILLOW_AVAILABLE:
+            logger.info(f"Preprocessing image file ('{image_path}') as improve_image is True.")
+            # _preprocess_image will create a new temp file if it modifies the image
+            processed_image_path = _preprocess_image(image_path, improve_quality=True)
+            if processed_image_path and processed_image_path != image_path:
+                logger.debug(f"Using preprocessed image: {processed_image_path}")
+                final_image_path_for_ocr = processed_image_path
+            elif not processed_image_path:
+                logger.warning(f"Preprocessing returned None for {image_path}. Using original image.")
+            # If processed_image_path is same as image_path, no change, final_image_path_for_ocr is already correct
+        elif improve_image and not PILLOW_AVAILABLE:
+            logger.warning("Image improvement requested but Pillow is not available. OCR will proceed on the original image file.")
+            # uno_utils.show_message_box(_("Pillow Missing"), _("Image improvement requires Pillow library, which is not found. OCR will proceed on the original image."), "warningbox", ctx=ctx)
+
+        if not final_image_path_for_ocr or not os.path.exists(final_image_path_for_ocr):
+            logger.error(f"Final image path for OCR is invalid or does not exist: {final_image_path_for_ocr}")
+            return None
+
+        logger.info(f"Performing OCR on image file (using '{final_image_path_for_ocr}') with language: {lang}")
+        text = pytesseract.image_to_string(final_image_path_for_ocr, lang=lang)
+        logger.info(f"OCR completed. Extracted {len(text)} characters from {os.path.basename(final_image_path_for_ocr)}")
         return text.strip()
-    except Exception as e:
-        logger.error(f"Error extracting text from image file {image_path}: {e}", exc_info=True)
+    except pytesseract.TesseractError as tess_err:
+        logger.error(f"Tesseract error for {final_image_path_for_ocr}: {tess_err}", exc_info=True)
+        # Fallback for language error can be added here if desired
+        # uno_utils.show_message_box(_("Tesseract Error"), str(tess_err), "errorbox", ctx=ctx)
         return None
+    except Exception as e:
+        logger.error(f"Error extracting text from image file {final_image_path_for_ocr}: {e}", exc_info=True)
+        # uno_utils.show_message_box(_("OCR Error"), _("An unexpected error occurred: {error}").format(error=e), "errorbox", ctx=ctx)
+        return None
+    finally:
+        # If a separate processed image was created (i.e., it's a temp file and different from original user path)
+        if processed_image_path and processed_image_path != image_path and os.path.exists(processed_image_path) and processed_image_path.startswith(tempfile.gettempdir()):
+            try:
+                os.remove(processed_image_path)
+                logger.debug(f"Cleaned up temporary preprocessed image: {processed_image_path}")
+            except Exception as e_remove:
+                logger.warning(f"Could not remove temporary preprocessed image {processed_image_path}: {e_remove}")
 
 def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False, show_gui_errors=True):
     """Check if a given tesseract path is valid and working."""
@@ -545,6 +651,47 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
             except OSError as e_rem_orig_final:
                  logger.warning(f"Could not remove original temp image (final pass) '{original_image_path_for_cleanup}': {e_rem_orig_final}")
                  pass 
+
+def get_available_languages():
+    """Returns a list of available Tesseract languages."""
+    try:
+        # Ensure Pytesseract is available
+        if not PYTESSERACT_AVAILABLE:
+            logger.warning("Pytesseract not available, cannot get languages")
+            return ["eng"]  # Default fallback
+        
+        # Initialize if needed
+        if not _initialize_pytesseract():
+            logger.warning("Could not initialize Pytesseract")
+            return ["eng"]  # Default fallback
+        
+        # Get available languages from Tesseract
+        langs = pytesseract.get_languages(config='')
+        
+        # Filter out empty strings and sort
+        available_langs = [lang for lang in langs if lang.strip()]
+        available_langs.sort()
+        
+        # Ensure English is first if available
+        if "eng" in available_langs:
+            available_langs.remove("eng")
+            available_langs.insert(0, "eng")
+        
+        logger.debug(f"Available Tesseract languages: {available_langs}")
+        return available_langs if available_langs else ["eng"]
+        
+    except Exception as e:
+        logger.warning(f"Could not detect available languages: {e}")
+        return ["eng"]  # Default fallback
+
+def is_language_available(language_code):
+    """Check if a specific language pack is available."""
+    try:
+        available = get_available_languages()
+        return language_code in available
+    except Exception as e:
+        logger.warning(f"Error checking language availability: {e}")
+        return language_code == "eng"  # Only guarantee English
 
 if __name__ == "__main__":
     # This only runs if the script is executed directly.

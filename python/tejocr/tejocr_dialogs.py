@@ -46,6 +46,9 @@ except ImportError as e:
 from tejocr import uno_utils
 from tejocr import constants
 from tejocr import tejocr_engine # This also needs correct import order internally
+from tejocr import locale_setup
+
+_ = locale_setup.get_translation_function()
 
 # Initialize logger for this module
 logger = uno_utils.get_logger("TejOCR.Dialogs")
@@ -73,30 +76,102 @@ except ImportError:
 class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
     def __init__(self, ctx, dialog_url):
         self.ctx = ctx
-        self.dialog_url = dialog_url # e.g., "vnd.sun.star.script:TejOCR.TejOCRDialogs.py$OptionsDialog?location=user"
+        self.dialog_url = dialog_url # e.g., "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/..."
         self.dialog = None
         self.parent_frame = None
         self.closed_by_ok = False # Flag to indicate how the dialog was closed
+        self._last_successful_dialog_url = None
+        self._last_dialog_creation_error = None
+        self._last_dialog_creation_errors = []
+
+    @staticmethod
+    def _bool_to_state(value):
+        """Convert a setting value (string, bool, int) to an int suitable for setState (0 or 1)."""
+        if isinstance(value, str):
+            return 1 if value.lower() in ('true', '1', 'yes') else 0
+        return 1 if value else 0
 
     def _create_dialog(self, parent_frame):
         """Creates and initializes the dialog from its URL."""
+        self._last_successful_dialog_url = None
+        return self._create_dialog_with_urls(parent_frame, [self.dialog_url], suppress_user_message=False)
+
+    def _create_dialog_with_urls(self, parent_frame, dialog_urls, suppress_user_message=False):
+        """Try creating the dialog from one or more URLs and report detailed errors."""
         self.parent_frame = parent_frame
+        self._last_successful_dialog_url = None
+        self._last_dialog_creation_error = None
+        self._last_dialog_creation_errors = []
+
+        if not dialog_urls:
+            self._last_dialog_creation_error = "No dialog URLs were provided."
+            logger.warning(self._last_dialog_creation_error)
+            return False
+
         try:
             dp = uno_utils.create_instance("com.sun.star.awt.DialogProvider", self.ctx)
-            self.dialog = dp.createDialog(self.dialog_url)
-            if not self.dialog:
-                uno_utils.show_message_box("Dialog Error", f"Could not create dialog: {self.dialog_url}", "errorbox", parent_frame=parent_frame, ctx=self.ctx)
+            if not dp:
+                self._last_dialog_creation_error = "Could not create DialogProvider."
+                logger.warning(self._last_dialog_creation_error)
+                uno_utils.show_message_box(
+                    "Dialog Creation Error",
+                    self._last_dialog_creation_error,
+                    "errorbox",
+                    parent_frame=parent_frame,
+                    ctx=self.ctx,
+                )
                 return False
-            
-            # Set parent peer if possible for modality and positioning
-            if parent_frame and parent_frame.getContainerWindow():
-                 self.dialog.getPeer().setParent(parent_frame.getContainerWindow().getPeer())
-            
-            self._init_controls() # Initialize controls and listeners
-            return True
         except Exception as e:
-            uno_utils.show_message_box("Dialog Creation Error", f"Exception creating dialog {self.dialog_url}: {e}", "errorbox", parent_frame=parent_frame, ctx=self.ctx)
+            self._last_dialog_creation_error = f"DialogProvider creation failed: {e}"
+            self._last_dialog_creation_errors.append(self._last_dialog_creation_error)
+            logger.error(self._last_dialog_creation_error, exc_info=True)
+            uno_utils.show_message_box(
+                "Dialog Creation Error",
+                f"Could not initialize dialog provider. {self._last_dialog_creation_error}",
+                "errorbox",
+                parent_frame=parent_frame,
+                ctx=self.ctx,
+            )
             return False
+
+        for url in dialog_urls:
+            try:
+                logger.debug(f"Attempting to create dialog using URL: {url}")
+                self.dialog = dp.createDialog(url)
+                if not self.dialog:
+                    err = f"Dialog provider returned None for URL: {url}"
+                    self._last_dialog_creation_errors.append(err)
+                    logger.warning(err)
+                    continue
+
+                logger.info(f"Dialog created successfully from URL: {url}")
+                self._last_successful_dialog_url = url
+                
+                # Set parent peer if possible for modality and positioning
+                # LibreOffice AWTPeer doesn't support setParent directly in Python for dialogs.
+                # Dialog modality is handled by execute() anyway.
+                # if parent_frame and parent_frame.getContainerWindow():
+                #     self.dialog.getPeer().setParent(parent_frame.getContainerWindow().getPeer())
+                
+                self._init_controls() # Initialize controls and listeners
+                return True
+
+            except Exception as e:
+                err = f"Exception creating dialog from URL '{url}': {e}"
+                self._last_dialog_creation_errors.append(err)
+                logger.error(err, exc_info=True)
+                continue
+
+        self._last_dialog_creation_error = "\n".join(self._last_dialog_creation_errors) if self._last_dialog_creation_errors else "Dialog could not be created for unknown reason."
+        if not suppress_user_message:
+            uno_utils.show_message_box(
+                "Dialog Error",
+                f"Could not create dialog. {self._last_dialog_creation_error}",
+                "errorbox",
+                parent_frame=parent_frame,
+                ctx=self.ctx,
+            )
+        return False
 
     def _init_controls(self):
         """Initialize dialog controls and attach listeners. To be implemented by subclasses."""
@@ -182,8 +257,8 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
 # --- OCR Options Dialog Handler ---
 class OptionsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx, ocr_source_type="file", image_path=None): # ocr_source_type: "file" or "selected"
-        # Use the standard private:dialogs/ scheme that LibreOffice recognizes for extension XDL files
-        dialog_url = "private:dialogs/tejocr_options_dialog.xdl"
+        # Use extension URL scheme that LibreOffice recognizes for extension XDL files
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_options_dialog.xdl"
         super().__init__(ctx, dialog_url)
         self.ctx = ctx
         self.ocr_source_type = ocr_source_type  # "file" or "selected"
@@ -237,10 +312,10 @@ class OptionsDialogHandler(BaseDialogHandler):
         default_binarize = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_BINARIZE, constants.DEFAULT_PREPROC_BINARIZE, self.ctx)
         
         grayscale_cb = self.get_control("GrayscaleCheckbox")
-        if grayscale_cb: grayscale_cb.setState(default_grayscale)
+        if grayscale_cb: grayscale_cb.setState(self._bool_to_state(default_grayscale))
         
         binarize_cb = self.get_control("BinarizeCheckbox")
-        if binarize_cb: binarize_cb.setState(default_binarize)
+        if binarize_cb: binarize_cb.setState(self._bool_to_state(default_binarize))
 
     def _populate_dropdowns(self):
         """Populate all dropdown controls with available options."""
@@ -523,7 +598,9 @@ BUTTONS:
                 selected_pos = i
         
         if dropdown.getItemCount() > 0:
-            dropdown.selectItemPos(selected_pos, True)
+            # ComboBox uses setText, not selectItemPos (that's ListBox only)
+            selected_text = items_map[item_keys[selected_pos]] if item_keys else ""
+            dropdown.setText(selected_text)
         self.available_languages_map = items_map # Store for retrieval
 
     def _get_tesseract_languages(self):
@@ -558,12 +635,40 @@ BUTTONS:
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
     def __init__(self, ctx):
-        # Use the standard private:dialogs/ scheme that LibreOffice recognizes for extension XDL files
-        dialog_url = "private:dialogs/tejocr_settings_dialog.xdl"
+        # Use extension URL scheme that LibreOffice recognizes for extension XDL files
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_settings_dialog_full.xdl"
         super().__init__(ctx, dialog_url)
         self.initial_settings = {} # To store settings when dialog opens to check for changes
         self.available_languages_map_settings = {} # Separate map for settings dialog
         self.dependency_status = None # Cache dependency check results
+        self._settings_languages_cache = {}
+        self._output_mode_code_order = []
+
+    def _create_dialog(self, parent_frame):
+        """Try the new full settings dialog first, then fall back to legacy dialog."""
+        fallback_urls = [
+            "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_settings_dialog_full.xdl",
+            "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_settings_dialog.xdl",
+            "private:dialogs/tejocr_settings_dialog_full.xdl",
+            "private:dialogs/tejocr_settings_dialog.xdl",
+        ]
+
+        try:
+            dialog_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dialogs"))
+            full_path = os.path.join(dialog_root, "tejocr_settings_dialog_full.xdl")
+            if os.path.exists(full_path):
+                fallback_urls.append(unohelper.systemPathToFileUrl(full_path))
+            legacy_path = os.path.join(dialog_root, "tejocr_settings_dialog.xdl")
+            if os.path.exists(legacy_path):
+                legacy_url = unohelper.systemPathToFileUrl(legacy_path)
+                if legacy_url not in fallback_urls:
+                    fallback_urls.append(legacy_url)
+        except Exception as e:
+            msg = f"Could not compute dialog file fallback paths: {e}"
+            logger.debug(msg)
+            self._last_dialog_creation_errors.append(msg)
+
+        return self._create_dialog_with_urls(parent_frame, fallback_urls, suppress_user_message=True)
 
     def _init_controls(self):
         """Initialize controls and attach listeners for the Settings dialog."""
@@ -578,19 +683,29 @@ class SettingsDialogHandler(BaseDialogHandler):
         self._add_listener_to_control("RefreshLanguagesButtonSettings", "refresh_languages_settings")
         self._add_listener_to_control("CheckDependenciesButton", "check_dependencies")
         self._add_listener_to_control("InstallGuideButton", "install_guide")
+        self._add_listener_to_control("HelpMeInstallButton", "install_guide")
         
-        # Load current settings and check dependencies
-        self._load_settings()
-        self._check_and_display_dependencies()
+        # Load current settings — wrapped so a failure doesn't prevent dialog display
+        try:
+            self._load_settings()
+        except Exception as e:
+            logger.error(f"Error loading settings into dialog controls: {e}", exc_info=True)
+            status_label = self.get_control("SettingsStatusLabel")
+            if status_label:
+                status_label.setText("Warning: Could not load some settings")
+        
+        # Check dependencies — also wrapped
+        try:
+            self._check_and_display_dependencies()
+        except Exception as e:
+            logger.error(f"Error checking dependencies: {e}", exc_info=True)
 
     def _check_and_display_dependencies(self):
         """Check all dependencies and update the status labels."""
         logger.info("Checking dependencies for Settings dialog...")
         
         try:
-            # Import dependency checking function from dialogs module
-            from . import tejocr_dialogs
-            self.dependency_status = tejocr_dialogs._check_dependencies()
+            self.dependency_status = _check_dependencies()
             
             # Update Tesseract status
             tesseract_label = self.get_control("TesseractStatusLabel")
@@ -635,22 +750,81 @@ class SettingsDialogHandler(BaseDialogHandler):
 
         # Default Language
         langs = self._get_tesseract_languages_for_settings()
-        self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE)
         current_default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
+        if not current_default_lang:
+            current_default_lang = uno_utils.get_setting(constants.CFG_KEY_LAST_SELECTED_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
+        if not current_default_lang:
+            current_default_lang = constants.DEFAULT_OCR_LANGUAGE
+
+        self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, current_default_lang)
+        language_input = self.get_control("DefaultLanguageTextField")
+        if language_input:
+            language_input.setText(self._normalize_language_list(current_default_lang))
         self.initial_settings[constants.CFG_KEY_DEFAULT_LANG] = current_default_lang
+        self.initial_settings[constants.CFG_KEY_LAST_SELECTED_LANG] = current_default_lang
+
+        # Default Output Mode
+        default_output_mode = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OUTPUT_MODE, None, self.ctx)
+        if not default_output_mode:
+            default_output_mode = uno_utils.get_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, constants.DEFAULT_OUTPUT_MODE, self.ctx)
+        if not default_output_mode:
+            default_output_mode = constants.DEFAULT_OUTPUT_MODE
+        self._populate_output_mode_dropdown("DefaultOutputModeDropdown", default_output_mode)
+        self.initial_settings[constants.CFG_KEY_DEFAULT_OUTPUT_MODE] = default_output_mode
+        self.initial_settings[constants.CFG_KEY_LAST_OUTPUT_MODE] = default_output_mode
 
         # Default Preprocessing
         grayscale = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, constants.DEFAULT_PREPROC_GRAYSCALE, self.ctx)
         binarize = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_BINARIZE, constants.DEFAULT_PREPROC_BINARIZE, self.ctx)
         cb_gray = self.get_control("DefaultGrayscaleCheckbox")
-        if cb_gray: cb_gray.setState(grayscale)
+        if cb_gray:
+            cb_gray.setState(self._bool_to_state(grayscale))
         cb_bin = self.get_control("DefaultBinarizeCheckbox")
-        if cb_bin: cb_bin.setState(binarize)
+        if cb_bin:
+            cb_bin.setState(self._bool_to_state(binarize))
         self.initial_settings[constants.CFG_KEY_DEFAULT_GRAYSCALE] = grayscale
         self.initial_settings[constants.CFG_KEY_DEFAULT_BINARIZE] = binarize
         
         status_label = self.get_control("SettingsStatusLabel")
-        if status_label: status_label.setText("Settings loaded successfully")
+        if status_label:
+            status_label.setText("Settings loaded successfully")
+
+    def _normalize_language_list(self, language_value):
+        if not language_value:
+            return ""
+        normalized = str(language_value).replace(",", "+")
+        tokens = []
+        for token in normalized.split("+"):
+            token = token.strip().replace(" ", "")
+            if token:
+                tokens.append(token)
+        return "+".join(tokens) if tokens else ""
+
+    def _populate_output_mode_dropdown(self, control_name, default_output_mode):
+        """Populate the output mode dropdown with supported OCR output destinations."""
+        dropdown = self.get_control(control_name)
+        if not dropdown:
+            return
+
+        output_mode_items = [
+            (constants.OUTPUT_MODE_CURSOR, "Insert at cursor"),
+            (constants.OUTPUT_MODE_TEXTBOX, "Create a new text box"),
+            (constants.OUTPUT_MODE_REPLACE, "Replace selected image"),
+            (constants.OUTPUT_MODE_CLIPBOARD, "Copy to clipboard"),
+        ]
+        dropdown.getModel().removeAllItems()
+        self._output_mode_code_order = [item[0] for item in output_mode_items]
+        selected_pos = 0
+
+        for i, (mode_code, mode_label) in enumerate(output_mode_items):
+            dropdown.addItem(mode_label, i)
+            if str(mode_code) == str(default_output_mode):
+                selected_pos = i
+
+        if dropdown.getItemCount() > 0:
+            # ComboBox uses setText, not selectItemPos (that's ListBox only)
+            selected_text = output_mode_items[selected_pos][1]
+            dropdown.setText(selected_text)
 
     def _get_tesseract_languages_for_settings(self):
         # This is similar to _get_tesseract_languages in OptionsDialogHandler
@@ -679,14 +853,16 @@ class SettingsDialogHandler(BaseDialogHandler):
                 logger.error(f"SettingsDialog: Error getting Tesseract languages: {e}", exc_info=True)
                 cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
         elif not cached_langs:
-             logger.info("SettingsDialog: Pytesseract not available or languages not fetched, using fallback list.")
-             cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
+            logger.info("SettingsDialog: Pytesseract not available or languages not fetched, using fallback list.")
+            cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
         self._settings_languages_cache = cached_langs
+        self.available_languages_map_settings = cached_langs
         return self._settings_languages_cache
 
     def _populate_dropdown_settings(self, control_name, items_map, current_value_key, default_value):
         dropdown = self.get_control(control_name)
-        if not dropdown: return
+        if not dropdown:
+            return
 
         stored_value = uno_utils.get_setting(current_value_key, default_value, self.ctx)
         dropdown.getModel().removeAllItems()
@@ -702,12 +878,45 @@ class SettingsDialogHandler(BaseDialogHandler):
                     selected_pos = i
             
             if dropdown.getItemCount() > 0:
-                dropdown.selectItemPos(selected_pos, True)
+                # ComboBox uses setText, not selectItemPos (that's ListBox only)
+                selected_text = items_map[item_keys[selected_pos]] if item_keys else ""
+                dropdown.setText(selected_text)
         else:
             logger.error(f"items_map for {control_name} is invalid or empty. Cannot populate dropdown.")
             # Add a default item or error message to the dropdown
-            dropdown.addItem("Error: Could not load languages",0)
-            dropdown.selectItemPos(0,True)
+            dropdown.addItem("Error: Could not load languages", 0)
+            dropdown.setText("Error: Could not load languages")
+
+    def _get_selected_default_language_code(self):
+        """Get language code from manual input first, fallback to dropdown selection."""
+        manual_field = self.get_control("DefaultLanguageTextField")
+        if manual_field:
+            manual_value = self._normalize_language_list(manual_field.getText().strip())
+            if manual_value:
+                return manual_value
+
+        lang_dropdown = self.get_control("DefaultLanguageDropdown")
+        if lang_dropdown and lang_dropdown.getItemCount() > 0:
+            selected_lang_display = lang_dropdown.getSelectedItem()
+            if selected_lang_display:
+                current_langs_map = getattr(self, "_settings_languages_cache", None)
+                if not current_langs_map:
+                    current_langs_map = self._get_tesseract_languages_for_settings()
+                for code, display in current_langs_map.items():
+                    if str(display) == str(selected_lang_display):
+                        return code
+                if selected_lang_display in current_langs_map:
+                    return selected_lang_display
+
+        return constants.DEFAULT_OCR_LANGUAGE
+
+    def _get_selected_output_mode(self):
+        output_dropdown = self.get_control("DefaultOutputModeDropdown")
+        if output_dropdown and output_dropdown.getItemCount() > 0:
+            selected_pos = output_dropdown.getSelectedItemPos()
+            if 0 <= selected_pos < len(self._output_mode_code_order):
+                return self._output_mode_code_order[selected_pos]
+        return constants.DEFAULT_OUTPUT_MODE
 
     def actionPerformed(self, event):
         super().actionPerformed(event) # Handles save_settings, cancel, help (if not overridden)
@@ -769,7 +978,8 @@ TESSERACT CONFIGURATION:
 
 DEFAULT OPTIONS:
 • Set preferences for OCR operations
-• Language: Default recognition language
+• Language: Default language or multi-language list (ex: eng+spa)
+• Output: Default destination for OCR text
 • Preprocessing: Image enhancement options
 
 BUTTONS:
@@ -851,7 +1061,7 @@ BUTTONS:
             else:
                 # Fallback to message box if label not found
                 uno_utils.show_message_box(
-                "Tesseract Test",
+                    "Tesseract Test",
                     f"""Path: {tess_path}
 Status: {'Valid' if is_valid else 'Invalid'}
 Details: {message}""",
@@ -880,23 +1090,22 @@ Details: {message}""",
                 changes_made = True
 
             # Default Language
-            lang_dropdown = self.get_control("DefaultLanguageDropdown")
-            if lang_dropdown and lang_dropdown.getItemCount() > 0:
-                selected_lang_display = lang_dropdown.getSelectedItem()
-                # Map display name back to code
-                current_langs_map = getattr(self, "_settings_languages_cache", None)
-                if not current_langs_map:
-                     current_langs_map = self._get_tesseract_languages_for_settings()
+            selected_lang_code = self._normalize_language_list(self._get_selected_default_language_code())
+            if not selected_lang_code:
+                selected_lang_code = constants.DEFAULT_OCR_LANGUAGE
+            if selected_lang_code != self.initial_settings.get(constants.CFG_KEY_DEFAULT_LANG):
+                logger.info(f"Updating default language: {selected_lang_code}")
+                uno_utils.set_setting(constants.CFG_KEY_DEFAULT_LANG, selected_lang_code, self.ctx)
+                uno_utils.set_setting(constants.CFG_KEY_LAST_SELECTED_LANG, selected_lang_code, self.ctx)
+                changes_made = True
 
-                selected_lang_code = None
-                for code, display in current_langs_map.items():
-                    if display == selected_lang_display:
-                        selected_lang_code = code
-                        break
-                
-                if selected_lang_code and selected_lang_code != self.initial_settings.get(constants.CFG_KEY_DEFAULT_LANG):
-                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_LANG, selected_lang_code, self.ctx)
-                    changes_made = True
+            # Default Output Mode
+            selected_output_mode = self._get_selected_output_mode()
+            if selected_output_mode != self.initial_settings.get(constants.CFG_KEY_DEFAULT_OUTPUT_MODE):
+                logger.info(f"Updating default output mode: {selected_output_mode}")
+                uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OUTPUT_MODE, selected_output_mode, self.ctx)
+                uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, selected_output_mode, self.ctx)
+                changes_made = True
 
             # Default Preprocessing
             grayscale_control = self.get_control("DefaultGrayscaleCheckbox")
@@ -934,6 +1143,62 @@ Details: {message}""",
             uno_utils.show_message_box("Save Error", f"Could not save settings: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
             return False  # Keep dialog open
 
+
+def _show_interactive_settings_fallback(ctx, parent_frame=None):
+    """Fallback to pure-UNO interactive settings when XDL dialogs fail."""
+    logger.info("Settings fallback path: interactive settings dialog selected.")
+    logger.debug("XDL settings dialog creation failed; using interactive settings fallback.")
+    try:
+        from . import tejocr_interactive_dialogs
+
+        if not uno_utils.supports_uno_dialog_model(ctx):
+            logger.warning(
+                "Interactive settings fallback is unavailable: "
+                "UnoControlDialogModel service is not supported in this session."
+            )
+            uno_utils.show_message_box(
+                "Settings Fallback Unavailable",
+                "Settings editor controls are not available in this LibreOffice session.\n\n"
+                f"Please use the TejOCRSettings file at:\n{uno_utils.get_settings_file_path()}\n"
+                "and restart LibreOffice after editing.",
+                "warningbox",
+                parent_frame=parent_frame,
+                ctx=ctx,
+            )
+            return False
+
+        result = tejocr_interactive_dialogs.show_interactive_settings_dialog(ctx, parent_frame)
+        logger.info(f"Interactive settings fallback result: {result}")
+        return bool(result)
+    except Exception as e:
+        logger.error(f"Interactive settings fallback failed: {e}", exc_info=True)
+        if ctx is not None:
+            try:
+                uno_utils.show_message_box(
+                    "Settings UI Fallback Error",
+                    "Could not open the interactive settings fallback. Check logs for full details.",
+                    "errorbox",
+                    parent_frame=parent_frame,
+                    ctx=ctx,
+                )
+            except Exception:
+                pass
+        return False
+
+
+def _build_settings_unavailable_message(reason=None):
+    package_hint = f"TejOCR-{constants.EXTENSION_VERSION}.oxt"
+    if isinstance(reason, (list, tuple)):
+        reason = "\n".join(str(item) for item in reason if item)
+    reason_text = f"\n\nTechnical details:\n{reason}" if reason else ""
+    return (
+        "TejOCR Settings dialog could not be opened.\n\n"
+        "Please make sure the latest extension package is installed:\n"
+        f"{package_hint}\n\n"
+        "If this is happening after a fresh install, restart LibreOffice once and try again."
+        + reason_text
+    )
+
 # --- Global Dialog Functions ---
 
 def _check_dependencies():
@@ -953,15 +1218,35 @@ def _check_dependencies():
     # Check Tesseract
     tesseract_status = "❌ NOT FOUND"
     tesseract_path = "Not detected"
+    tesseract_commands = ['tesseract']
+    configured_ctx = None
+    configured_path = ""
     try:
-        result = subprocess.run(['tesseract', '--version'], 
-                              capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            version = result.stdout.strip().split()[1] if result.stdout.strip().split() else "Unknown"
-            tesseract_status = f"✅ INSTALLED (v{version})"
-            tesseract_path = "Available in system PATH"
-    except:
-        pass
+        import uno
+        configured_ctx = uno.getComponentContext()
+        configured_path = uno_utils.get_setting(
+            constants.CFG_KEY_TESSERACT_PATH,
+            "",
+            configured_ctx
+        ).strip()
+        if configured_path and configured_path not in tesseract_commands:
+            tesseract_commands.insert(0, configured_path)
+    except Exception:
+        configured_path = ""
+
+    for command in tesseract_commands:
+        try:
+            result = subprocess.run([command, '--version'], capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                version = result.stdout.strip().split()[1] if result.stdout.strip().split() else "Unknown"
+                tesseract_status = f"✅ INSTALLED (v{version})"
+                if command == configured_path:
+                    tesseract_path = configured_path
+                else:
+                    tesseract_path = "Available in system PATH"
+                break
+        except Exception:
+            continue
     
     status['tesseract'] = f"Status: {tesseract_status}\nPath: {tesseract_path}"
     
@@ -1147,7 +1432,7 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
                 ctx = uno.getComponentContext()
             
             service_manager = ctx.getServiceManager()
-            toolkit = service_manager.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
+            toolkit = uno_utils.create_instance("com.sun.star.awt.Toolkit", ctx)
             
             if toolkit:
                 # Robust message box creation with multiple fallback methods
@@ -1166,7 +1451,7 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
                 # Method 2: Try desktop's current frame
                 if not parent_peer:
                     try:
-                        desktop = service_manager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+                        desktop = uno_utils.create_instance("com.sun.star.frame.Desktop", ctx)
                         if desktop:
                             current_frame = desktop.getCurrentFrame()
                             if current_frame:
@@ -1218,108 +1503,80 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
 
 
 def show_settings_dialog(ctx, parent_frame):
-    """Proper settings dialog with dependency detection and configuration options."""
-    
-    # Get dependency status
-    dependency_status = _check_dependencies()
-    
+    """Show the full settings XDL dialog and show a clear error if it fails."""
+    settings_handler = None
     try:
-        import uno
-        if ctx is None:
-            ctx = uno.getComponentContext()
-        
-        service_manager = ctx.getServiceManager()
-        toolkit = service_manager.createInstanceWithContext("com.sun.star.awt.Toolkit", ctx)
-        
-        if not toolkit:
-            logger.warning("Could not create toolkit for settings dialog")
+        settings_handler = SettingsDialogHandler(ctx)
+        if settings_handler._create_dialog(parent_frame):
+            logger.info(
+                "Settings dialog path: XDL backend succeeded. "
+                f"Dialog URL: {settings_handler._last_successful_dialog_url}"
+            )
+            return settings_handler.execute()
+
+        # XDL-based settings failed. Fall back to pure-UNO interactive UI instead of blocking users.
+        logger.warning(
+            "Settings dialog path: XDL backend failed after attempts. "
+            f"Attempts: {settings_handler._last_dialog_creation_errors}"
+        )
+        fallback_result = _show_interactive_settings_fallback(ctx, parent_frame)
+        if fallback_result:
+            logger.info("Settings dialog path: interactive fallback saved settings.")
+            return True
+        if fallback_result is False:
+            # False can mean either explicit cancel or fallback failure. Keep UX simple and avoid false-negative errors.
+            logger.info(
+                "Settings dialog path: interactive fallback returned without a successful save "
+                "(user cancelled or no changes)."
+            )
             return False
-        
-        # Get parent peer for dialog positioning
-        parent_peer = None
-        if parent_frame:
-            try:
-                container_window = parent_frame.getContainerWindow()
-                if container_window:
-                    parent_peer = container_window.getPeer()
-            except Exception as e:
-                logger.debug(f"Could not get parent peer: {e}")
-        
-        # Create a proper dialog with action buttons
-        dialog_text = f"""{constants.EXTENSION_FULL_NAME} - Settings
 
-STATUS: Extension installed and active
+        failure_reason = settings_handler._last_dialog_creation_error
+        if not failure_reason and getattr(settings_handler, "_last_dialog_creation_errors", None):
+            failure_reason = settings_handler._last_dialog_creation_errors
 
-DEPENDENCY STATUS:
-{dependency_status['summary']}
-
-TESSERACT: {dependency_status['tesseract'].split('Status: ')[1] if 'Status: ' in dependency_status['tesseract'] else 'Checking...'}
-
-PYTHON PACKAGES:
-{dependency_status['python_packages'].replace('✅ ', '✓ ').replace('❌ ', '✗ ')}
-
-INSTALLATION GUIDANCE:
-{dependency_status['installation_guide'][:500]}...
-
-Would you like to:
-• Check Tesseract Installation
-• Install Missing Dependencies  
-• View Full Documentation"""
-
+        logger.warning(
+            "Settings dialogs could not be created from any configured URL."
+        )
+        message = _build_settings_unavailable_message(
+            _("Could not create settings dialog. {error}").format(error=failure_reason)
+        )
         try:
-            from com.sun.star.awt.MessageBoxType import QUERYBOX
-            from com.sun.star.awt.MessageBoxButtons import BUTTONS_YES_NO_CANCEL
-            
-            msg_type = QUERYBOX
-            buttons = BUTTONS_YES_NO_CANCEL
-            
-            box = toolkit.createMessageBox(parent_peer, msg_type, buttons, 
-                                         f"{constants.EXTENSION_FULL_NAME} Settings", 
-                                         dialog_text)
-            if box:
-                result = box.execute()
-                logger.info(f"Settings dialog result: {result}")
-                
-                if result == 2:  # YES button
-                    # Show Tesseract check
-                    _show_tesseract_check_dialog(ctx, parent_frame, toolkit, parent_peer)
-                elif result == 3:  # NO button  
-                    # Show installation help
-                    _show_installation_help_dialog(ctx, parent_frame, toolkit, parent_peer)
-                # CANCEL (4) does nothing
-                
-                return True
-                
-        except ImportError:
-            # Fallback to basic info dialog
-            try:
-                msg_type = 3   # Question box
-                buttons = 2    # YES_NO buttons
-                
-                box = toolkit.createMessageBox(parent_peer, msg_type, buttons, 
-                                             f"{constants.EXTENSION_FULL_NAME} Settings", 
-                                             dialog_text)
-                if box:
-                    result = box.execute()
-                    logger.info(f"Settings dialog (fallback) result: {result}")
-                    return True
-                    
-            except Exception as fallback_error:
-                logger.warning(f"Settings dialog fallback failed: {fallback_error}")
-                
+            if ctx is not None:
+                uno_utils.show_message_box(
+                    _("Settings Unavailable"),
+                    message,
+                    "errorbox",
+                    parent_frame=parent_frame,
+                    ctx=ctx,
+                )
+            else:
+                print(message)
+        except Exception:
+            logger.debug("Could not display settings unavailable dialog. Falling back to console output.")
+        return False
     except Exception as e:
-        logger.error(f"Settings dialog error: {e}", exc_info=True)
-    
-    # Console fallback
-    print("=" * 60)
-    print(f"{constants.EXTENSION_FULL_NAME} - Settings")
-    print("=" * 60)
-    print(dependency_status['summary'])
-    print(f"Tesseract: {dependency_status['tesseract']}")
-    print(f"Python Packages: {dependency_status['python_packages']}")
-    print("=" * 60)
-    logger.info("Settings information displayed via console")
-    return True
+        logger.error(f"show_settings_dialog failed: {e}", exc_info=True)
+        message = _build_settings_unavailable_message(
+            _("Failed to open Settings UI: {error}").format(error=e)
+        )
+        if ctx is not None:
+            try:
+                uno_utils.show_message_box(
+                    _("Settings Error"),
+                    message,
+                    "errorbox",
+                    parent_frame=parent_frame,
+                    ctx=ctx,
+                )
+            except Exception:
+                print(message)
+        else:
+            print(message)
+        return False
+    finally:
+        if settings_handler is not None:
+            settings_handler.dispose()
 
 def _show_tesseract_check_dialog(ctx, parent_frame, toolkit, parent_peer):
     """Show Tesseract installation check dialog."""
@@ -1362,7 +1619,7 @@ QUICK SETUP (macOS):
    brew install tesseract
 
 2. Install Python packages:
-   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract pillow
+   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow
 
 3. Restart LibreOffice
 

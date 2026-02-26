@@ -116,10 +116,25 @@ def create_extension(build_dir=None, output_name=None):
     try:
         print(f"Building TejOCR v{VERSION} extension in {temp_dir}")
         
-        # Copy all project files to the temporary directory
+        # Define exactly which top-level items belong in the extension package
+        INCLUDE_ITEMS = {
+            'META-INF',
+            'python',
+            'dialogs',
+            'icons',
+            'l10n',
+            'description.xml',
+            'Addons.xcu',
+            'ProtocolHandler.xcu',
+            'LICENSE',
+            'README.md',
+            'CHANGELOG.md',
+            'TASKS.md',
+        }
+
+        # Copy only the necessary project files to the temporary directory
         for item in os.listdir(project_dir):
-            # Skip .git, __pycache__, and other non-essential directories
-            if item in ['.git', '__pycache__', '.vscode', '.idea', 'build.py', 'build']:
+            if item not in INCLUDE_ITEMS:
                 continue
             
             src = os.path.join(project_dir, item)
@@ -153,8 +168,13 @@ def create_extension(build_dir=None, output_name=None):
         
         # Create the ZIP file with all contents
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, _, files in os.walk(temp_dir):
+            for root, dirs, files in os.walk(temp_dir):
+                # Skip __pycache__ directories
+                dirs[:] = [d for d in dirs if d != '__pycache__']
                 for file in files:
+                    # Skip non-extension files that may have been copied
+                    if file.endswith(('.pyc', '.oxt')) or file == '.DS_Store':
+                        continue
                     file_path = os.path.join(root, file)
                     # Get the path relative to temp_dir for proper structure in ZIP
                     rel_path = os.path.relpath(file_path, temp_dir)

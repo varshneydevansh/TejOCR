@@ -1,8 +1,8 @@
 # TejOCR
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/varshneydevansh/TejOCR/main/icons/main_logo.png" alt="TejOCR Icon" width="96" height="96" />
-  <h1>TejOCR</h1>
+  <img src="icons/main_logo.png" alt="TejOCR Logo" width="360" style="margin-bottom: -20px;"/>
+  <br/><br/>
   <p>OCR inside Writer, with predictable output behavior</p>
 
   [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/varshneydevansh/TejOCR)
@@ -17,7 +17,7 @@ TejOCR is a **LibreOffice Writer extension** that performs OCR from:
 - a Writer-selected image object, or
 - a local image file.
 
-The extension then inserts recognized text based on selected output mode with fallbacks for UI/session compatibility.
+The extension inserts recognized text based on the selected output mode with fallbacks for UI or session capability differences.
 
 ---
 
@@ -63,10 +63,11 @@ The extension then inserts recognized text based on selected output mode with fa
       └──────────────────────────┘
 ```
 
+```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Writer UI/Toolbar"] --> B["Protocol URL via ProtocolHandler.xcu"]
-  B --> C["TejOCRService (te jocr_service.py)"]
+  B --> C["TejOCRService (tejocr_service.py)"]
   C --> D["_perform_ocr_with_options()"]
   D --> E["Option dialog/fallback + OCR settings"]
   E --> F["engine.perform_ocr()"]
@@ -100,11 +101,12 @@ file source          -> cannot target an image replacement
                        -> automatically uses insertion-compatible behavior
 ```
 
+```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["selected image"] --> B["replace_image allowed"]
   B --> C["remove graphic and insert text"]
-  D["file input"] --> E["replace_image treated as safe insertion"]
+  D["file input"] --> E["replace_image rejected"] --> F["insert-compatible output used"]
 ```
 
 ---

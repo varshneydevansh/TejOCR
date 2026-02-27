@@ -13,7 +13,7 @@ Observed in some sessions:
   -> fallback path engaged
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["Expected path"] --> B["XDL dialogs create"]
     B --> C["DialogProvider + model"]
@@ -57,7 +57,7 @@ show_multiline_input_box: UnoControlDialogModel is unavailable
 OCR options dialog unavailable, proceeding with saved settings
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
     A["supports_uno_dialog_model: cached negative"] --> B["show_* dialog fails"]
     B --> C["OCR options dialog unavailable"]

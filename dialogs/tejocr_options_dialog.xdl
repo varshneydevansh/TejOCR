@@ -1,45 +1,45 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
-<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCROptionsDialog" dlg:left="120" dlg:top="88" dlg:width="360" dlg:height="240" dlg:closeable="true" dlg:moveable="true" dlg:title="OCR Options">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCROptionsDialog" dlg:left="120" dlg:top="88" dlg:width="470" dlg:height="260" dlg:closeable="true" dlg:moveable="true" dlg:title="OCR Options">
   <dlg:bulletinboard>
-    <dlg:text dlg:id="HeaderLabel" dlg:tab-index="0" dlg:left="10" dlg:top="6" dlg:width="340" dlg:height="12" dlg:value="TejOCR - OCR Options"/>
-    <dlg:text dlg:id="SourceDescriptionLabel" dlg:tab-index="1" dlg:left="10" dlg:top="22" dlg:width="340" dlg:height="12" dlg:value="Source: selected image"/>
+    <dlg:text dlg:id="HeaderLabel" dlg:tab-index="0" dlg:left="10" dlg:top="6" dlg:width="450" dlg:height="12" dlg:value="TejOCR - OCR Options"/>
+    <dlg:text dlg:id="SourceDescriptionLabel" dlg:tab-index="1" dlg:left="10" dlg:top="22" dlg:width="450" dlg:height="12" dlg:value="Source: selected image"/>
 
     <!-- === Language Configuration === -->
-    <dlg:fixedline dlg:id="SectionLanguage" dlg:tab-index="2" dlg:left="10" dlg:top="40" dlg:width="340" dlg:height="10" dlg:value="OCR Language"/>
+    <dlg:fixedline dlg:id="SectionLanguage" dlg:tab-index="2" dlg:left="10" dlg:top="40" dlg:width="450" dlg:height="10" dlg:value="OCR Language"/>
     <dlg:text dlg:id="LanguageLabel" dlg:tab-index="3" dlg:left="20" dlg:top="54" dlg:width="60" dlg:height="10" dlg:value="Language:"/>
-    <dlg:menulist dlg:id="LanguageDropdown" dlg:tab-index="4" dlg:left="80" dlg:top="52" dlg:width="190" dlg:height="14" dlg:dropdown="true" dlg:linecount="10"/>
-    <dlg:button dlg:id="RefreshLanguagesButton" dlg:tab-index="5" dlg:left="275" dlg:top="51" dlg:width="75" dlg:height="16" dlg:value="Refresh List"/>
+    <dlg:menulist dlg:id="LanguageDropdown" dlg:tab-index="4" dlg:left="80" dlg:top="52" dlg:width="330" dlg:height="20" dlg:dropdown="true" dlg:linecount="10"/>
+    <dlg:button dlg:id="RefreshLanguagesButton" dlg:tab-index="5" dlg:left="415" dlg:top="51" dlg:width="45" dlg:height="16" dlg:value="Refresh List"/>
 
     <!-- === Output Mode Group Box replaced by Label and Radios inside limits === -->
-    <dlg:fixedline dlg:id="SectionOutput" dlg:tab-index="6" dlg:left="10" dlg:top="74" dlg:width="340" dlg:height="10" dlg:value="Result Destination"/>
+    <dlg:fixedline dlg:id="SectionOutput" dlg:tab-index="6" dlg:left="10" dlg:top="74" dlg:width="450" dlg:height="10" dlg:value="Result Destination"/>
     
     <dlg:radiogroup>
-      <dlg:radio dlg:id="OutputAtCursorRadio" dlg:tab-index="7" dlg:left="20" dlg:top="88" dlg:width="150" dlg:height="12" dlg:value="cursor" dlg:checked="true"/>
-      <dlg:radio dlg:id="OutputNewTextboxRadio" dlg:tab-index="8" dlg:left="20" dlg:top="102" dlg:width="150" dlg:height="12" dlg:value="textbox"/>
-      <dlg:radio dlg:id="OutputReplaceImageRadio" dlg:tab-index="9" dlg:left="180" dlg:top="88" dlg:width="150" dlg:height="12" dlg:value="replace"/>
-      <dlg:radio dlg:id="OutputToClipboardRadio" dlg:tab-index="10" dlg:left="180" dlg:top="102" dlg:width="150" dlg:height="12" dlg:value="clipboard"/>
+      <dlg:radio dlg:id="OutputAtCursorRadio" dlg:tab-index="7" dlg:left="20" dlg:top="88" dlg:width="180" dlg:height="12" dlg:value="cursor" dlg:checked="true"/>
+      <dlg:radio dlg:id="OutputNewTextboxRadio" dlg:tab-index="8" dlg:left="20" dlg:top="102" dlg:width="180" dlg:height="12" dlg:value="textbox"/>
+      <dlg:radio dlg:id="OutputReplaceImageRadio" dlg:tab-index="9" dlg:left="220" dlg:top="88" dlg:width="180" dlg:height="12" dlg:value="replace"/>
+      <dlg:radio dlg:id="OutputToClipboardRadio" dlg:tab-index="10" dlg:left="220" dlg:top="102" dlg:width="180" dlg:height="12" dlg:value="clipboard"/>
     </dlg:radiogroup>
 
     <!-- === Advanced Options === -->
-    <dlg:fixedline dlg:id="SectionAdvanced" dlg:tab-index="11" dlg:left="10" dlg:top="122" dlg:width="340" dlg:height="10" dlg:value="Advanced Processing"/>
+    <dlg:fixedline dlg:id="SectionAdvanced" dlg:tab-index="11" dlg:left="10" dlg:top="122" dlg:width="450" dlg:height="10" dlg:value="Advanced Processing"/>
     <dlg:text dlg:id="PreprocessLabel" dlg:tab-index="12" dlg:left="20" dlg:top="136" dlg:width="60" dlg:height="10" dlg:value="Preprocess:"/>
-    <dlg:checkbox dlg:id="GrayscaleCheckbox" dlg:tab-index="13" dlg:left="80" dlg:top="135" dlg:width="90" dlg:height="12" dlg:value="Grayscale"/>
-    <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:tab-index="14" dlg:left="180" dlg:top="135" dlg:width="140" dlg:height="12" dlg:value="Binarize (black/white)"/>
+    <dlg:checkbox dlg:id="GrayscaleCheckbox" dlg:tab-index="13" dlg:left="80" dlg:top="135" dlg:width="110" dlg:height="12" dlg:value="Grayscale"/>
+    <dlg:checkbox dlg:id="BinarizeCheckbox" dlg:tab-index="14" dlg:left="200" dlg:top="135" dlg:width="210" dlg:height="12" dlg:value="Binarize (black/white)"/>
 
     <dlg:text dlg:id="PSMLabel" dlg:tab-index="15" dlg:left="20" dlg:top="156" dlg:width="60" dlg:height="10" dlg:value="PSM:"/>
-    <dlg:menulist dlg:id="PSMDropdown" dlg:tab-index="16" dlg:left="80" dlg:top="154" dlg:width="100" dlg:height="14" dlg:dropdown="true" dlg:linecount="6"/>
-    <dlg:text dlg:id="OEMLabel" dlg:tab-index="17" dlg:left="195" dlg:top="156" dlg:width="30" dlg:height="10" dlg:value="OEM:"/>
-    <dlg:menulist dlg:id="OEMDropdown" dlg:tab-index="18" dlg:left="230" dlg:top="154" dlg:width="120" dlg:height="14" dlg:dropdown="true" dlg:linecount="4"/>
+    <dlg:menulist dlg:id="PSMDropdown" dlg:tab-index="16" dlg:left="80" dlg:top="154" dlg:width="380" dlg:height="20" dlg:dropdown="true" dlg:linecount="10"/>
+    <dlg:text dlg:id="OEMLabel" dlg:tab-index="17" dlg:left="20" dlg:top="178" dlg:width="60" dlg:height="10" dlg:value="OEM:"/>
+    <dlg:menulist dlg:id="OEMDropdown" dlg:tab-index="18" dlg:left="80" dlg:top="176" dlg:width="380" dlg:height="20" dlg:dropdown="true" dlg:linecount="8"/>
 
     <!-- === Footer Status === -->
-    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="19" dlg:left="10" dlg:top="180" dlg:width="340" dlg:height="10"/>
-    <dlg:text dlg:id="StatusLabel" dlg:tab-index="20" dlg:left="10" dlg:top="194" dlg:width="340" dlg:height="12" dlg:value="Ready"/>
+    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="19" dlg:left="10" dlg:top="204" dlg:width="450" dlg:height="10"/>
+    <dlg:text dlg:id="StatusLabel" dlg:tab-index="20" dlg:left="10" dlg:top="218" dlg:width="450" dlg:height="12" dlg:value="Ready"/>
 
     <!-- === Action Buttons === -->
-    <dlg:button dlg:id="HelpButton" dlg:tab-index="21" dlg:left="10" dlg:top="210" dlg:width="50" dlg:height="20" dlg:value="Help..."/>
-    <dlg:button dlg:id="CancelButton" dlg:tab-index="22" dlg:left="240" dlg:top="210" dlg:width="55" dlg:height="20" dlg:button-type="cancel" dlg:value="Cancel"/>
-    <dlg:button dlg:id="RunOCRButton" dlg:tab-index="23" dlg:left="300" dlg:top="210" dlg:width="50" dlg:height="20" dlg:button-type="ok" dlg:default="true" dlg:value="Start"/>
+    <dlg:button dlg:id="HelpButton" dlg:tab-index="21" dlg:left="10" dlg:top="236" dlg:width="55" dlg:height="20" dlg:value="Help..."/>
+    <dlg:button dlg:id="RunOCRButton" dlg:tab-index="23" dlg:left="345" dlg:top="236" dlg:width="60" dlg:height="20" dlg:button-type="ok" dlg:default="true" dlg:value="Start"/>
+    <dlg:button dlg:id="CancelButton" dlg:tab-index="22" dlg:left="405" dlg:top="236" dlg:width="55" dlg:height="20" dlg:button-type="cancel" dlg:value="Cancel"/>
 
   </dlg:bulletinboard>
 </dlg:window>

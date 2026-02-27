@@ -456,16 +456,37 @@ OUTPUT MODE:
 • Clipboard: Copy text to system clipboard
 
 ADVANCED OPTIONS:
-• Page Mode: How Tesseract should analyze the image
-• Engine Mode: Which OCR engine to use
-• Preprocessing: Basic image enhancement options
+• Preset is inherited from Settings and defines a profile for extraction:
+  - Fast: faster processing
+  - Balanced: default profile
+  - Accuracy: higher quality extraction
+  - Custom: values from manual controls are preserved
+• PSM: page segmentation mode (0-13). Higher control gives more layout-specific behavior.
+  - 0: OSD only
+  - 3: fully automatic layout (recommended default)
+  - 6: single uniform text block
+• OEM: OCR engine mode (0-3).
+  - 0: legacy engine only
+  - 1: LSTM engine only
+  - 2: legacy + LSTM engines
+  - 3: auto (recommended default)
+• If you change PSM or OEM here, they are used for this OCR run only.
+  To change default Preset/PSM/OEM values for future runs, use Settings.
+• Preprocessing: image enhancement options (Grayscale, Binarize)
 
 BUTTONS:
 • Start OCR: Begin text recognition
 • Cancel: Close without processing
-• Help: Show this help message"""
+• Help: Show this help message
+
+TIP:
+• Want a different PSM/OEM profile? Use Settings to change defaults."""
         
         uno_utils.show_message_box("OCR Options Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+
+    def _handle_help_action(self):
+        """Handle Help button for OCR options."""
+        self._show_help()
 
     def _handle_ok_action(self):
         """Collect options and perform OCR."""
@@ -744,6 +765,7 @@ class SettingsDialogHandler(BaseDialogHandler):
         self._add_listener_to_control("RefreshLanguagesButtonSettings", "refresh_languages_settings")
         self._add_listener_to_control("SetupButton", "setup")
         self._add_listener_to_control("WikiButton", "wiki")
+        self._add_listener_to_control("FilterTubeButton", "filtertube")
         # Legacy button names — listeners are no-ops if control doesn't exist
         self._add_listener_to_control("CheckDependenciesButton", "setup")
         self._add_listener_to_control("InstallGuideButton", "setup")
@@ -751,7 +773,12 @@ class SettingsDialogHandler(BaseDialogHandler):
         
         # Search button for language filtering
         self._add_listener_to_control("SearchLanguagesButton", "search_languages")
-        
+
+        # Force dropdown controls into compact mode across LO builds
+        self._ensure_dropdown_mode("DefaultPresetDropdown")
+        self._ensure_dropdown_mode("DefaultPSMDropdown")
+        self._ensure_dropdown_mode("DefaultOEMDropdown")
+
         # Load current settings — wrapped so a failure doesn't prevent dialog display
         try:
             self._load_settings()
@@ -766,6 +793,41 @@ class SettingsDialogHandler(BaseDialogHandler):
             self._check_and_display_dependencies()
         except Exception as e:
             logger.error(f"Error checking dependencies: {e}", exc_info=True)
+            
+        # Apply modern UI styling via UNO models
+        self._apply_modern_styling()
+
+    def _apply_modern_styling(self):
+        """Applies dynamic UNO colors and fonts to modernize the UI and highlight important actions."""
+        try:
+            # 1. Shrink promo tagline to make it subtle
+            tagline = self.get_control("FilterTubeTagline2")
+            if tagline:
+                model = tagline.getModel()
+                model.FontHeight = 8.5
+                model.FontSlant = 2 # Italic
+                model.TextColor = 0x666666 # Subtle grey
+
+            # 2. Make Promo button strictly distinct
+            filter_btn = self.get_control("FilterTubeButton")
+            if filter_btn:
+                model = filter_btn.getModel()
+                model.BackgroundColor = 0x1D4ED8 # Dark blue promo color
+                model.TextColor = 0xFFFFFF # White text
+                model.FontWeight = 150 # Bold
+
+            # 3. Make Save strictly a Primary Call to Action
+            save_btn = self.get_control("SaveButton")
+            if save_btn:
+                model = save_btn.getModel()
+                model.BackgroundColor = 0x22C55E # Crisp UI Green
+                model.TextColor = 0xFFFFFF # White text
+                model.FontWeight = 150 # Bold
+                
+            # Removed the listbox background override to preserve native dark mode contrast.
+                
+        except Exception as e:
+            logger.debug(f"Could not apply all modern stylings (UI may appear default): {e}")
 
     # Color constants for status labels (RGB integers)
     COLOR_GREEN = 0x009900   # OK / Available
@@ -879,10 +941,107 @@ class SettingsDialogHandler(BaseDialogHandler):
             cb_bin.setState(self._bool_to_state(binarize))
         self.initial_settings[constants.CFG_KEY_DEFAULT_GRAYSCALE] = grayscale
         self.initial_settings[constants.CFG_KEY_DEFAULT_BINARIZE] = binarize
+
+        # Preset / PSM / OEM / Preview defaults
+        preset_items = {
+            constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
+            constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
+            constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
+            constants.OCR_PRESET_CUSTOM: "Custom",
+        }
+        self._populate_dropdown_settings(
+            "DefaultPresetDropdown",
+            preset_items,
+            constants.CFG_KEY_DEFAULT_PRESET,
+            constants.DEFAULT_OCR_PRESET,
+        )
+        self._populate_dropdown_settings(
+            "DefaultPSMDropdown",
+            constants.TESSERACT_PSM_MODES,
+            constants.CFG_KEY_DEFAULT_PSM,
+            constants.DEFAULT_PSM_MODE,
+        )
+        self._populate_dropdown_settings(
+            "DefaultOEMDropdown",
+            constants.TESSERACT_OEM_MODES,
+            constants.CFG_KEY_DEFAULT_OEM,
+            constants.DEFAULT_OEM_MODE,
+        )
+
+        preview = uno_utils.get_setting(
+            constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT,
+            constants.DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT,
+            self.ctx,
+        )
+        cb_preview = self.get_control("DefaultPreviewCheckbox")
+        if cb_preview:
+            cb_preview.setState(self._bool_to_state(preview))
+
+        self.initial_settings[constants.CFG_KEY_DEFAULT_PRESET] = self._coerce_preset_value(
+            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PRESET, constants.DEFAULT_OCR_PRESET, self.ctx),
+            constants.DEFAULT_OCR_PRESET,
+        )
+        self.initial_settings[constants.CFG_KEY_DEFAULT_PSM] = self._coerce_mode_value(
+            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PSM, constants.DEFAULT_PSM_MODE, self.ctx),
+            constants.TESSERACT_PSM_MODES,
+            constants.DEFAULT_PSM_MODE,
+        )
+        self.initial_settings[constants.CFG_KEY_DEFAULT_OEM] = self._coerce_mode_value(
+            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, self.ctx),
+            constants.TESSERACT_OEM_MODES,
+            constants.DEFAULT_OEM_MODE,
+        )
+        self.initial_settings[constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT] = self._bool_to_state(preview)
         
         status_label = self.get_control("SettingsStatusLabel")
         if status_label:
             status_label.setText("Settings loaded successfully")
+
+    @staticmethod
+    def _coerce_preset_value(value, fallback):
+        normalized = str(value or "").strip().lower()
+        if ":" in normalized:
+            normalized = normalized.split(":", 1)[0].strip()
+        return normalized if normalized in constants.OCR_PRESET_CHOICES else fallback
+
+    @staticmethod
+    def _coerce_mode_value(value, valid_map, fallback):
+        normalized = str(value or "").strip()
+        return normalized if normalized in valid_map else fallback
+
+    @staticmethod
+    def _extract_dropdown_key(control, items_map, fallback):
+        if not control or not items_map:
+            return fallback
+        try:
+            selected_items = control.getSelectedItemsPos()
+            if selected_items:
+                keys = list(items_map.keys())
+                idx = int(selected_items[0])
+                if 0 <= idx < len(keys):
+                    return str(keys[idx])
+        except Exception:
+            pass
+
+        try:
+            raw_text = str(control.getText()).strip()
+            if not raw_text:
+                return fallback
+            # Typical format: "<label> (<key>)"
+            if raw_text.endswith(")") and "(" in raw_text:
+                candidate = raw_text.rsplit("(", 1)[-1].rsplit(")", 1)[0].strip()
+                if candidate in items_map:
+                    return candidate
+            if raw_text in items_map:
+                return raw_text
+            for key, value in items_map.items():
+                if raw_text == f"{value} ({key})":
+                    return str(key)
+                if raw_text == key:
+                    return str(key)
+        except Exception:
+            pass
+        return fallback
 
     def _normalize_language_list(self, language_value):
         if not language_value:
@@ -1102,6 +1261,8 @@ class SettingsDialogHandler(BaseDialogHandler):
             self._show_setup()
         elif command == "wiki":
             self._open_wiki()
+        elif command == "filtertube":
+            self._open_filtertube()
         elif command == "search_languages":
             self._filter_languages()
 
@@ -1161,28 +1322,69 @@ class SettingsDialogHandler(BaseDialogHandler):
                 "infobox", parent_frame=self.parent_frame, ctx=self.ctx
             )
 
+    def _open_filtertube(self):
+        """Open the FilterTube project website in the default browser."""
+        import webbrowser
+        url = "https://filtertube.in"
+        try:
+            webbrowser.open(url)
+            status_label = self.get_control("SettingsStatusLabel")
+            if status_label:
+                status_label.setText("FilterTube opened in browser")
+        except Exception as e:
+            logger.error(f"Failed to open FilterTube site: {e}")
+            uno_utils.show_message_box(
+                "FilterTube",
+                f"Could not open browser.\nVisit: {url}",
+                "infobox",
+                parent_frame=self.parent_frame,
+                ctx=self.ctx,
+            )
+
     def _handle_help_action(self):
         """Show help information for the Settings dialog."""
         help_text = f"""{constants.EXTENSION_FULL_NAME} - Settings Help
 
 DEPENDENCY STATUS:
-- Shows current status of required components
-- Click Setup to check and see install commands
+• Current status of required components
+• Open Setup & Diagnostics to test dependencies and view install commands
 
 TESSERACT CONFIGURATION:
-• Set path to Tesseract executable
-• Use 'Browse' to find installation
-• Use 'Test' to verify it works
+• Set path to Tesseract executable manually
+• Use 'Browse' to find installation folder
+• Use 'Test' to verify the path works
 
 DEFAULT OPTIONS:
-• Set preferences for OCR operations
-• Language: Default language or multi-language list (ex: eng+spa)
-• Output: Default destination for OCR text
-• Preprocessing: Image enhancement options
+• Set preferences for OCR operations:
+  - Language: Default language or multi-language list (ex: eng+spa)
+  - Output: Default destination for OCR text insertion
+  - Preprocessing: Image enhancement options like Grayscale or Binarize
+
+ADVANCED PARAMETERS (PRESET, PSM, OEM):
+• Preset: Chooses a default quality profile for future OCR runs.
+  - Fast: psm=11, oem=3, scale=1.0, pre-processing disabled
+  - Balanced: psm=3, oem=3, scale=1.0, grayscale only (Recommended)
+  - Accuracy: psm=6, oem=3, scale=1.5, grayscale + binarize on
+  - Custom: Manual mode. PSM/OEM are taken from the boxes you select below.
+
+• PSM (Page Segmentation Mode): Layout behavior (0-13)
+  - 0: OSD (Orientation and Script Detection) only
+  - 3: Auto layout (Recommended default)
+  - 6: Assume a single uniform text block
+
+• OEM (OCR Engine Mode): Extraction behavior (0-3)
+  - 0: Legacy engine only
+  - 1: LSTM engine only
+  - 2: Legacy + LSTM engines combined
+  - 3: Auto (Recommended default)
+
+HOW IT IS USED:
+• These settings are saved and applied automatically as defaults for new OCR runs.
+• For single-run temporary changes, use the OCR Options dialog before text extraction.
 
 BUTTONS:
 • Save: Saves settings permanently
-• Cancel: Discards changes
+• Cancel: Discards any unsaved changes
 • Help: Shows this help message"""
         
         uno_utils.show_message_box("Settings Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
@@ -1311,20 +1513,68 @@ Details: {message}""",
                 uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, selected_output_mode, self.ctx)
                 changes_made = True
 
-            # Default Preprocessing
+            # Default Preprocessing, Preset, PSM, OEM, and preview settings
             grayscale_control = self.get_control("DefaultGrayscaleCheckbox")
             binarize_control = self.get_control("DefaultBinarizeCheckbox")
-            
+            preset_control = self.get_control("DefaultPresetDropdown")
+            psm_control = self.get_control("DefaultPSMDropdown")
+            oem_control = self.get_control("DefaultOEMDropdown")
+            preview_control = self.get_control("DefaultPreviewCheckbox")
+
             if grayscale_control:
                 new_grayscale = grayscale_control.getState()
                 if new_grayscale != self.initial_settings.get(constants.CFG_KEY_DEFAULT_GRAYSCALE):
                     uno_utils.set_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, new_grayscale, self.ctx)
                     changes_made = True
-                    
+
             if binarize_control:
                 new_binarize = binarize_control.getState()
                 if new_binarize != self.initial_settings.get(constants.CFG_KEY_DEFAULT_BINARIZE):
                     uno_utils.set_setting(constants.CFG_KEY_DEFAULT_BINARIZE, new_binarize, self.ctx)
+                    changes_made = True
+
+            if preset_control:
+                new_preset = self._coerce_preset_value(
+                    self._extract_dropdown_key(
+                        preset_control,
+                        {
+                            constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
+                            constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
+                            constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
+                            constants.OCR_PRESET_CUSTOM: "Custom",
+                        },
+                        constants.DEFAULT_OCR_PRESET,
+                    ),
+                    constants.DEFAULT_OCR_PRESET,
+                )
+                if new_preset != self.initial_settings.get(constants.CFG_KEY_DEFAULT_PRESET):
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PRESET, new_preset, self.ctx)
+                    changes_made = True
+
+            if psm_control:
+                new_psm = self._coerce_mode_value(
+                    self._extract_dropdown_key(psm_control, constants.TESSERACT_PSM_MODES, constants.DEFAULT_PSM_MODE),
+                    constants.TESSERACT_PSM_MODES,
+                    constants.DEFAULT_PSM_MODE,
+                )
+                if new_psm != self.initial_settings.get(constants.CFG_KEY_DEFAULT_PSM):
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PSM, new_psm, self.ctx)
+                    changes_made = True
+
+            if oem_control:
+                new_oem = self._coerce_mode_value(
+                    self._extract_dropdown_key(oem_control, constants.TESSERACT_OEM_MODES, constants.DEFAULT_OEM_MODE),
+                    constants.TESSERACT_OEM_MODES,
+                    constants.DEFAULT_OEM_MODE,
+                )
+                if new_oem != self.initial_settings.get(constants.CFG_KEY_DEFAULT_OEM):
+                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OEM, new_oem, self.ctx)
+                    changes_made = True
+
+            if preview_control:
+                new_preview = preview_control.getState()
+                if new_preview != self.initial_settings.get(constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT):
+                    uno_utils.set_setting(constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT, new_preview, self.ctx)
                     changes_made = True
             
             # Update status

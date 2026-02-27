@@ -1019,6 +1019,87 @@ def show_multiline_input_box(title, message, default_text="", ctx=None, parent_f
         logger.error("show_multiline_input_box: Multiline dialog unavailable in this UNO runtime.")
         return None
 
+
+def show_ocr_preview_fallback(title, text, ctx=None, parent_frame=None, max_chars=2400):
+    """Fallback preview dialog for runtimes where multiline dialogs are unavailable.
+
+    Returns the original text if user confirms insertion, or None if user cancels.
+    """
+    # Normalize and guard.
+    preview = text or ""
+    try:
+        preview = str(preview)
+    except Exception:
+        preview = ""
+
+    total_chars = len(preview)
+    total_lines = len(preview.splitlines()) if preview else 0
+
+    max_chars = max(400, int(max_chars or 0))
+    if max_chars < 800:
+        # Keep a slightly larger display margin for safer confirmation text
+        # and readable snippet preview.
+        max_chars = 800
+
+    truncated_preview = preview
+    shown_chars = total_chars
+    if total_chars > max_chars:
+        truncated_preview = preview[: max_chars]
+        shown_chars = max_chars
+        truncated_preview = _(
+            "{preview}\n...\n[output truncated: showing first {shown} of {total} characters]"
+        ).format(preview=truncated_preview, shown=shown_chars, total=total_chars)
+    else:
+        truncated_preview = _("{preview}\n[full text]").format(preview=truncated_preview)
+
+    if not truncated_preview.strip():
+        truncated_preview = _("[OCR returned empty text]")
+
+    preview_width = min(80, 30 + max(0, max_chars // 45))
+
+    message_body = [
+        _("The multiline OCR review window is not supported in this LibreOffice session."),
+        _("Please confirm insertion from the preview below:"),
+        "",
+        _("Output summary: {chars} chars, {lines} source lines, preview chars shown: {shown_chars}").format(
+            chars=total_chars,
+            lines=total_lines,
+            shown_chars=min(shown_chars, total_chars),
+        ),
+        _("-" * preview_width),
+        truncated_preview.strip(),
+        _("-" * preview_width),
+        "",
+        _("Click OK to insert the text, or Cancel to stop."),
+    ]
+
+    log_path = get_log_file_path()
+    if log_path:
+        message_body.extend([
+            "",
+            _("Debug logs: {path}").format(path=log_path),
+        ])
+
+    message = _(
+        "{message}"
+    ).format(
+        message="\n".join(message_body)
+    )
+
+    response = show_message_box(
+        title,
+        message,
+        type="querybox",
+        parent_frame=parent_frame,
+        ctx=ctx,
+        buttons="ok_cancel",
+    )
+    if response in (None, 0, "0"):
+        logger.debug("OCR preview fallback canceled by user.")
+        return None
+
+    return preview
+
 # Note: Interactive dialog functions have been moved to tejocr_interactive_dialogs.py
 def show_interactive_settings_dialog_deprecated(ctx, parent_frame=None):
     """Shows a comprehensive interactive settings dialog."""

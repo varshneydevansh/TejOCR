@@ -13,7 +13,7 @@ TejOCR .oxt install
   -> show extension card / execute commands
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Install TejOCR .oxt"] --> B["Parse description.xml"]
   B --> C["Validate registration tags"]
@@ -61,7 +61,7 @@ In this repository it must resolve to:
 5. Reinstall + restart LibreOffice.
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["License path error"] --> B["quit LibreOffice"]
   B --> C["clear uno_packages cache"]
@@ -103,7 +103,7 @@ Most commonly caused by:
 - `icon` paths are valid and reachable (e.g. `icons/tejocr_48.png`).
 - `version` in description file matches manifest/package release version.
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Raw XML shown in Manager"] --> B{"Fresh package?"}
   B -->|No| C["Rebuild OXT from clean tree"]

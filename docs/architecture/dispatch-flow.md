@@ -14,7 +14,7 @@ Addons.xcu + ProtocolHandler.xcu
    -> TejOCRService queryDispatch()/dispatch()
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Addons.xcu / ProtocolHandler.xcu"] --> B["command URL"]
   B --> C["queryDispatch(url)"]
@@ -31,7 +31,7 @@ dispatch(url)
   -> _handle_toolbar_action()
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["dispatch(url)"] --> B{"URL"}
   B -->|Settings URL| C["_handle_settings()"]
@@ -62,7 +62,7 @@ _handle_ocr_image_from_file()
   -> output.handle_ocr_output(...)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["_handle_ocr_selected_image"] --> B["is_graphic_object_selected"]
   B --> C["_perform_ocr_with_options(selected)"]
@@ -83,7 +83,7 @@ queryDispatch() decides command state
   OCRImageFromFile -> generally enabled where file actions are supported
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["queryDispatch(url)"] --> B{"enablement check"}
   B -->|Settings| C["enabled true (frame context)"]
@@ -106,7 +106,7 @@ before OCR execution:
      -> OCR pipeline continues
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["OCR request"] --> B["ensure dependencies"]
   B -->|missing| C["notify + settings route"]

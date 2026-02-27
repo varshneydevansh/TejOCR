@@ -13,7 +13,7 @@ README.md
       -> docs/troubleshooting/*
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   R["README.md"] --> T["TECHNICAL.md"]
   T --> A["docs/architecture"]
@@ -32,7 +32,7 @@ Change code/config
   -> install/restart LibreOffice
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Code/metadata change"] --> B["build_tejocr.py or build.py"]
   B --> C["Collect/copy extension files"]
@@ -68,7 +68,7 @@ Single-truth icon path
       +--> 26_hc, 48_hc, 64_hc (high-contrast)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["main_logo.png"] --> B["generate_icons.py"]
   B --> C["tejocr_16.png"]

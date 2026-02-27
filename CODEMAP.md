@@ -16,7 +16,7 @@ tejocr_service.py
     |--> settings/resources (description.xml, manifest, xcu)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Addons.xcu + ProtocolHandler.xcu"] --> B["tejocr_service.py"]
   B --> C["tejocr_dialogs.py / enhanced"]
@@ -79,7 +79,7 @@ Commands from UI
      -> command-specific dispatch branch
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["UI command"] --> B{"type"}
   B -->|Settings| C["settings workflow"]

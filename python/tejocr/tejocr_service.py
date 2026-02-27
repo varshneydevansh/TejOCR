@@ -1314,23 +1314,25 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                         parent_frame=self.frame,
                     )
                     if preview_result is None:
-                        if uno_utils.supports_uno_dialog_model(self.ctx):
-                            self.logger.info("User cancelled OCR workflow at preview stage.")
-                            uno_utils.show_message_box(
-                                _("OCR Canceled"),
-                                _("OCR output was cancelled by user."),
-                                "infobox",
-                                parent_frame=self.frame,
-                                ctx=self.ctx,
-                            )
-                            return
-
-                        self.logger.warning(
-                            "Preview dialog is unavailable in this runtime; proceeding with extracted OCR text."
+                        preview_result = uno_utils.show_ocr_preview_fallback(
+                            _("Review OCR result"),
+                            text,
+                            ctx=self.ctx,
+                            parent_frame=self.frame,
                         )
-                        preview_text = text
-                    else:
-                        preview_text = preview_result
+
+                    if preview_result is None:
+                        self.logger.info("User cancelled OCR workflow at preview stage.")
+                        uno_utils.show_message_box(
+                            _("OCR Canceled"),
+                            _("OCR output was cancelled by user."),
+                            "infobox",
+                            parent_frame=self.frame,
+                            ctx=self.ctx,
+                        )
+                        return
+
+                    preview_text = preview_result
 
                 text = preview_text if preview_text is not None else text
                 

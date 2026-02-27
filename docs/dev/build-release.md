@@ -11,7 +11,7 @@ Developer change
   -> install into LibreOffice
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["Developer change"] --> B["run build.py OR build_tejocr.py"]
     B --> C["copy/collect extension files"]
@@ -59,7 +59,7 @@ manifest entries
   -> service entry points resolve without import errors
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["manifest entries"] --> B["every file listed in zip manifest table"]
     B --> C["every required file exists in archive"]

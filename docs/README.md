@@ -10,6 +10,7 @@ This folder contains all deep documentation for the extension.
 - [Method call map](reference/method-map.md)
 - [UNO APIs used](reference/uno-apis.md)
 - [Output modes](reference/output-modes.md)
+- [OCR presets and engine tuning](reference/ocr-options-and-engine-tuning.md)
 - [Build and release](dev/build-release.md)
 - [Packaging and metadata validation](dev/metadata-and-packaging.md)
 - [Troubleshooting installation/license issues](troubleshooting/installation.md)
@@ -21,6 +22,7 @@ This folder contains all deep documentation for the extension.
 - [Selected image OCR flow](flow/selected-image-ocr.md)
 - [File OCR flow](flow/file-image-ocr.md)
 - [Output routing matrix](reference/output-modes.md#ascii-output-routing)
+- [OCR tuning flow](reference/ocr-options-and-engine-tuning.md#runtime-option-resolution)
 
 ## Mermaid Diagrams
 
@@ -30,6 +32,7 @@ This folder contains all deep documentation for the extension.
 - [Method map](reference/method-map.md)
 - [UNO API maps](reference/uno-apis.md)
 - [Output mode flowchart](reference/output-modes.md)
+- [OCR options and tuning flow](reference/ocr-options-and-engine-tuning.md)
 - [Build/packaging diagnostics](dev/build-release.md)
 - [Troubleshooting flows](troubleshooting/installation.md)
 

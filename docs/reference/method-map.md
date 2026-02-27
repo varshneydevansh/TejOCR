@@ -15,7 +15,7 @@ User command URL
       -> feedback/log
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["queryDispatch(url)"] --> B["dispatch(url, args)"]
   B --> C{"command"}
@@ -77,7 +77,7 @@ _perform_ocr_with_options(
   -> output.handle_ocr_output(...)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["_perform_ocr_with_options"] --> B["_build_default_ocr_options"]
   B --> C["_coerce helpers"]
@@ -108,7 +108,7 @@ perform_ocr(ctx, frame, source, image_path_or_selection, ocr_options)
    -> return recognized text and diagnostics
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["perform_ocr"] --> B{"source_type"}
   B -->|selected| C["extract_text_from_selected_image"]
@@ -134,7 +134,7 @@ handle_ocr_output(ctx, frame, text, output_mode, insertion_anchor, replacement_t
       |-- target missing: safe fallback to insertion route
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["handle_ocr_output"] --> B{"output_mode"}
   B -->|at_cursor| C["_resolve_insertion_cursor"]
@@ -177,7 +177,7 @@ te jocr_service.py
   -> tejocr_output.py
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   S["tejocr_service.py"] --> U["uno_utils.py"]
   S --> D["tejocr_dialogs.py"]
@@ -200,7 +200,7 @@ dispatch path failure
      -> continue with non-fatal status to keep extension usable
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["dispatch path"] --> B{"Error type?"}
   B -->|options dialog| C["fallback editor defaults"]

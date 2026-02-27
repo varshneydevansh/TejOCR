@@ -27,7 +27,7 @@ OCR pipeline (engine.perform_ocr)
 Text placement (handle_ocr_output)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["User action"] --> B["UNO URL"]
   B --> C["te jocr_service.queryDispatch/dispatch"]
@@ -59,7 +59,7 @@ OCRImageFromFile URL             -> _handle_ocr_image_from_file()
 ToolbarAction URL                -> _handle_toolbar_action()
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["queryDispatch(url)"] --> B["dispatch(url, args)"]
   B --> C{"command"}
@@ -85,7 +85,7 @@ _perform_ocr_with_options(source, image_path?, options, output_mode)
    -> success/error reporting + logs
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["_perform_ocr_with_options"] --> B["_build_default_ocr_options"]
   B --> C["_coerce helpers"]
@@ -120,7 +120,7 @@ File path:
        -> OCR attempt chain
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["_handle_ocr_selected_image"] --> B["_capture_selected_image_anchor"]
   B --> C["_perform_ocr_with_options('selected')"]
@@ -145,7 +145,7 @@ source=selected, target exists -> replace_image branch executes
 source=file or target missing  -> safe insertion path (at_cursor/new_text_box/clipboard)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["output_mode=replace_image"] --> B{"replacement_target exists?"}
   B -->|yes| C["_replace_image_with_text()"]
@@ -199,7 +199,7 @@ If dialog model service unavailable in session:
   - OCR and output still run (using persisted defaults)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["Session runtime"] --> B{"Dialog model service exists?"}
   B -->|yes| C["XDL dialogs + controls"]

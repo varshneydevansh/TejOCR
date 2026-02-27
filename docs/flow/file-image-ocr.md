@@ -31,7 +31,7 @@ _handle_ocr_image_from_file()
        +-- success notification
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["OCR Image from File command"] --> B["_handle_ocr_image_from_file"]
   B --> C["show_file_picker"]
@@ -63,7 +63,7 @@ File flow has no selected Writer image object
 -> implementation keeps behavior safe and visible by using insertion/clipboard modes
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["file source OCR"] --> B{"replacement target exists?"}
   B -->|no| C["replace_image treated as insertion branch"]

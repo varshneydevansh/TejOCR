@@ -1,7 +1,7 @@
-# TejOCR v0.1.7
+# TejOCR
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/varshneydevansh/TejOCR/main/icons/tejocr_64.png" alt="TejOCR Icon" width="96" height="96" />
+  <img src="https://raw.githubusercontent.com/varshneydevansh/TejOCR/main/icons/main_logo.png" alt="TejOCR Icon" width="96" height="96" />
   <h1>TejOCR</h1>
   <p>OCR inside Writer, with predictable output behavior</p>
 
@@ -30,8 +30,8 @@ The extension then inserts recognized text based on selected output mode with fa
 └──────────┬──────────┘
            v
     ┌───────────────────────┐
-    │ UNO dispatch URL       │
-    │ (ProtocolHandler.xcu)  │
+    │ UNO dispatch URL      │
+    │ (ProtocolHandler.xcu) │
     └──────────┬────────────┘
                v
       ┌──────────────────────┐
@@ -48,22 +48,22 @@ The extension then inserts recognized text based on selected output mode with fa
    selected image | file
             v
       ┌──────────────────────────┐
-      │ OCR Engine              │
-      │ (tejocr_engine.py)      │
+      │ OCR Engine               │
+      │ (tejocr_engine.py)       │
       │ - image export           │
       │ - preprocessing          │
-      │ - tesseract OCR attempts  │
-      └─────────┬────────────────
+      │ - tesseract OCR attempts │
+      └─────────┬────────────────┘
                 v
       ┌──────────────────────────┐
-      │ Output Router           │
-      │ (tejocr_output.py)      │
+      │ Output Router            │
+      │ (tejocr_output.py)       │
       │ at_cursor | clipboard    │
-      │ new_text_box | replace    │
+      │ new_text_box | replace   │
       └──────────────────────────┘
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Writer UI/Toolbar"] --> B["Protocol URL via ProtocolHandler.xcu"]
   B --> C["TejOCRService (te jocr_service.py)"]
@@ -100,7 +100,7 @@ file source          -> cannot target an image replacement
                        -> automatically uses insertion-compatible behavior
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["selected image"] --> B["replace_image allowed"]
   B --> C["remove graphic and insert text"]
@@ -201,6 +201,7 @@ Deep docs:
 - `docs/flow/selected-image-ocr.md`
 - `docs/flow/file-image-ocr.md`
 - `docs/reference/output-modes.md`
+- `docs/reference/ocr-options-and-engine-tuning.md`
 - `docs/troubleshooting/installation.md`
 - `docs/troubleshooting/dialog-fallbacks.md`
 
@@ -217,3 +218,12 @@ All major technical docs are intentionally dual-form:
 - ASCII flow blocks for terminal/code review readability.
 - Mermaid diagrams for quick visual scanning and review contexts.
 
+
+## About the Name
+
+**Tej** (तेज) in Sanskrit and other Indian languages means *light*, *effulgence*, *sharpness*, or *brilliance*. 
+**TejOCR** aims to bring clarity and insight to your documents by making the text within images accessible and editable.
+
+* Maintainer: **Devansh Varshney**
+* GitHub: [varshneydevansh](https://github.com/varshneydevansh)
+* Twitter: [@varshneydevansh](https://x.com/varshneydevansh)

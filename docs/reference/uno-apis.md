@@ -11,7 +11,7 @@ Addons.xcu + ProtocolHandler.xcu
          -> XDispatch / XDispatchProvider / XServiceInfo / XInitialization
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["Addons.xcu / ProtocolHandler.xcu"] --> B["ProtocolHandler service"]
   B --> C["TejOCRService"]
@@ -40,7 +40,7 @@ Dialog UX
   -> fallback: MessageBox / input APIs if model unavailable
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Dialog intent"] --> B["DialogProvider"]
   B --> C["UnoControlDialogModel"]
@@ -77,7 +77,7 @@ Selection source
   -> GraphicProvider / GraphicExporter
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Selection from active frame"] --> B["XSelectionSupplier"]
   B --> C["TextGraphicObject / XTextContent"]
@@ -111,7 +111,7 @@ Output mode routing
   -> replace_image: remove selected target + insert text
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Output mode"] --> B["at_cursor"]
   A --> C["new_text_box"]
@@ -143,7 +143,7 @@ Feature queries and enablement
   -> FeatureStateEvent updates
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["queryDispatch(url)"] --> B{"url"} -->|Settings| C["always enabled"]
   B -->|OCRSelectedImage| D["enabled only if image selected"]
@@ -183,7 +183,7 @@ tejocr_output.*                         -> XText/XTextCursor/TextFrame/SystemCli
 uno_utils.show_file_picker               -> FilePicker
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   S["tejocr_service"] --> DS["XDispatch / XDispatchProvider"]
   D["tejocr_dialogs"] --> DP["DialogProvider"]

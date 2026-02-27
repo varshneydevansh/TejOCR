@@ -29,7 +29,7 @@ _handle_ocr_selected_image / _handle_ocr_image_from_file
 
 ## Service-to-output mapping
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["_perform_ocr_with_options(source_type, image, output_mode)"]
   A --> B{"source_type"}

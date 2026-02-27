@@ -27,7 +27,7 @@ OCR Image from File
   -> output
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Settings"] --> B["Dependencies + defaults"]
   C["OCR Selected Image"] --> D["Selection check"]
@@ -46,7 +46,7 @@ flowchart TD
 | `new_text_box` | Add a text frame in document | Add a text frame at cursor |
 | `replace_image` | Replace selected image with text | Converted to safe insertion path |
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["output_mode"] -->|at_cursor| B["cursor insert"]
   A -->|new_text_box| C["text frame"]

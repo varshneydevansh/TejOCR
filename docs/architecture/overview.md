@@ -17,7 +17,7 @@ TejOCRService (te jocr_service.py)
      +-- engine/output handoff
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Writer menu/toolbar"] --> B["Addons.xcu / ProtocolHandler.xcu"]
   B --> C["TejOCRService (Python)"]
@@ -47,7 +47,7 @@ Persistence cluster:
   -> uno_utils.get_setting / set_setting
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   UI["UI cluster"] --> S["tejocr_service.py"]
   S --> DLG["Dialog handlers"]
@@ -72,7 +72,7 @@ queryDispatch(url)
   -> status messages/logs
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["queryDispatch(url)"] --> B["dispatch(url, args)"]
   B --> C{"command"}
@@ -100,7 +100,7 @@ build scripts
       -> extension manager card + icon/license + registration
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["build_tejocr.py / build.py"] --> B["copy extension assets"]
   B --> C["description.xml"]
@@ -123,7 +123,7 @@ file image:
   -> use insertion-style output
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart LR
   A["OCR source"] --> B{"target object exists?"}
   B -->|selected| C["replace_image allowed"]

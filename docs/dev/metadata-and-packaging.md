@@ -13,7 +13,7 @@ description.xml
   -> icon references
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["description.xml"] --> B["version"]
     A --> C["identifier"]
@@ -48,7 +48,7 @@ manifest
   -> resources (icons, docs, license, help files)
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["manifest"] --> B["component registration"]
     A --> C["python modules"]
@@ -73,7 +73,7 @@ Fix:
 - clean rebuild
 - uninstall + restart LibreOffice and reinstall
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["Could not obtain path to license"] --> B["ensure LICENSE exists in package root"]
     B --> C["ensure LICENSE in manifest"]
@@ -101,7 +101,7 @@ Fix checklist:
 6) Relaunch LibreOffice
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["Quit LibreOffice completely"] --> B["Remove cache entry"]
     B --> C["Uninstall old TejOCR package"]
@@ -125,7 +125,7 @@ install .oxt
   -> cache metadata for extension manager
 ```
 
-```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
     A["install .oxt"] --> B["parse description.xml"]
     B --> C["validate registration + license path"]

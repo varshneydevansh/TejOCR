@@ -64,7 +64,7 @@ The extension inserts recognized text based on the selected output mode with fal
 ```
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
+%%{init: {"theme":"base","themeVariables":{"lineColor":"#6d28d9","fontSize":"14px","fontFamily":"Inter, Segoe UI, Arial","nodeTextColor":"#111827","textColor":"#111827","lineWidth":"2","signalColor":"#0f766e"}}}%%
 flowchart TD
   A["Writer UI/Toolbar"] --> B["Protocol URL via ProtocolHandler.xcu"]
   B --> C["TejOCRService (tejocr_service.py)"]
@@ -74,6 +74,19 @@ flowchart TD
   F --> G["_preprocess + Tesseract"]
   F --> H["handle_ocr_output()"]
   H --> I["at_cursor / clipboard / new_text_box / replace_image"]
+  classDef ui fill:#93c5fd,color:#0f172a,stroke:#1d4ed8,stroke-width:2px;
+  classDef service fill:#22c55e,color:#052e16,stroke:#15803d,stroke-width:2px;
+  classDef engine fill:#f59e0b,color:#0f172a,stroke:#b45309,stroke-width:2px;
+  classDef output fill:#db2777,color:#ffffff,stroke:#be185d,stroke-width:2px;
+  class A ui;
+  class B service;
+  class C service;
+  class D service;
+  class E service;
+  class F engine;
+  class G engine;
+  class H output;
+  class I output;
 ```
 
 > `replace_image` is only valid for Writer-selected-image flow.
@@ -102,11 +115,20 @@ file source          -> cannot target an image replacement
 ```
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
+%%{init: {"theme":"base","themeVariables":{"lineColor":"#6d28d9","fontSize":"14px","fontFamily":"Inter, Segoe UI, Arial","nodeTextColor":"#111827","textColor":"#111827","lineWidth":"2","signalColor":"#0f766e"}}}%%
 flowchart LR
   A["selected image"] --> B["replace_image allowed"]
   B --> C["remove graphic and insert text"]
   D["file input"] --> E["replace_image rejected"] --> F["insert-compatible output used"]
+  classDef image fill:#2563eb,color:#ffffff,stroke:#1d4ed8,stroke-width:2px;
+  classDef action fill:#22c55e,color:#052e16,stroke:#15803d,stroke-width:2px;
+  classDef fallback fill:#f97316,color:#ffffff,stroke:#ea580c,stroke-width:2px;
+  class A image;
+  class B action;
+  class C action;
+  class D image;
+  class E fallback;
+  class F action;
 ```
 
 ---

@@ -9,6 +9,7 @@
 
 import os
 import sys
+import platform
 import uno
 import unohelper
 import tempfile
@@ -18,62 +19,84 @@ from tejocr import uno_utils
 from tejocr import constants
 from tejocr import locale_setup # Added for i18n
 
-_ = locale_setup.get_translator().gettext # Added for i18n
+try:
+    _ = locale_setup.get_translator().gettext  # i18n
+except Exception:
+    def _(text):
+        return text
 
 # Initialize logger for this module
 logger = uno_utils.get_logger("TejOCR.Engine")
 
+
+def _platform_name():
+    """Return a normalized platform label for platform-specific messages."""
+    name = (platform.system() or "").lower()
+    if name == "darwin":
+        return "mac"
+    if name == "linux":
+        return "linux"
+    if name == "windows":
+        return "windows"
+    return name or "unknown"
+
+
+def _has_module(module_name):
+    """Check module import availability without importing hard dependencies."""
+    try:
+        __import__(module_name)
+        return True
+    except Exception:
+        return False
+
+
+def _lo_python_dependency_command():
+    """Return a practical install command for the active LibreOffice Python interpreter."""
+    return f'"{sys.executable}" -m pip install numpy pytesseract pillow'
+
+
+def _tesseract_install_recommendation():
+    """Return platform-safe install guidance for Tesseract."""
+    platform_name = _platform_name()
+    if platform_name == "windows":
+        return (
+            "Install Tesseract:\n"
+            "• https://github.com/UB-Mannheim/tesseract/wiki\n"
+            "• or from a package manager (winget/choco) in an elevated console\n"
+            "• Select additional languages during installation"
+        )
+    if platform_name == "linux":
+        return (
+            "Install Tesseract:\n"
+            "• sudo apt install tesseract-ocr tesseract-ocr-eng\n"
+            "• Extra languages: sudo apt install tesseract-ocr-all\n"
+            "• Or use your distro package manager equivalent"
+        )
+    return (
+        "Install Tesseract:\n"
+        "• brew install tesseract\n"
+        "• Extra languages: brew install tesseract-lang\n"
+    )
+
 # Global variables for pytesseract state
 PYTESSERACT_AVAILABLE = False
 pytesseract = None
+_LAST_PYTESSERACT_INIT_ERROR = None
 
-def _initialize_pytesseract():
+def _initialize_pytesseract(ctx=None):
     """Initialize pytesseract with robust error handling and path detection."""
-    global PYTESSERACT_AVAILABLE, pytesseract
+    global PYTESSERACT_AVAILABLE, pytesseract, _LAST_PYTESSERACT_INIT_ERROR
+    _LAST_PYTESSERACT_INIT_ERROR = None
     
     if PYTESSERACT_AVAILABLE and pytesseract:
         return True
     
-    # First, try to ensure numpy is available since pytesseract depends on it
-    numpy_available = False
     try:
-        import numpy
-        numpy_available = True
-        logger.debug(f"NumPy found: version {numpy.__version__}")
-    except ImportError as numpy_err:
-        logger.warning(f"NumPy import failed: {numpy_err}")
-        
-        # Try to add LibreOffice Python paths and check for numpy
-        try:
-            lo_python_paths = [
-                "/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/lib/python3.10/site-packages",
-                "/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/3.10/lib/python3.10/site-packages"
-            ]
-            
-            for path in lo_python_paths:
-                if os.path.exists(path) and path not in sys.path:
-                    sys.path.insert(0, path)
-                    logger.debug(f"Added {path} to sys.path for NumPy search")
-            
-            # Try numpy import again after path adjustment
-            import numpy
-            numpy_available = True
-            logger.info(f"NumPy found after path adjustment: version {numpy.__version__}")
-        except ImportError as numpy_err2:
-            logger.error(f"NumPy still not found after path adjustment: {numpy_err2}")
-            numpy_available = False
-    
-    if not numpy_available:
-        logger.error("NumPy is required for pytesseract but not found in LibreOffice Python environment")
-        return False
-    
-    try:
-        # First attempt: Standard import (numpy is now confirmed available)
         import pytesseract as pt
         pytesseract = pt
         
         # Verify tesseract executable is accessible
-        tesseract_path = _find_tesseract_executable()
+        tesseract_path = _find_tesseract_executable(ctx=ctx)
         if tesseract_path:
             pytesseract.pytesseract.tesseract_cmd = tesseract_path
             logger.info(f"Pytesseract initialized successfully with tesseract at: {tesseract_path}")
@@ -96,66 +119,106 @@ def _initialize_pytesseract():
                 return True
             except Exception as e:
                 logger.warning(f"Pytesseract imported but tesseract not working: {e}")
+                _LAST_PYTESSERACT_INIT_ERROR = (
+                    f"Tesseract executable initialization failed: {e}"
+                )
                 return False
         else:
             logger.warning("Pytesseract imported but tesseract executable not found")
+            _LAST_PYTESSERACT_INIT_ERROR = "Configured or detected Tesseract executable was not found."
             return False
             
     except ImportError as e:
-        logger.error(f"Pytesseract import failed even with NumPy available: {e}")
+        logger.error(f"Pytesseract import failed: {e}")
+        _LAST_PYTESSERACT_INIT_ERROR = f"ImportError while loading pytesseract: {e}"
         return False
     except Exception as e:
         logger.error(f"Unexpected error initializing pytesseract: {e}", exc_info=True)
+        _LAST_PYTESSERACT_INIT_ERROR = f"Unexpected initialization error: {e}"
         return False
 
-def _find_tesseract_executable():
+def _find_tesseract_executable(ctx=None):
     """Find tesseract executable with multiple fallback strategies."""
-    # Strategy 1: Check if already set
+    configured_path = ""
+    if ctx:
+        try:
+            configured_path = uno_utils.get_setting(
+                constants.CFG_KEY_TESSERACT_PATH,
+                "",
+                ctx,
+            )
+        except Exception as e_path:
+            logger.debug(f"Could not read configured Tesseract path for detection: {e_path}")
+            configured_path = ""
+
+    # 1) If pytesseract has a previously configured command, validate and use it.
     if hasattr(pytesseract, 'pytesseract') and hasattr(pytesseract.pytesseract, 'tesseract_cmd'):
         current_cmd = pytesseract.pytesseract.tesseract_cmd
-        if current_cmd != 'tesseract' and os.path.isfile(current_cmd):
+        if current_cmd and os.path.isfile(current_cmd):
             return current_cmd
     
-    # Strategy 2: Use shutil.which (respects PATH)
-    tesseract_path = shutil.which('tesseract')
-    if tesseract_path:
-        logger.debug(f"Found tesseract via shutil.which: {tesseract_path}")
-        return tesseract_path
-    
-    # Strategy 3: Common macOS locations
-    common_paths = [
-        '/usr/local/bin/tesseract',
-        '/opt/homebrew/bin/tesseract',
-        '/usr/bin/tesseract'
-    ]
-    
-    for path in common_paths:
-        if os.path.isfile(path):
-            logger.debug(f"Found tesseract at common location: {path}")
-            return path
+    # Strategy 2: Delegate to UNO utility for robust discovery.
+    discovered = uno_utils.find_tesseract_executable(configured_path)
+    if discovered:
+        return discovered
     
     logger.warning("Tesseract executable not found in any known location")
     return None
 
 def is_tesseract_ready(ctx=None, show_gui_errors=True, parent_frame=None):
     """Check if Tesseract and pytesseract are ready for OCR operations."""
-    if not _initialize_pytesseract():
-        if show_gui_errors:
-            # Check specifically what's missing to provide better error message
-            numpy_available = False
-            try:
-                import numpy
-                numpy_available = True
-            except ImportError:
-                pass
-            
-            if not numpy_available:
-                error_message = "TejOCR requires NumPy for OCR functionality.\n\nNumPy is missing from LibreOffice's Python environment.\n\nTo install:\n• /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract\n\nThen restart LibreOffice."
-                title = "NumPy Required"
+    if not _initialize_pytesseract(ctx):
+        configured_path = ""
+        try:
+            if ctx:
+                configured_path = (uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx) or "").strip()
+        except Exception:
+            configured_path = ""
+
+        try:
+            pytesseract_available = _has_module("pytesseract")
+            tesseract_path = _find_tesseract_executable(ctx=ctx)
+        except Exception:
+            pytesseract_available = False
+            tesseract_path = None
+
+        if not pytesseract_available:
+            title = "Missing pytesseract"
+            error_message = (
+                "TejOCR cannot access pytesseract in LibreOffice's Python environment.\n\n"
+                "Run this command from a terminal:\n"
+                f"{_lo_python_dependency_command()}\n\n"
+                "Then restart LibreOffice."
+            )
+        elif not tesseract_path:
+            title = "Tesseract Not Available"
+            if configured_path:
+                path_hint = _(
+                    "Configured path '{path}' is not valid or cannot be executed.\n"
+                ).format(path=configured_path)
             else:
-                error_message = "Tesseract OCR is not properly installed or configured.\n\nPlease install tesseract and pytesseract:\n• brew install tesseract\n• /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pytesseract numpy\n\nThen restart LibreOffice."
-                title = "Tesseract Not Available"
-                
+                path_hint = _("No Tesseract executable path could be detected.\n")
+            error_message = (
+                f"{path_hint}\n"
+                "TejOCR can load Python dependencies, but it cannot reach Tesseract from LibreOffice.\n\n"
+                f"{_tesseract_install_recommendation()}\n\n"
+                "Or set the exact executable path in: Settings → Tesseract Path.\n\n"
+                "Then restart LibreOffice if needed."
+            )
+        else:
+            title = "OCR Engine Not Ready"
+            error_message = (
+                "OCR dependencies are partly available, but initialization failed.\n\n"
+                "Details:\n"
+                f"{_LAST_PYTESSERACT_INIT_ERROR or _('No internal details available.')}\n\n"
+                "Try:\n"
+                f"1) {_lo_python_dependency_command()}\n"
+                f"2) {_tesseract_install_recommendation()}\n"
+                f"3) Confirm the path shown in Settings{' (Current: ' + configured_path + ')' if configured_path else ''}.\n\n"
+                "Then restart LibreOffice."
+            )
+
+        if show_gui_errors:
             uno_utils.show_message_box(
                 title,
                 error_message,
@@ -163,7 +226,8 @@ def is_tesseract_ready(ctx=None, show_gui_errors=True, parent_frame=None):
                 parent_frame=parent_frame,
                 ctx=ctx
             )
-        return False, "Pytesseract not available or tesseract not found"
+
+        return False, error_message
     
     try:
         # Test actual OCR capability with a minimal operation
@@ -197,14 +261,14 @@ def _get_temp_image_path(suffix=".png"):
     """Creates a temporary file path for image export."""
     return uno_utils.create_temp_file(suffix=suffix, prefix="tejocr_img_")
 
-def _export_graphic_to_file(xgraphic, file_path, mime_type="image/png"):
+def _export_graphic_to_file(xgraphic, file_path, mime_type="image/png", ctx=None):
     """Exports an XGraphic object to a file.
     Returns True on success, False on failure.
     """
     if not xgraphic:
         return False
     try:
-        provider = uno_utils.create_instance("com.sun.star.graphic.GraphicProvider")
+        provider = uno_utils.create_instance("com.sun.star.graphic.GraphicProvider", ctx)
         if not provider:
             logger.error("Could not create GraphicProvider service for image export.")
             return False
@@ -223,7 +287,7 @@ def _export_graphic_to_file(xgraphic, file_path, mime_type="image/png"):
         return True
     except Exception as e:
         logger.error(f"Error exporting graphic to {file_path}: {e}", exc_info=True)
-        uno_utils.show_message_box(_("Image Export Error"), _("Failed to export image for OCR: {e}").format(e=e), "errorbox") # i18n
+        uno_utils.show_message_box(_("Image Export Error"), _("Failed to export image for OCR: {e}").format(e=e), "errorbox", ctx=ctx) # i18n
         return False
 
 def _get_image_from_selection(frame, ctx):
@@ -266,17 +330,26 @@ def _get_image_from_selection(frame, ctx):
         return None # Placeholder for more complex export
 
     temp_image_file = _get_temp_image_path()
-    if _export_graphic_to_file(xgraphic, temp_image_file):
+    if _export_graphic_to_file(xgraphic, temp_image_file, ctx=ctx):
         return temp_image_file
     else:
         if os.path.exists(temp_image_file): os.remove(temp_image_file) # Clean up failed export
         return None
 
-def _preprocess_image(image_path, improve_quality=False, grayscale=False, binarize_method=None):
+def _preprocess_image(
+    image_path,
+    improve_quality=False,
+    grayscale=False,
+    binarize_method=None,
+    scale_factor=1.0,
+    invert=False,
+):
     """Applies preprocessing steps to the image using Pillow.
     improve_quality: Applies a general set of enhancements if True.
     grayscale: Specifically convert to grayscale (can be part of improve_quality).
     binarize_method: None or 'otsu' (placeholder for more advanced binarization).
+    invert: True to invert color values after other processing steps.
+    scale_factor: Optional scale multiplier to improve small-font text.
     Returns path to the processed image (might be same as input or a new temp file).
     """
     if not PILLOW_AVAILABLE:
@@ -285,9 +358,11 @@ def _preprocess_image(image_path, improve_quality=False, grayscale=False, binari
         return image_path # Cannot preprocess
 
     try:
-        logger.debug(f"Preprocessing image: '{image_path}'. Improve: {improve_quality}, Grayscale: {grayscale}, Binarize: {binarize_method}")
+        logger.debug(
+            f"Preprocessing image: '{image_path}'. Improve: {improve_quality}, "
+            f"Grayscale: {grayscale}, Binarize: {binarize_method}, Scale: {scale_factor}"
+        )
         img = Image.open(image_path)
-        original_format = img.format
         processed_img = img # Start with the original image
         image_was_modified = False
 
@@ -297,11 +372,11 @@ def _preprocess_image(image_path, improve_quality=False, grayscale=False, binari
             processed_img = processed_img.convert("RGB")
             image_was_modified = True # Conversion itself is a modification
         elif processed_img.mode == 'RGBA':
-             logger.debug(f"Converting image from RGBA to RGB (removing alpha channel) for preprocessing.")
-             background = Image.new("RGB", processed_img.size, (255, 255, 255)) # White background
-             background.paste(processed_img, mask=processed_img.split()[3]) # 3 is the alpha channel
-             processed_img = background
-             image_was_modified = True
+            logger.debug(f"Converting image from RGBA to RGB (removing alpha channel) for preprocessing.")
+            background = Image.new("RGB", processed_img.size, (255, 255, 255)) # White background
+            background.paste(processed_img, mask=processed_img.split()[3]) # 3 is the alpha channel
+            processed_img = background
+            image_was_modified = True
 
         if improve_quality:
             logger.debug("Applying general image quality improvements.")
@@ -312,12 +387,12 @@ def _preprocess_image(image_path, improve_quality=False, grayscale=False, binari
             # 3. Enhance contrast (simple auto-contrast)
             processed_img = ImageOps.autocontrast(processed_img, cutoff=1) # cutoff can be tuned
             image_was_modified = True
-        
+
         if grayscale and not improve_quality: # Apply grayscale only if improve_quality didn't already do it
             logger.debug("Applying explicit grayscale conversion.")
             processed_img = ImageOps.grayscale(processed_img)
             image_was_modified = True
-        
+
         if binarize_method == 'otsu': # Placeholder for Otsu, currently simple binarization
             logger.debug("Applying binarization (current: simple threshold).")
             # Ensure grayscale before binarizing if not already
@@ -325,9 +400,30 @@ def _preprocess_image(image_path, improve_quality=False, grayscale=False, binari
                 img_for_binarize = ImageOps.grayscale(processed_img)
             else:
                 img_for_binarize = processed_img
-            
+
             processed_img = img_for_binarize.convert('1') # Convert to bilevel (1-bit pixels) using a default threshold
             image_was_modified = True
+
+        if invert:
+            if processed_img.mode != 'L':
+                processed_img = ImageOps.grayscale(processed_img)
+                image_was_modified = True
+            processed_img = ImageOps.invert(processed_img)
+            image_was_modified = True
+
+        # Optional upscale to improve OCR on low-resolution captures.
+        try:
+            scale_float = float(scale_factor)
+        except (TypeError, ValueError):
+            scale_float = 1.0
+        if scale_float > 1.05:
+            new_width = int(processed_img.width * scale_float)
+            new_height = int(processed_img.height * scale_float)
+            if new_width > 0 and new_height > 0:
+                resample_method = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.ANTIALIAS
+                processed_img = processed_img.resize((new_width, new_height), resample_method)
+                image_was_modified = True
+                logger.debug(f"Scaled image to {new_width}x{new_height} (factor={scale_float})")
 
         if image_was_modified:
             # Save to a new temp file to avoid overwriting original if it was from user's disk
@@ -335,14 +431,14 @@ def _preprocess_image(image_path, improve_quality=False, grayscale=False, binari
             processed_path = _get_temp_image_path(suffix=".png") # Save as PNG for consistency
             processed_img.save(processed_path, "PNG")
             logger.info(f"Image processed and saved to new temporary file: {processed_path}")
-            
+
             # If the original image_path was a temp file (not the one we just created), remove it
             if image_path.startswith(tempfile.gettempdir()) and image_path != processed_path:
-                 try: 
-                     logger.debug(f"Removing original temporary image: {image_path}")
-                     os.remove(image_path)
-                 except OSError as e_remove:
-                     logger.warning(f"Could not remove original temporary image '{image_path}': {e_remove}")
+                try:
+                    logger.debug(f"Removing original temporary image: {image_path}")
+                    os.remove(image_path)
+                except OSError as e_remove:
+                    logger.warning(f"Could not remove original temporary image '{image_path}': {e_remove}")
             return processed_path
         else:
             logger.debug("No preprocessing steps were applied or required modification.")
@@ -352,9 +448,20 @@ def _preprocess_image(image_path, improve_quality=False, grayscale=False, binari
         logger.error(f"Error during image preprocessing for '{image_path}': {e}", exc_info=True)
         return image_path # Return original path if preprocessing fails
 
-def extract_text_from_selected_image(ctx, frame, lang="eng", improve_image=False):
+def extract_text_from_selected_image(
+    ctx,
+    frame,
+    lang="eng",
+    improve_image=False,
+    psm=None,
+    oem=None,
+    grayscale=False,
+    binarize=False,
+    scale=1.0,
+    invert=False,
+):
     """Extract text from currently selected image in LibreOffice."""
-    if not _initialize_pytesseract():
+    if not _initialize_pytesseract(ctx):
         logger.error("Cannot extract text: Pytesseract not available")
         # uno_utils.show_message_box(_("Pytesseract Error"), _("Pytesseract library is not available. Please check installation."), "errorbox", parent_frame=frame, ctx=ctx)
         return None
@@ -380,9 +487,24 @@ def extract_text_from_selected_image(ctx, frame, lang="eng", improve_image=False
         
         final_image_path_for_ocr = exported_temp_image_path # Default to exported path
 
-        if improve_image and PILLOW_AVAILABLE:
-            logger.info(f"Preprocessing selected image (originally: {exported_temp_image_path}) as improve_image is True.")
-            processed_image_path = _preprocess_image(exported_temp_image_path, improve_quality=True)
+        lang_code = _normalize_lang_codes(lang)
+        psm_mode = str(psm if psm is not None else constants.DEFAULT_PSM_MODE).strip() or constants.DEFAULT_PSM_MODE
+        oem_mode = str(oem if oem is not None else constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE
+        should_grayscale = _coerce_bool(grayscale, False)
+        should_binarize = _coerce_bool(binarize, False)
+        should_invert = _coerce_bool(invert, False)
+        should_scale = _coerce_float(scale, 1.0)
+
+        if (improve_image or should_grayscale or should_binarize) and PILLOW_AVAILABLE:
+            logger.info(f"Preprocessing selected image (originally: {exported_temp_image_path}) as improvement was requested.")
+            processed_image_path = _preprocess_image(
+                exported_temp_image_path,
+                improve_quality=bool(improve_image),
+                grayscale=should_grayscale,
+                binarize_method='otsu' if should_binarize else None,
+                scale_factor=should_scale,
+                invert=should_invert,
+            )
             if processed_image_path and processed_image_path != exported_temp_image_path:
                 logger.debug(f"Using preprocessed image: {processed_image_path}")
                 final_image_path_for_ocr = processed_image_path
@@ -397,8 +519,40 @@ def extract_text_from_selected_image(ctx, frame, lang="eng", improve_image=False
             logger.error(f"Final image path for OCR is invalid or does not exist: {final_image_path_for_ocr}")
             return None
 
-        logger.info(f"Performing OCR on selected image (using '{final_image_path_for_ocr}') with language: {lang}")
-        text = pytesseract.image_to_string(final_image_path_for_ocr, lang=lang)
+        language_chain = _build_language_fallback_chain(lang_code)
+        if not language_chain:
+            language_chain = [constants.DEFAULT_OCR_LANGUAGE]
+
+        logger.info(
+            f"Performing OCR on selected image (using '{final_image_path_for_ocr}') "
+            f"with language chain: {language_chain}"
+        )
+        custom_config = f"--oem {oem_mode} --psm {psm_mode}"
+        text = ""
+        last_error = None
+        for attempt_lang in language_chain:
+            try:
+                text = pytesseract.image_to_string(
+                    final_image_path_for_ocr,
+                    lang=attempt_lang,
+                    config=custom_config,
+                )
+                text = text.strip() if text is not None else ""
+                if text:
+                    logger.info(
+                        f"OCR completed. Extracted {len(text)} characters using lang='{attempt_lang}'."
+                    )
+                    break
+            except pytesseract.TesseractError as tess_err:
+                last_error = tess_err
+                logger.warning(
+                    f"Tesseract selected-image extraction failed for lang='{attempt_lang}': {tess_err}"
+                )
+                text = ""
+
+        if not text and last_error:
+            logger.warning(f"OCR selected-image extraction completed with no text. Last error: {last_error}")
+
         logger.info(f"OCR completed. Extracted {len(text)} characters.")
         return text.strip()
         
@@ -429,9 +583,20 @@ def extract_text_from_selected_image(ctx, frame, lang="eng", improve_image=False
             except Exception as e_remove:
                 logger.warning(f"Could not remove temporary preprocessed image {processed_image_path}: {e_remove}")
 
-def extract_text_from_image_file(ctx, image_path, lang="eng", improve_image=False):
+def extract_text_from_image_file(
+    ctx,
+    image_path,
+    lang="eng",
+    improve_image=False,
+    psm=None,
+    oem=None,
+    grayscale=False,
+    binarize=False,
+    scale=1.0,
+    invert=False,
+):
     """Extract text from an image file."""
-    if not _initialize_pytesseract():
+    if not _initialize_pytesseract(ctx):
         logger.error("Cannot extract text: Pytesseract not available")
         # uno_utils.show_message_box(_("Pytesseract Error"), _("Pytesseract library is not available. Please check installation."), "errorbox", ctx=ctx) # Assuming no frame here
         return None
@@ -445,10 +610,25 @@ def extract_text_from_image_file(ctx, image_path, lang="eng", improve_image=Fals
     final_image_path_for_ocr = image_path # Default to original user-provided path
 
     try:
-        if improve_image and PILLOW_AVAILABLE:
-            logger.info(f"Preprocessing image file ('{image_path}') as improve_image is True.")
+        lang_code = _normalize_lang_codes(lang)
+        psm_mode = str(psm if psm is not None else constants.DEFAULT_PSM_MODE).strip() or constants.DEFAULT_PSM_MODE
+        oem_mode = str(oem if oem is not None else constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE
+        should_grayscale = _coerce_bool(grayscale, False)
+        should_binarize = _coerce_bool(binarize, False)
+        should_invert = _coerce_bool(invert, False)
+        should_scale = _coerce_float(scale, 1.0)
+
+        if (improve_image or should_grayscale or should_binarize) and PILLOW_AVAILABLE:
+            logger.info(f"Preprocessing image file ('{image_path}') as improvement was requested.")
             # _preprocess_image will create a new temp file if it modifies the image
-            processed_image_path = _preprocess_image(image_path, improve_quality=True)
+            processed_image_path = _preprocess_image(
+                image_path,
+                improve_quality=bool(improve_image),
+                grayscale=should_grayscale,
+                binarize_method='otsu' if should_binarize else None,
+                scale_factor=should_scale,
+                invert=should_invert,
+            )
             if processed_image_path and processed_image_path != image_path:
                 logger.debug(f"Using preprocessed image: {processed_image_path}")
                 final_image_path_for_ocr = processed_image_path
@@ -463,9 +643,44 @@ def extract_text_from_image_file(ctx, image_path, lang="eng", improve_image=Fals
             logger.error(f"Final image path for OCR is invalid or does not exist: {final_image_path_for_ocr}")
             return None
 
-        logger.info(f"Performing OCR on image file (using '{final_image_path_for_ocr}') with language: {lang}")
-        text = pytesseract.image_to_string(final_image_path_for_ocr, lang=lang)
-        logger.info(f"OCR completed. Extracted {len(text)} characters from {os.path.basename(final_image_path_for_ocr)}")
+        language_chain = _build_language_fallback_chain(lang_code)
+        if not language_chain:
+            language_chain = [constants.DEFAULT_OCR_LANGUAGE]
+
+        logger.info(
+            f"Performing OCR on image file (using '{final_image_path_for_ocr}') "
+            f"with language chain: {language_chain}"
+        )
+        custom_config = f"--oem {oem_mode} --psm {psm_mode}"
+        text = ""
+        last_error = None
+        for attempt_lang in language_chain:
+            try:
+                text = pytesseract.image_to_string(
+                    final_image_path_for_ocr,
+                    lang=attempt_lang,
+                    config=custom_config
+                )
+                text = text.strip() if text is not None else ""
+                if text:
+                    logger.info(
+                        f"OCR completed. Extracted {len(text)} characters from "
+                        f"{os.path.basename(final_image_path_for_ocr)} using lang='{attempt_lang}'."
+                    )
+                    break
+            except pytesseract.TesseractError as tess_err:
+                last_error = tess_err
+                logger.warning(
+                    f"Tesseract file extraction failed for lang='{attempt_lang}': {tess_err}"
+                )
+                text = ""
+
+        if not text and last_error:
+            logger.warning(f"OCR file extraction completed with no text. Last error: {last_error}")
+
+        logger.info(
+            f"OCR completed. Extracted {len(text)} characters from {os.path.basename(final_image_path_for_ocr)}"
+        )
         return text.strip()
     except pytesseract.TesseractError as tess_err:
         logger.error(f"Tesseract error for {final_image_path_for_ocr}: {tess_err}", exc_info=True)
@@ -487,16 +702,26 @@ def extract_text_from_image_file(ctx, image_path, lang="eng", improve_image=Fals
 
 def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False, show_gui_errors=True):
     """Check if a given tesseract path is valid and working."""
-    if not tesseract_path:
-        return False, "No path provided"
+    candidate_path = (tesseract_path or "").strip()
+    if not candidate_path:
+        candidate_path = uno_utils.find_tesseract_executable()
+        if not candidate_path:
+            return False, "No tesseract executable found. Configure path or install Tesseract."
     
-    if not os.path.isfile(tesseract_path):
-        return False, f"File not found: {tesseract_path}"
+    if not os.path.isfile(candidate_path):
+        # If a plain command was passed, try one final PATH lookup.
+        candidate_lookup = shutil.which(candidate_path)
+        if candidate_lookup:
+            candidate_path = candidate_lookup
+        elif os.path.sep not in candidate_path and candidate_path in ("tesseract", "tesseract.exe"):
+            return False, "Tesseract not found in PATH"
+        elif not candidate_path:
+            return False, f"File not found: {tesseract_path}"
     
     try:
         # Test the tesseract executable
         import subprocess
-        result = subprocess.run([tesseract_path, '--version'], 
+        result = subprocess.run([candidate_path, '--version'], 
                               capture_output=True, text=True, timeout=10)
         
         if result.returncode == 0:
@@ -523,6 +748,125 @@ def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_succe
     except Exception as e:
         return False, f"Error testing tesseract: {str(e)}"
 
+
+def _split_lang_codes(lang_value):
+    """Split normalized language strings to an ordered list of tokens."""
+    if not lang_value:
+        return [constants.DEFAULT_OCR_LANGUAGE]
+
+    if isinstance(lang_value, str):
+        lang_value = lang_value.lower()
+    lang_value = str(lang_value).replace(",", "+")
+    split_codes = [code.strip() for code in lang_value.split("+") if code.strip()]
+    return split_codes or [constants.DEFAULT_OCR_LANGUAGE]
+
+
+def _build_language_fallback_chain(raw_language):
+    """Build practical language fallbacks for OCR robustness."""
+    requested = _split_lang_codes(raw_language)
+    requested = list(dict.fromkeys([code.lower() for code in requested if code]))
+
+    available_languages = []
+    try:
+        available_languages = get_available_languages()
+    except Exception:
+        available_languages = [constants.DEFAULT_OCR_LANGUAGE]
+
+    available_set = {str(code).lower() for code in available_languages if str(code).strip()}
+    if not available_set:
+        available_set = {constants.DEFAULT_OCR_LANGUAGE}
+
+    valid_codes = [code for code in requested if code in available_set]
+    if not valid_codes:
+        valid_codes = [constants.DEFAULT_OCR_LANGUAGE] if constants.DEFAULT_OCR_LANGUAGE in available_set else [requested[0]]
+
+    fallback_chain = []
+    for i in range(len(valid_codes), 0, -1):
+        candidate = "+".join(valid_codes[:i])
+        if candidate:
+            fallback_chain.append(candidate)
+
+    if (
+        constants.DEFAULT_OCR_LANGUAGE in available_set
+        and constants.DEFAULT_OCR_LANGUAGE != valid_codes[0]
+    ):
+        fallback_chain.append(constants.DEFAULT_OCR_LANGUAGE)
+
+    return _dedupe_sequence(fallback_chain)
+
+
+def _coerce_bool(value, default=False):
+    """Normalize boolean-like values coming from settings storage."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "y", "on", "enabled", "enable")
+    return default
+
+
+def _coerce_float(value, default=1.0):
+    """Normalize float-like values from storage."""
+    try:
+        parsed = float(value)
+        if parsed <= 0:
+            return default
+        return parsed
+    except Exception:
+        return default
+
+
+def _build_tesseract_config(oem_mode, psm_mode):
+    """Construct a compact pytesseract config string."""
+    return f"--oem {str(oem_mode).strip()} --psm {str(psm_mode).strip()}"
+
+
+def _dedupe_sequence(values):
+    """Return an ordered list with duplicate blank/empty values removed."""
+    seen = set()
+    output = []
+    for value in values:
+        candidate = str(value or "").strip()
+        if not candidate:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        output.append(candidate)
+    return output
+
+
+def _fallback_psm_values(primary_psm):
+    """Build practical fallback PSM modes when text extraction is weak."""
+    return _dedupe_sequence(
+        [
+            primary_psm,
+            constants.DEFAULT_PSM_MODE,
+            "11",
+            "6",
+        ]
+    )
+
+
+def _fallback_oem_values(primary_oem):
+    """Build practical fallback OEM modes when text extraction is weak."""
+    return _dedupe_sequence(
+        [
+            primary_oem,
+            constants.DEFAULT_OEM_MODE,
+        ]
+    )
+
+
+def _normalize_lang_codes(lang_value):
+    """Normalize user-supplied language string for pytesseract."""
+    normalized = _split_lang_codes(lang_value)
+    normalized = _dedupe_sequence(normalized)
+    return "+".join(normalized)
+
 def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_options, status_callback=None):
     """Main function to perform OCR.
     source_type: 'file' or 'selected'
@@ -535,11 +879,24 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
         logger.error("perform_ocr called but Pytesseract library not installed.")
         return {"success": False, "text": None, "message": _("Pytesseract library not installed.")} # i18n
 
-    if status_callback: status_callback(_("Initializing OCR...")) # i18n
+    if status_callback:
+        status_callback(_("Initializing OCR...")) # i18n
     logger.info(f"Performing OCR: source='{source_type}', options={ocr_options}")
 
+    ocr_options = ocr_options or {}
+    lang_code = _normalize_lang_codes(ocr_options.get("lang", constants.DEFAULT_OCR_LANGUAGE))
+    psm_mode = str(ocr_options.get("psm", constants.DEFAULT_PSM_MODE)).strip() or constants.DEFAULT_PSM_MODE
+    oem_mode = str(ocr_options.get("oem", constants.DEFAULT_OEM_MODE)).strip() or constants.DEFAULT_OEM_MODE
+    grayscale = _coerce_bool(ocr_options.get("grayscale"), False)
+    binarize = _coerce_bool(ocr_options.get("binarize"), False)
+    scale_factor = _coerce_float(ocr_options.get("scale"), 1.0)
+    improve_image = _coerce_bool(ocr_options.get("improve_image"), False)
+    invert = _coerce_bool(ocr_options.get("invert"), False)
+
     tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, ctx)
-    if not check_tesseract_path(tess_path_cfg, ctx, frame):
+    is_ready, path_message = check_tesseract_path(tess_path_cfg, ctx, frame)
+    if not is_ready:
+        logger.warning(f"Tesseract path check failed during perform_ocr: {path_message}")
         logger.warning("Tesseract path check failed during perform_ocr.")
         return {"success": False, "text": None, "message": _("Tesseract not found or not working. Please check settings.")} # i18n
     
@@ -575,10 +932,18 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
             return {"success": False, "text": None, "message": _("Invalid OCR source type.")} # i18n
 
         if status_callback: status_callback(_("Preprocessing image (if enabled)...")) # i18n
-        logger.info(f"Preprocessing image '{temp_image_to_ocr}' with options: grayscale={ocr_options.get('grayscale')}, binarize={ocr_options.get('binarize')}")
-        processed_image_path = _preprocess_image(temp_image_to_ocr, 
-                                               ocr_options.get('grayscale', False), 
-                                               'otsu' if ocr_options.get('binarize', False) else None)
+        logger.info(
+            f"Preprocessing image '{temp_image_to_ocr}' with options: "
+            f"improve_image={improve_image}, grayscale={grayscale}, binarize={binarize}, scale={scale_factor}"
+        )
+        processed_image_path = _preprocess_image(
+            temp_image_to_ocr,
+            improve_quality=improve_image,
+            grayscale=grayscale,
+            binarize_method='otsu' if binarize else None,
+            scale_factor=scale_factor,
+            invert=invert,
+        )
         
         # If preprocessing created a new file and the original was a temp file, clean up original.
         if original_image_path_for_cleanup and processed_image_path != original_image_path_for_cleanup and \
@@ -593,23 +958,165 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
         logger.info(f"Image for Tesseract: {final_image_for_ocr}")
 
         if status_callback: status_callback(_("Performing OCR (Lang: {lang_code})...").format(lang_code=ocr_options.get('lang'))) # i18n
-        
-        custom_config = f"--oem {ocr_options.get('oem', constants.DEFAULT_OEM_MODE)} --psm {ocr_options.get('psm', constants.DEFAULT_PSM_MODE)}"
-        logger.info(f"Tesseract config: lang='{ocr_options.get('lang')}', {custom_config}")
-        
-        # Check for low DPI (placeholder, actual DPI check from image file is more complex)
-        # For now, assume if preprocessing is done, Pillow might have handled it to some extent.
-        # A real DPI check would involve reading image metadata.
-        # if image_resolution_is_low(final_image_for_ocr):
-        #     if status_callback: status_callback(_("Warning: Image resolution may be too low for good results.")) # i18n
-        #     uno_utils.show_message_box(_("Low Resolution"), _("Image resolution appears low (<150 DPI). OCR quality might be poor."), "warningbox", parent_frame=frame, ctx=ctx) # i18n
 
-        text = pytesseract.image_to_string(Image.open(final_image_for_ocr), 
-                                           lang=ocr_options.get('lang', constants.DEFAULT_OCR_LANGUAGE),
-                                           config=custom_config)
-        
-        logger.info(f"Tesseract image_to_string successful. Output length: {len(text)}")
-        if status_callback: status_callback(_("OCR Complete.")) # i18n
+        language_chain = _build_language_fallback_chain(lang_code)
+        if not language_chain:
+            language_chain = [constants.DEFAULT_OCR_LANGUAGE]
+
+        def _build_ocr_attempts(current_oem_mode, current_psm_mode):
+            attempts = []
+            for attempt_oem in _fallback_oem_values(current_oem_mode):
+                for attempt_psm in _fallback_psm_values(current_psm_mode):
+                    attempts.append((attempt_oem, attempt_psm))
+            return attempts
+
+        ocr_attempts = _build_ocr_attempts(oem_mode, psm_mode)
+
+        logger.info(
+            "OCR engine will try %s configuration(s) for extraction. "
+            "Primary config: %s",
+            len(ocr_attempts),
+            _build_tesseract_config(oem_mode, psm_mode),
+        )
+
+        def _run_ocr_attempts(image_path, attempt_label, attempts, languages):
+            last_text = ""
+            last_error = None
+            last_language = None
+
+            if status_callback:
+                status_callback(
+                    _("OCR {attempt_label}: trying {count} configurations...").format(
+                        attempt_label=attempt_label,
+                        count=len(attempts),
+                        
+                    )
+                )
+
+            for attempt_lang in languages:
+                for attempt_index, (attempt_oem, attempt_psm) in enumerate(attempts, start=1):
+                    attempt_config = _build_tesseract_config(attempt_oem, attempt_psm)
+                    if status_callback:
+                        status_callback(
+                            _("OCR attempt {index}/{count}: {config}").format(
+                                index=attempt_index,
+                                count=len(attempts),
+                                config=attempt_config,
+                            )
+                        ) # i18n
+                    logger.info(
+                        "OCR attempt %s/%s using %s with lang=%s",
+                        attempt_index,
+                        len(attempts),
+                        attempt_config,
+                        attempt_lang,
+                    )
+                    try:
+                        last_text = pytesseract.image_to_string(
+                            image_path,
+                            lang=attempt_lang,
+                            config=attempt_config,
+                        )
+                        last_text = last_text.strip() if last_text is not None else ""
+                        logger.info(
+                            "Tesseract attempt %s output length: %s (lang=%s)",
+                            attempt_index,
+                            len(last_text),
+                            attempt_lang,
+                        )
+                        if last_text:
+                            logger.info(
+                                "Tesseract attempt %s produced non-empty output; stopping attempts.",
+                                attempt_index,
+                            )
+                            last_language = attempt_lang
+                            break
+                    except pytesseract.TesseractError as attempt_error:
+                        last_error = attempt_error
+                        logger.warning(
+                            "Tesseract attempt %s failed (lang=%s, OEM=%s, PSM=%s): %s",
+                            attempt_index,
+                            attempt_lang,
+                            attempt_oem,
+                            attempt_psm,
+                            attempt_error,
+                        )
+                        last_text = ""
+
+                if last_text:
+                    break
+
+            return last_text, last_error, last_language
+
+        text, last_error, used_language = _run_ocr_attempts(
+            final_image_for_ocr,
+            _("Pass"),
+            ocr_attempts,
+            language_chain,
+        )
+        if used_language:
+            logger.info("OCR language selected for final text: %s", used_language)
+
+        # Automatic quality recovery: try a stronger preprocessing pass when first pass
+        # returns empty text. This often improves results on noisy or low-res scans.
+        if not text and (
+            not improve_image
+            or not grayscale
+            or not binarize
+            or scale_factor < 1.5
+        ):
+            try:
+                if status_callback:
+                    status_callback(
+                        _("No text found. Trying enhanced preprocessing fallback...")
+                    ) # i18n
+                enhanced_scale = max(scale_factor, 1.5)
+                enhanced_image = _preprocess_image(
+                    final_image_for_ocr,
+                    improve_quality=True,
+                    grayscale=True,
+                    binarize_method="otsu",
+                    scale_factor=enhanced_scale,
+                    invert=invert,
+                )
+                if enhanced_image and enhanced_image != final_image_for_ocr:
+                    if final_image_for_ocr and final_image_for_ocr.startswith(tempfile.gettempdir()):
+                        try:
+                            os.remove(final_image_for_ocr)
+                            logger.debug(f"Removed primary temp image before enhanced pass: {final_image_for_ocr}")
+                        except OSError as _err:
+                            logger.debug(f"Could not remove primary temp image '{final_image_for_ocr}': {_err}")
+                    final_image_for_ocr = enhanced_image
+                    ocr_attempts = _build_ocr_attempts(oem_mode, psm_mode)
+                    text, retry_error, retry_lang = _run_ocr_attempts(
+                        final_image_for_ocr,
+                        _("Enhanced pass"),
+                        ocr_attempts,
+                        language_chain,
+                    )
+                    if retry_error:
+                        last_error = retry_error
+            except Exception as enhance_error:
+                logger.warning("Enhanced OCR pass failed: %s", enhance_error, exc_info=True)
+
+        if status_callback:
+            status_callback(_("OCR Complete.")) # i18n
+
+        if not text:
+            if last_error is not None:
+                msg = _("OCR completed with warnings: {details}").format(
+                    details=str(last_error)[:200] + "..."
+                )
+            else:
+                msg = _(
+                    "OCR completed, but no text was recognized. "
+                    "Try clearer source images, higher resolution, and 'Accuracy' preset."
+                )
+            return {"success": True, "text": "", "message": msg} # i18n
+
+        logger.info(
+            f"Tesseract image_to_string successful. Output length: {len(text)}"
+        )
         return {"success": True, "text": text, "message": _("OCR successful.")} # i18n
 
     except pytesseract.TesseractNotFoundError:

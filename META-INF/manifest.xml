@@ -41,6 +41,8 @@
                          manifest:full-path="dialogs/tejocr_settings_dialog_full.xdl"/>
     <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
                          manifest:full-path="dialogs/tejocr_options_dialog_full.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
+                         manifest:full-path="dialogs/tejocr_setup_dialog.xdl"/>
 
     <!-- Icons -->
     <manifest:file-entry manifest:media-type="image/png"
@@ -49,6 +51,14 @@
                            manifest:full-path="icons/tejocr_26.png"/>
     <manifest:file-entry manifest:media-type="image/png"
                            manifest:full-path="icons/tejocr_26_hc.png"/>
+    <manifest:file-entry manifest:media-type="image/png"
+                           manifest:full-path="icons/tejocr_48.png"/>
+    <manifest:file-entry manifest:media-type="image/png"
+                           manifest:full-path="icons/tejocr_48_hc.png"/>
+    <manifest:file-entry manifest:media-type="image/png"
+                           manifest:full-path="icons/tejocr_64.png"/>
+    <manifest:file-entry manifest:media-type="image/png"
+                           manifest:full-path="icons/tejocr_64_hc.png"/>
 
     <!-- Other Resource Files -->
     <manifest:file-entry manifest:media-type="text/plain"
@@ -58,7 +68,17 @@
     <manifest:file-entry manifest:media-type="text/plain"
                          manifest:full-path="CHANGELOG.md"/>
     <manifest:file-entry manifest:media-type="text/plain"
-                         manifest:full-path="TASKS.md"/>
+                         manifest:full-path="description_en.txt"/>
+    <manifest:file-entry manifest:media-type="text/plain"
+                         manifest:full-path="description_hi.txt"/>
+    <manifest:file-entry manifest:media-type="text/plain"
+                         manifest:full-path="CODEMAP.md"/>
+    <manifest:file-entry manifest:media-type="text/plain"
+                         manifest:full-path="DEVELOPER_GUIDE.md"/>
+    <manifest:file-entry manifest:media-type="text/plain"
+                         manifest:full-path="FUNCTIONALITY.md"/>
+    <manifest:file-entry manifest:media-type="text/plain"
+                         manifest:full-path="TECHNICAL.md"/>
 
     <manifest:file-entry manifest:media-type="application/octet-stream"
                            manifest:full-path="l10n/en/LC_MESSAGES/tejocr.mo"/>

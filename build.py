@@ -60,6 +60,8 @@ def verify_required_files(temp_dir):
         "description.xml",
         "Addons.xcu",
         os.path.join("META-INF", "manifest.xml"),
+        "description_en.txt",
+        "description_hi.txt",
         # Add other essential files
     ]
     
@@ -77,7 +79,15 @@ def verify_required_files(temp_dir):
 def verify_icons(temp_dir):
     """Check if icon files referenced in XML exist"""
     icon_dir = os.path.join(temp_dir, "icons")
-    needed_icons = ["tejocr_16.png", "tejocr_26.png", "tejocr_26_hc.png"]
+    needed_icons = [
+        "tejocr_16.png",
+        "tejocr_26.png",
+        "tejocr_26_hc.png",
+        "tejocr_48.png",
+        "tejocr_48_hc.png",
+        "tejocr_64.png",
+        "tejocr_64_hc.png",
+    ]
     
     missing = []
     for icon in needed_icons:
@@ -117,24 +127,29 @@ def create_extension(build_dir=None, output_name=None):
         print(f"Building TejOCR v{VERSION} extension in {temp_dir}")
         
         # Define exactly which top-level items belong in the extension package
-        INCLUDE_ITEMS = {
-            'META-INF',
-            'python',
-            'dialogs',
-            'icons',
-            'l10n',
-            'description.xml',
-            'Addons.xcu',
-            'ProtocolHandler.xcu',
-            'LICENSE',
-            'README.md',
-            'CHANGELOG.md',
-            'TASKS.md',
+        include_items = {
+            "META-INF",
+            "python",
+            "dialogs",
+            "icons",
+            "l10n",
+            "description.xml",
+            "Addons.xcu",
+            "ProtocolHandler.xcu",
+            "LICENSE",
+            "README.md",
+            "CHANGELOG.md",
+            "description_en.txt",
+            "description_hi.txt",
+            "CODEMAP.md",
+            "DEVELOPER_GUIDE.md",
+            "FUNCTIONALITY.md",
+            "TECHNICAL.md",
         }
 
         # Copy only the necessary project files to the temporary directory
         for item in os.listdir(project_dir):
-            if item not in INCLUDE_ITEMS:
+            if item not in include_items:
                 continue
             
             src = os.path.join(project_dir, item)

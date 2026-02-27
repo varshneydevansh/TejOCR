@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.1.6"
+EXTENSION_VERSION = "0.1.7"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 
@@ -17,17 +17,29 @@ EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 CFG_NODE_SETTINGS = "Settings"
 CFG_KEY_TESSERACT_PATH = "TesseractPath"
 CFG_KEY_DEFAULT_LANG = "DefaultOcrLanguage"
+CFG_KEY_DEFAULT_OUTPUT_MODE = "default_output_mode"
 CFG_KEY_DEFAULT_GRAYSCALE = "DefaultPreprocessingGrayscale"
 CFG_KEY_DEFAULT_BINARIZE = "DefaultPreprocessingBinarize"
+CFG_KEY_DEFAULT_INVERT = "DefaultPreprocessingInvert"
+CFG_KEY_DEFAULT_PSM = "DefaultPSM"
+CFG_KEY_DEFAULT_OEM = "DefaultOEM"
+CFG_KEY_DEFAULT_PRESET = "DefaultQualityPreset"
 CFG_KEY_IMPROVE_IMAGE_DEFAULT = "DefaultImproveImageQuality" # For image enhancement options
 CFG_KEY_LAST_SELECTED_LANG = "LastSelectedOcrLanguage" # For OCR Options Dialog
 CFG_KEY_LAST_OUTPUT_MODE = "LastOutputMode" # For OCR Options Dialog
+CFG_KEY_DEFAULT_SCALE = "DefaultScaleFactor"
+CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT = "ShowPreviewBeforeOutput" # For preview/edit before inserting OCR text
 
 # --- Default Values ---
 DEFAULT_OCR_LANGUAGE = "eng"  # Default to English
 DEFAULT_PREPROC_GRAYSCALE = False
 DEFAULT_PREPROC_BINARIZE = False
+DEFAULT_PREPROC_INVERT = False
 DEFAULT_IMPROVE_IMAGE = False # Default to no image enhancement
+DEFAULT_PSM_MODE_UI = "3"
+DEFAULT_OEM_MODE_UI = "3"
+DEFAULT_SCALE_FACTOR = "1.0" # Default image upscale factor as string for UI persistence
+DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT = "true" # Show OCR preview/edit dialog before final output
 DEFAULT_TESSERACT_PATH = "" # Empty, to trigger auto-detection or user input
 
 # --- Tesseract PSM (Page Segmentation Modes) --- 
@@ -49,6 +61,51 @@ TESSERACT_PSM_MODES = {
     "13": "13: Raw line. Treat the image as a single text line, bypassing hacks that are Tesseract-specific."
 }
 DEFAULT_PSM_MODE = "3"
+
+# --- Quality presets ---
+OCR_PRESET_FAST = "fast"
+OCR_PRESET_BALANCED = "balanced"
+OCR_PRESET_ACCURATE = "accurate"
+OCR_PRESET_CUSTOM = "custom"
+DEFAULT_OCR_PRESET = OCR_PRESET_BALANCED
+
+OCR_QUALITY_PRESETS = {
+    OCR_PRESET_FAST: {
+        "label": "Fast",
+        "description": "Faster extraction with minimal preprocessing",
+        "psm": "11",
+        "oem": "3",
+        "scale": "1.0",
+        "grayscale": False,
+        "binarize": False,
+        "invert": False,
+        "improve_image": False,
+    },
+    OCR_PRESET_BALANCED: {
+        "label": "Balanced",
+        "description": "Recommended default mix of speed and quality",
+        "psm": "3",
+        "oem": "3",
+        "scale": "1.0",
+        "grayscale": True,
+        "binarize": False,
+        "invert": False,
+        "improve_image": False,
+    },
+    OCR_PRESET_ACCURATE: {
+        "label": "Accuracy",
+        "description": "Higher quality using stronger preprocessing",
+        "psm": "6",
+        "oem": "3",
+        "scale": "1.5",
+        "grayscale": True,
+        "binarize": True,
+        "invert": False,
+        "improve_image": True,
+    },
+}
+
+OCR_PRESET_CHOICES = (OCR_PRESET_FAST, OCR_PRESET_BALANCED, OCR_PRESET_ACCURATE, OCR_PRESET_CUSTOM)
 
 # --- Tesseract OEM (OCR Engine Modes) --- 
 # (Value: Description for UI)

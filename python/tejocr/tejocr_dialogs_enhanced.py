@@ -378,9 +378,18 @@ class SettingsDialogHandler(unohelper.Base, XActionListener, XItemListener):
         """Fallback to the original message box implementation."""
         logger.info("Using fallback message box settings dialog")
         
-        # Import the original dialogs module
-        from tejocr import tejocr_dialogs
-        return tejocr_dialogs.show_settings_dialog(self.ctx, self.parent_frame)
+        try:
+            from tejocr import tejocr_interactive_dialogs
+            settings_dialog = tejocr_interactive_dialogs.InteractiveSettingsDialogHandler(
+                self.ctx,
+                self.parent_frame
+            )
+            return settings_dialog.show_dialog()
+        except Exception as e:
+            logger.warning(
+                f"Enhanced settings fallback failed to reach interactive settings: {e}"
+            )
+            return False
 
 class OCROptionsDialogHandler(unohelper.Base, XActionListener, XItemListener):
     """Handler for the OCR options dialog."""
@@ -413,93 +422,77 @@ class OCROptionsDialogHandler(unohelper.Base, XActionListener, XItemListener):
         """Fallback to the current working message box implementation."""
         logger.debug("Using fallback message box OCR options")
         
-        # Get language choice
-        default_lang = uno_utils.get_setting(
-            constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx
+        # Keep behavior aligned with primary service flow by using the
+        # interactive options dialog directly.
+        from tejocr import tejocr_interactive_dialogs
+        handler = tejocr_interactive_dialogs.InteractiveOptionsDialogHandler(
+            self.ctx,
+            self.parent_frame,
+            self.source_type,
+            self.image_path,
         )
-        
-        # Ensure English is preferred if available
-        if default_lang != "eng":
-            try:
-                from tejocr import tejocr_engine
-                available_langs = tejocr_engine.get_available_languages()
-                if "eng" in available_langs:
-                    default_lang = "eng"
-            except Exception:
-                default_lang = "eng"
-        
-        language = uno_utils.show_input_box(
-            title=_("OCR Language"),
-            message=_("Enter OCR language for this operation (default: {default}):").format(default=default_lang),
-            default_text=default_lang,
-            ctx=self.ctx,
-            parent_frame=self.parent_frame
-        )
-        
-        if language is None:
-            return None, None  # User cancelled
-            
-        if not language.strip():
-            language = default_lang
-        
-        # Get output mode choice
-        output_mode = self._get_output_mode_choice()
-        if output_mode is None:
-            return None, None  # User cancelled
-        
-        return language, output_mode
+        return handler.show_dialog()
     
     def _get_output_mode_choice(self):
         """Get user's choice for output mode using chained query boxes."""
         try:
-            # First choice: Primary options
-            message1 = _(
-                "Choose output method:\n\n"
-                "YES = Insert at Cursor\n"
-                "NO = Copy to Clipboard\n" 
-                "CANCEL = More Options..."
+            message = _(
+                "Choose where OCR text should go.\n"
+                "Examples: cursor, clipboard, textbox, replace"
             )
-            
-            result1 = uno_utils.show_message_box(
+            default_mode = constants.OUTPUT_MODE_CURSOR
+            source_hint = _(
+                "Replace is available only when an image is selected in the document."
+            )
+            if self.source_type != "selected":
+                default_mode = constants.OUTPUT_MODE_TEXTBOX
+                source_hint = _(
+                    "Output is set to file flow; replace is disabled and will map to text box or cursor."
+                )
+
+            selected = uno_utils.show_input_box(
                 title=_("OCR Output Mode"),
-                message=message1,
-                type="querybox",
-                buttons="yes_no_cancel",
+                message=f"{message}\n\n{source_hint}",
+                default_text=default_mode,
+                ctx=self.ctx,
                 parent_frame=self.parent_frame,
-                ctx=self.ctx
             )
-            
-            if result1 == 2:  # YES button
+
+            if selected is None:
+                return None
+
+            selected_mode = str(selected).strip().lower()
+            if not selected_mode:
+                return default_mode
+
+            normalized = selected_mode
+
+            output_mode_map = {
+                "at_cursor": constants.OUTPUT_MODE_CURSOR,
+                "cursor": constants.OUTPUT_MODE_CURSOR,
+                "insert": constants.OUTPUT_MODE_CURSOR,
+                "insert at cursor": constants.OUTPUT_MODE_CURSOR,
+                "clipboard": constants.OUTPUT_MODE_CLIPBOARD,
+                "copy": constants.OUTPUT_MODE_CLIPBOARD,
+                "copy to clipboard": constants.OUTPUT_MODE_CLIPBOARD,
+                "to_clipboard": constants.OUTPUT_MODE_CLIPBOARD,
+                "text box": constants.OUTPUT_MODE_TEXTBOX,
+                "textbox": constants.OUTPUT_MODE_TEXTBOX,
+                "new text box": constants.OUTPUT_MODE_TEXTBOX,
+                "new_textbox": constants.OUTPUT_MODE_TEXTBOX,
+                "new_text_box": constants.OUTPUT_MODE_TEXTBOX,
+                "replace": constants.OUTPUT_MODE_REPLACE,
+                "replace image": constants.OUTPUT_MODE_REPLACE,
+            }
+
+            result = output_mode_map.get(normalized, default_mode)
+
+            if result == constants.OUTPUT_MODE_REPLACE and self.source_type != "selected":
+                # Replace mode is only valid for selected image flows.
                 return constants.OUTPUT_MODE_CURSOR
-            elif result1 == 3:  # NO button
-                return constants.OUTPUT_MODE_CLIPBOARD
-            elif result1 == 0:  # CANCEL - More Options
-                # Second choice: Additional options
-                message2 = _(
-                    "More output options:\n\n"
-                    "YES = New Text Box\n"
-                    "NO = Insert at Cursor (default)\n"
-                    "CANCEL = Cancel operation"
-                )
-                
-                result2 = uno_utils.show_message_box(
-                    title=_("More Output Options"),
-                    message=message2,
-                    type="querybox",
-                    buttons="yes_no_cancel",
-                    parent_frame=self.parent_frame,
-                    ctx=self.ctx
-                )
-                
-                if result2 == 2:  # YES button
-                    return constants.OUTPUT_MODE_TEXTBOX
-                elif result2 == 3:  # NO button
-                    return constants.OUTPUT_MODE_CURSOR
-                else:  # CANCEL
-                    return None
-            else:
-                return constants.OUTPUT_MODE_CURSOR  # Default
-                
+
+            return result
+
         except Exception as e:
             logger.error(f"Error getting output mode choice: {e}")
             return constants.OUTPUT_MODE_CURSOR  # Default fallback

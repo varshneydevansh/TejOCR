@@ -1,0 +1,3 @@
+TejOCR is a LibreOffice Writer extension that performs OCR on images and inserts
+the recognized text in your preferred output mode (cursor, clipboard, new text box,
+or selected-image replacement). It supports both selected Writer images and image files.

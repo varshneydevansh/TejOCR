@@ -1,40 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
-  <dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSettingsDialog" dlg:left="120" dlg:top="72" dlg:width="640" dlg:height="470" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR Settings">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSettingsDialog" dlg:left="100" dlg:top="40" dlg:width="380" dlg:height="400" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR Settings">
   <dlg:bulletinboard>
-    <dlg:text dlg:id="HeaderLabel" dlg:tab-index="0" dlg:left="10" dlg:top="10" dlg:width="620" dlg:height="14" dlg:value="TejOCR Settings"/>
-    <dlg:text dlg:id="TesseractStatusLabel" dlg:tab-index="1" dlg:left="10" dlg:top="30" dlg:width="200" dlg:height="12" dlg:value="Tesseract: Checking..."/>
-    <dlg:text dlg:id="PythonPackagesStatusLabel" dlg:tab-index="2" dlg:left="220" dlg:top="30" dlg:width="220" dlg:height="12" dlg:value="Python packages: Checking..."/>
 
-    <dlg:button dlg:id="CheckDependenciesButton" dlg:tab-index="3" dlg:left="450" dlg:top="26" dlg:width="90" dlg:height="18" dlg:value="Check Dependencies"/>
-    <dlg:button dlg:id="InstallGuideButton" dlg:tab-index="4" dlg:left="543" dlg:top="26" dlg:width="86" dlg:height="18" dlg:value="Installation"/>
-    <dlg:button dlg:id="HelpMeInstallButton" dlg:tab-index="5" dlg:left="520" dlg:top="46" dlg:width="100" dlg:height="16" dlg:value="Help me install"/>
-    <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="6" dlg:left="10" dlg:top="46" dlg:width="60" dlg:height="14" dlg:value="Help"/>
+    <!-- === Dependency Status === -->
+    <dlg:fixedline dlg:id="SectionDependency" dlg:tab-index="0" dlg:left="10" dlg:top="6" dlg:width="360" dlg:height="10" dlg:value="Dependency Status"/>
+    <dlg:text dlg:id="TesseractStatusLabel" dlg:tab-index="1" dlg:left="20" dlg:top="20" dlg:width="160" dlg:height="10" dlg:value="Tesseract: Checking..."/>
+    <dlg:text dlg:id="PythonPackagesStatusLabel" dlg:tab-index="2" dlg:left="190" dlg:top="20" dlg:width="170" dlg:height="10" dlg:value="Python: Checking..."/>
+    <dlg:button dlg:id="SetupButton" dlg:tab-index="3" dlg:left="20" dlg:top="34" dlg:width="130" dlg:height="16" dlg:value="Setup &amp; Diagnostics..."/>
+    <dlg:button dlg:id="WikiButton" dlg:tab-index="4" dlg:left="160" dlg:top="34" dlg:width="110" dlg:height="16" dlg:value="Open TejOCR Wiki"/>
 
-    <dlg:text dlg:id="TesseractPathLabel" dlg:tab-index="7" dlg:left="10" dlg:top="74" dlg:width="120" dlg:height="12" dlg:value="Tesseract Path:"/>
-    <dlg:textfield dlg:id="TesseractPathTextField" dlg:tab-index="8" dlg:left="126" dlg:top="72" dlg:width="420" dlg:height="14"/>
-    <dlg:button dlg:id="BrowseButton" dlg:tab-index="9" dlg:left="550" dlg:top="70" dlg:width="50" dlg:height="18" dlg:value="Browse..."/>
-    <dlg:button dlg:id="TestTesseractButton" dlg:tab-index="10" dlg:left="604" dlg:top="70" dlg:width="36" dlg:height="18" dlg:value="Test"/>
-    <dlg:text dlg:id="TesseractTestStatusLabel" dlg:tab-index="11" dlg:left="126" dlg:top="89" dlg:width="514" dlg:height="12" dlg:value="Run Test to verify current path"/>
-    <dlg:text dlg:id="TesseractHelpLabel" dlg:tab-index="12" dlg:left="10" dlg:top="106" dlg:width="630" dlg:height="10" dlg:value="Leave blank to auto-detect tesseract from PATH."/>
+    <!-- === Tesseract Configuration === -->
+    <dlg:fixedline dlg:id="SectionPath" dlg:tab-index="5" dlg:left="10" dlg:top="58" dlg:width="360" dlg:height="10" dlg:value="Tesseract Configuration"/>
+    <dlg:text dlg:id="TesseractPathLabel" dlg:tab-index="6" dlg:left="20" dlg:top="72" dlg:width="320" dlg:height="10" dlg:value="Executable path (blank = auto-detect):"/>
+    <dlg:textfield dlg:id="TesseractPathTextField" dlg:tab-index="7" dlg:left="20" dlg:top="84" dlg:width="270" dlg:height="14"/>
+    <dlg:button dlg:id="BrowseButton" dlg:tab-index="8" dlg:left="295" dlg:top="83" dlg:width="35" dlg:height="16" dlg:value="..."/>
+    <dlg:button dlg:id="TestTesseractButton" dlg:tab-index="9" dlg:left="335" dlg:top="83" dlg:width="35" dlg:height="16" dlg:value="Test"/>
+    <dlg:text dlg:id="TesseractTestStatusLabel" dlg:tab-index="10" dlg:left="20" dlg:top="102" dlg:width="340" dlg:height="10" dlg:value=""/>
 
-    <dlg:text dlg:id="DefaultLanguageLabel" dlg:tab-index="13" dlg:left="10" dlg:top="132" dlg:width="120" dlg:height="12" dlg:value="Default Language:"/>
-    <dlg:combobox dlg:id="DefaultLanguageDropdown" dlg:tab-index="14" dlg:left="126" dlg:top="130" dlg:width="236" dlg:height="12"/>
-    <dlg:button dlg:id="RefreshLanguagesButtonSettings" dlg:tab-index="15" dlg:left="368" dlg:top="130" dlg:width="58" dlg:height="12" dlg:value="Refresh"/>
+    <!-- === OCR Languages === -->
+    <dlg:fixedline dlg:id="SectionLanguage" dlg:tab-index="11" dlg:left="10" dlg:top="118" dlg:width="360" dlg:height="10" dlg:value="OCR Languages (Cmd/Ctrl + click for multi-select)"/>
+    <dlg:text dlg:id="SearchLabel" dlg:tab-index="12" dlg:left="20" dlg:top="134" dlg:width="40" dlg:height="10" dlg:value="Search:"/>
+    <dlg:textfield dlg:id="LanguageSearchField" dlg:tab-index="13" dlg:left="60" dlg:top="132" dlg:width="165" dlg:height="14"/>
+    <dlg:button dlg:id="SearchLanguagesButton" dlg:tab-index="14" dlg:left="228" dlg:top="131" dlg:width="55" dlg:height="16" dlg:value="Search"/>
+    <dlg:button dlg:id="RefreshLanguagesButtonSettings" dlg:tab-index="15" dlg:left="290" dlg:top="131" dlg:width="80" dlg:height="16" dlg:value="Refresh List"/>
+    <dlg:menulist dlg:id="LanguagesListbox" dlg:tab-index="16" dlg:left="20" dlg:top="150" dlg:width="350" dlg:height="70" dlg:multiselection="true"/>
+    <dlg:text dlg:id="SelectedLangsLabel" dlg:tab-index="17" dlg:left="20" dlg:top="224" dlg:width="350" dlg:height="10" dlg:value="Selected: (none)"/>
 
-    <dlg:text dlg:id="DefaultLanguageTextLabel" dlg:tab-index="16" dlg:left="430" dlg:top="132" dlg:width="110" dlg:height="12" dlg:value="Manual codes:"/>
-    <dlg:textfield dlg:id="DefaultLanguageTextField" dlg:tab-index="17" dlg:left="540" dlg:top="130" dlg:width="90" dlg:height="14" dlg:value="eng"/>
-    <dlg:text dlg:id="LanguageCodesHelpLabel" dlg:tab-index="18" dlg:left="10" dlg:top="148" dlg:width="380" dlg:height="10" dlg:value="Use plus/comma for multiple languages, e.g. eng+spa"/>
+    <!-- === Output & Preprocessing === -->
+    <dlg:fixedline dlg:id="SectionOutput" dlg:tab-index="18" dlg:left="10" dlg:top="240" dlg:width="360" dlg:height="10" dlg:value="Output &amp; Preprocessing"/>
+    <dlg:text dlg:id="OutputModeLabel" dlg:tab-index="19" dlg:left="20" dlg:top="256" dlg:width="50" dlg:height="10" dlg:value="Output:"/>
+    <dlg:radiogroup>
+      <dlg:radio dlg:id="OutputRadioCursor" dlg:tab-index="20" dlg:left="70" dlg:top="255" dlg:width="120" dlg:height="12" dlg:value="Insert at cursor" dlg:checked="true"/>
+      <dlg:radio dlg:id="OutputRadioTextBox" dlg:tab-index="21" dlg:left="200" dlg:top="255" dlg:width="150" dlg:height="12" dlg:value="Create a new text box"/>
+      <dlg:radio dlg:id="OutputRadioReplace" dlg:tab-index="22" dlg:left="70" dlg:top="269" dlg:width="120" dlg:height="12" dlg:value="Replace image"/>
+      <dlg:radio dlg:id="OutputRadioClipboard" dlg:tab-index="23" dlg:left="200" dlg:top="269" dlg:width="150" dlg:height="12" dlg:value="Copy to clipboard"/>
+    </dlg:radiogroup>
+    <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:tab-index="24" dlg:left="20" dlg:top="290" dlg:width="140" dlg:height="12" dlg:value="Grayscale filter"/>
+    <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:tab-index="25" dlg:left="200" dlg:top="290" dlg:width="150" dlg:height="12" dlg:value="Binarize (black/white)"/>
 
-    <dlg:text dlg:id="DefaultOutputModeLabel" dlg:tab-index="19" dlg:left="10" dlg:top="166" dlg:width="120" dlg:height="12" dlg:value="Default Output Mode:"/>
-    <dlg:combobox dlg:id="DefaultOutputModeDropdown" dlg:tab-index="20" dlg:left="126" dlg:top="164" dlg:width="236" dlg:height="12"/>
+    <!-- === Footer === -->
+    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="26" dlg:left="10" dlg:top="310" dlg:width="360" dlg:height="10"/>
+    <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="27" dlg:left="10" dlg:top="326" dlg:width="360" dlg:height="10" dlg:value="Ready"/>
+    <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="28" dlg:left="10" dlg:top="342" dlg:width="55" dlg:height="22" dlg:value="Help..."/>
+    <dlg:button dlg:id="CancelButton" dlg:tab-index="29" dlg:left="245" dlg:top="342" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
+    <dlg:button dlg:id="SaveButton" dlg:tab-index="30" dlg:left="310" dlg:top="342" dlg:width="60" dlg:height="22" dlg:default="true" dlg:value="Save"/>
 
-    <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:tab-index="21" dlg:left="10" dlg:top="184" dlg:width="140" dlg:height="12" dlg:value="Grayscale preprocessing"/>
-    <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:tab-index="22" dlg:left="160" dlg:top="184" dlg:width="140" dlg:height="12" dlg:value="Binarize"/>
-
-    <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="23" dlg:left="10" dlg:top="206" dlg:width="620" dlg:height="12" dlg:value="Settings loaded. Click Save to persist."/>
-
-    <dlg:button dlg:id="CancelButton" dlg:tab-index="24" dlg:left="540" dlg:top="430" dlg:width="40" dlg:height="28" dlg:button-type="cancel" dlg:value="Cancel"/>
-    <dlg:button dlg:id="SaveButton" dlg:tab-index="25" dlg:left="590" dlg:top="430" dlg:width="40" dlg:height="28" dlg:button-type="ok" dlg:default="true" dlg:value="Save"/>
   </dlg:bulletinboard>
 </dlg:window>

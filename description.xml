@@ -3,12 +3,12 @@
              xmlns:d="http://openoffice.org/extensions/description/2006"
              xmlns:xlink="http://www.w3.org/1999/xlink">
 
-    <version value="0.1.5" />
+    <version value="0.1.7" />
     <identifier value="org.libreoffice.TejOCR" />
 
     <display-name>
-        <name lang="en">TejOCR v0.1.5</name>
-        <name lang="hi-IN">तेजओसीआर v0.1.5</name>
+        <name lang="en">TejOCR</name>
+        <name lang="hi-IN">तेज ओसीआर</name>
         <name lang="es-ES">TejOCR</name>
         <name lang="fr-FR">TejOCR</name>
         <name lang="de-DE">TejOCR</name>
@@ -37,19 +37,11 @@
 
     <icon>
         <default xlink:href="icons/tejocr_48.png" />
-        <high-contrast xlink:href="icons/tejocr_48.png" />
+        <high-contrast xlink:href="icons/tejocr_48_hc.png" />
     </icon>
-
-    <!-- Optional: Update information -->
-    <!--
-    <update-information>
-        <src xlink:href="https://your-update-server.com/update.rdf" />
-    </update-information>
-    -->
 
     <extension-description>
         <src lang="en" xlink:href="description_en.txt" />
         <src lang="hi-IN" xlink:href="description_hi.txt" />
     </extension-description>
-
 </description>

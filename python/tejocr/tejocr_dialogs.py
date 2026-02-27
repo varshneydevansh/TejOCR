@@ -58,12 +58,37 @@ logger = uno_utils.get_logger("TejOCR.Dialogs")
 # Attempt to import pytesseract for language listing, but don't fail if not present yet
 PYTESSERACT_AVAILABLE = False
 PYTESSERACT_LANGUAGES = {}
-LANG_CODE_TO_NAME = { # Basic map, can be expanded or replaced by a better i18n solution
-    "eng": "English", "hin": "Hindi", "fra": "French", "deu": "German",
-    "spa": "Spanish", "ita": "Italian", "por": "Portuguese", "rus": "Russian",
-    "jpn": "Japanese", "kor": "Korean", "chi_sim": "Chinese (Simplified)",
-    "chi_tra": "Chinese (Traditional)", "ara": "Arabic", "urd": "Urdu",
-    "osd": "Orientation and Script Detection"
+LANG_CODE_TO_NAME = {
+    "afr": "Afrikaans", "amh": "Amharic", "ara": "Arabic", "asm": "Assamese",
+    "aze": "Azerbaijani", "bel": "Belarusian", "ben": "Bengali", "bod": "Tibetan",
+    "bos": "Bosnian", "bre": "Breton", "bul": "Bulgarian", "cat": "Catalan",
+    "ceb": "Cebuano", "ces": "Czech", "chi_sim": "Chinese (Simplified)",
+    "chi_tra": "Chinese (Traditional)", "chr": "Cherokee", "cos": "Corsican",
+    "cym": "Welsh", "dan": "Danish", "deu": "German", "div": "Dhivehi",
+    "dzo": "Dzongkha", "ell": "Greek", "eng": "English", "enm": "English (Middle)",
+    "epo": "Esperanto", "est": "Estonian", "eus": "Basque", "fao": "Faroese",
+    "fas": "Persian", "fil": "Filipino", "fin": "Finnish", "fra": "French",
+    "frm": "French (Middle)", "fry": "Frisian", "gla": "Scottish Gaelic",
+    "gle": "Irish", "glg": "Galician", "grc": "Greek (Ancient)", "guj": "Gujarati",
+    "hat": "Haitian Creole", "heb": "Hebrew", "hin": "Hindi", "hrv": "Croatian",
+    "hun": "Hungarian", "hye": "Armenian", "iku": "Inuktitut", "ind": "Indonesian",
+    "isl": "Icelandic", "ita": "Italian", "jav": "Javanese", "jpn": "Japanese",
+    "kan": "Kannada", "kat": "Georgian", "kaz": "Kazakh", "khm": "Khmer",
+    "kir": "Kyrgyz", "kmr": "Kurdish (Kurmanji)", "kor": "Korean",
+    "lao": "Lao", "lat": "Latin", "lav": "Latvian", "lit": "Lithuanian",
+    "ltz": "Luxembourgish", "mal": "Malayalam", "mar": "Marathi", "mkd": "Macedonian",
+    "mlt": "Maltese", "mon": "Mongolian", "mri": "Maori", "msa": "Malay",
+    "mya": "Myanmar (Burmese)", "nep": "Nepali", "nld": "Dutch", "nor": "Norwegian",
+    "oci": "Occitan", "ori": "Odia", "osd": "Script Detection",
+    "pan": "Punjabi", "pol": "Polish", "por": "Portuguese", "pus": "Pashto",
+    "que": "Quechua", "ron": "Romanian", "rus": "Russian", "san": "Sanskrit",
+    "sin": "Sinhala", "slk": "Slovak", "slv": "Slovenian", "snd": "Sindhi",
+    "spa": "Spanish", "sqi": "Albanian", "srp": "Serbian", "sun": "Sundanese",
+    "swa": "Swahili", "swe": "Swedish", "syr": "Syriac", "tam": "Tamil",
+    "tat": "Tatar", "tel": "Telugu", "tgk": "Tajik", "tha": "Thai",
+    "tir": "Tigrinya", "ton": "Tonga", "tur": "Turkish", "uig": "Uyghur",
+    "ukr": "Ukrainian", "urd": "Urdu", "uzb": "Uzbek", "vie": "Vietnamese",
+    "yid": "Yiddish", "yor": "Yoruba",
 }
 
 try:
@@ -90,6 +115,30 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
         if isinstance(value, str):
             return 1 if value.lower() in ('true', '1', 'yes') else 0
         return 1 if value else 0
+
+    @staticmethod
+    def _select_dropdown_item(dropdown, pos):
+        """Select an item in a dropdown, auto-detecting MenuList vs ComboBox."""
+        try:
+            # MenuList (dlg:menulist) handles selectItemPos natively
+            dropdown.selectItemPos(pos, True)
+        except AttributeError:
+            # ComboBox (dlg:combobox) uses setText
+            try:
+                item_text = dropdown.getItem(pos)
+                dropdown.setText(item_text)
+            except Exception:
+                pass
+
+    def _ensure_dropdown_mode(self, control_name):
+        """Force a menulist control into closed-dropdown mode programmatically.
+        Works around XDL dlg:dropdown='true' being ignored by some LO builds."""
+        ctrl = self.get_control(control_name)
+        if ctrl:
+            try:
+                ctrl.getModel().Dropdown = True
+            except Exception:
+                pass
 
     def _create_dialog(self, parent_frame):
         """Creates and initializes the dialog from its URL."""
@@ -277,6 +326,11 @@ class OptionsDialogHandler(BaseDialogHandler):
         self._add_listener_to_control("HelpButton", "help")
         self._add_listener_to_control("RefreshLanguagesButton", "refresh_languages")
         
+        # Force menulist controls into dropdown mode
+        self._ensure_dropdown_mode("LanguageDropdown")
+        self._ensure_dropdown_mode("PSMDropdown")
+        self._ensure_dropdown_mode("OEMDropdown")
+        
         # Initialize dialog content
         self._setup_source_information()
         self._load_default_settings()
@@ -373,8 +427,7 @@ class OptionsDialogHandler(BaseDialogHandler):
         
         if command == "refresh_languages":
             self._refresh_languages()
-        elif command == "help":
-            self._show_help()
+        # NOTE: "help" is handled by super().actionPerformed() — do not duplicate here
         elif command == "run_ocr":
             # The base class will call _handle_ok_action()
             pass
@@ -586,22 +639,30 @@ BUTTONS:
         if not dropdown: return
 
         stored_value = uno_utils.get_setting(current_value_key, default_value, self.ctx)
-        dropdown.getModel().removeAllItems()
+        logger.info(f"Populating {control_name}: stored='{stored_value}', default='{default_value}'")
+
+        model = dropdown.getModel()
+        model.StringItemList = ()   # clear
         
         selected_pos = 0
-        item_keys = list(items_map.keys()) # Keep order for mapping position to key
+        item_keys = list(items_map.keys())
+        texts = []
 
         for i, key in enumerate(item_keys):
-            display_text = items_map[key]
-            dropdown.addItem(display_text, i)
+            display_text = f"{items_map[key]} ({key})"
+            texts.append(display_text)
             if str(key) == str(stored_value):
                 selected_pos = i
-        
-        if dropdown.getItemCount() > 0:
-            # ComboBox uses setText, not selectItemPos (that's ListBox only)
-            selected_text = items_map[item_keys[selected_pos]] if item_keys else ""
-            dropdown.setText(selected_text)
-        self.available_languages_map = items_map # Store for retrieval
+
+        model.StringItemList = tuple(texts)
+        if len(texts) > 0:
+            model.SelectedItems = (selected_pos,)
+            # Also set via control API for cross-version compatibility
+            try:
+                dropdown.selectItemPos(selected_pos, True)
+            except Exception:
+                pass
+        self.available_languages_map = items_map
 
     def _get_tesseract_languages(self):
         global PYTESSERACT_LANGUAGES
@@ -681,9 +742,15 @@ class SettingsDialogHandler(BaseDialogHandler):
         self._add_listener_to_control("BrowseButton", "browse_tesseract_path")
         self._add_listener_to_control("TestTesseractButton", "test_tesseract")
         self._add_listener_to_control("RefreshLanguagesButtonSettings", "refresh_languages_settings")
-        self._add_listener_to_control("CheckDependenciesButton", "check_dependencies")
-        self._add_listener_to_control("InstallGuideButton", "install_guide")
-        self._add_listener_to_control("HelpMeInstallButton", "install_guide")
+        self._add_listener_to_control("SetupButton", "setup")
+        self._add_listener_to_control("WikiButton", "wiki")
+        # Legacy button names — listeners are no-ops if control doesn't exist
+        self._add_listener_to_control("CheckDependenciesButton", "setup")
+        self._add_listener_to_control("InstallGuideButton", "setup")
+        self._add_listener_to_control("HelpMeInstallButton", "wiki")
+        
+        # Search button for language filtering
+        self._add_listener_to_control("SearchLanguagesButton", "search_languages")
         
         # Load current settings — wrapped so a failure doesn't prevent dialog display
         try:
@@ -700,44 +767,60 @@ class SettingsDialogHandler(BaseDialogHandler):
         except Exception as e:
             logger.error(f"Error checking dependencies: {e}", exc_info=True)
 
+    # Color constants for status labels (RGB integers)
+    COLOR_GREEN = 0x009900   # OK / Available
+    COLOR_RED = 0xCC0000     # Missing / Error
+    COLOR_AMBER = 0xCC8800   # Partial / Warning
+
+    def _set_label(self, control_name, text, color=None):
+        """Set label text and optionally color it via the UNO model."""
+        ctrl = self.get_control(control_name)
+        if ctrl:
+            ctrl.setText(text)
+            if color is not None:
+                try:
+                    ctrl.getModel().TextColor = color
+                except Exception:
+                    pass
+
     def _check_and_display_dependencies(self):
-        """Check all dependencies and update the status labels."""
+        """Check all dependencies and update the status labels with color."""
         logger.info("Checking dependencies for Settings dialog...")
         
         try:
             self.dependency_status = _check_dependencies()
             
-            # Update Tesseract status
-            tesseract_label = self.get_control("TesseractStatusLabel")
-            if tesseract_label:
-                tess_status = self.dependency_status.get('tesseract', 'Unknown')
-                if '✅' in tess_status or 'found' in tess_status.lower():
-                    tesseract_label.setText("✅ Tesseract: Available")
-                else:
-                    tesseract_label.setText("❌ Tesseract: Missing")
+            # Tesseract status
+            tess_ok = self.dependency_status.get('tesseract_ok', False)
+            if tess_ok:
+                self._set_label("TesseractStatusLabel",
+                                "Tesseract: Available", self.COLOR_GREEN)
+            else:
+                self._set_label("TesseractStatusLabel",
+                                "Tesseract: Not found", self.COLOR_RED)
             
-            # Update Python packages status
-            packages_label = self.get_control("PythonPackagesStatusLabel")
-            if packages_label:
-                pkg_status = self.dependency_status.get('python_packages', 'Unknown')
-                # Count how many packages are available
-                available_count = pkg_status.count('✅')
-                if available_count >= 3:  # NumPy, Pytesseract, Pillow
-                    packages_label.setText("✅ Python: All packages OK")
-                elif available_count > 0:
-                    packages_label.setText(f"⚠️ Python: {available_count}/3 packages OK")
-                else:
-                    packages_label.setText("❌ Python: Packages missing")
+            # Python packages status
+            n   = self.dependency_status.get('numpy_ok', False)
+            p   = self.dependency_status.get('pytesseract_ok', False)
+            pil = self.dependency_status.get('pillow_ok', False)
+            count = sum([n, p, pil])
+
+            if count >= 3:
+                self._set_label("PythonPackagesStatusLabel",
+                                "Python: All 3 packages OK", self.COLOR_GREEN)
+            elif count > 0:
+                self._set_label("PythonPackagesStatusLabel",
+                                f"Python: {count}/3 packages installed", self.COLOR_AMBER)
+            else:
+                self._set_label("PythonPackagesStatusLabel",
+                                "Python: No packages found", self.COLOR_RED)
                     
         except Exception as e:
             logger.error(f"Error checking dependencies in settings: {e}", exc_info=True)
-            # Set fallback status
-            tesseract_label = self.get_control("TesseractStatusLabel")
-            if tesseract_label:
-                tesseract_label.setText("⚠️ Tesseract: Check failed")
-            packages_label = self.get_control("PythonPackagesStatusLabel")
-            if packages_label:
-                packages_label.setText("⚠️ Python: Check failed")
+            self._set_label("TesseractStatusLabel",
+                            "Tesseract: Check failed", self.COLOR_AMBER)
+            self._set_label("PythonPackagesStatusLabel",
+                            "Python: Check failed", self.COLOR_AMBER)
 
     def _load_settings(self):
         """Load settings from config and populate dialog controls."""
@@ -748,7 +831,7 @@ class SettingsDialogHandler(BaseDialogHandler):
             path_field.setText(tesseract_path)
         self.initial_settings[constants.CFG_KEY_TESSERACT_PATH] = tesseract_path
 
-        # Default Language
+        # Languages — unified multi-select listbox
         langs = self._get_tesseract_languages_for_settings()
         current_default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
         if not current_default_lang:
@@ -756,24 +839,36 @@ class SettingsDialogHandler(BaseDialogHandler):
         if not current_default_lang:
             current_default_lang = constants.DEFAULT_OCR_LANGUAGE
 
-        self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, current_default_lang)
-        language_input = self.get_control("DefaultLanguageTextField")
-        if language_input:
-            language_input.setText(self._normalize_language_list(current_default_lang))
+        self._all_lang_keys = list(langs.keys())
+        self._all_lang_map = langs
+        self._selected_codes = set(current_default_lang.replace(',', '+').split('+'))
+        self._populate_language_listbox()
+        
         self.initial_settings[constants.CFG_KEY_DEFAULT_LANG] = current_default_lang
         self.initial_settings[constants.CFG_KEY_LAST_SELECTED_LANG] = current_default_lang
 
-        # Default Output Mode
+        # Output Mode — radio buttons (4 options)
         default_output_mode = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OUTPUT_MODE, None, self.ctx)
         if not default_output_mode:
             default_output_mode = uno_utils.get_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, constants.DEFAULT_OUTPUT_MODE, self.ctx)
         if not default_output_mode:
             default_output_mode = constants.DEFAULT_OUTPUT_MODE
-        self._populate_output_mode_dropdown("DefaultOutputModeDropdown", default_output_mode)
+        default_output_mode = self._normalize_output_mode(default_output_mode)
+        
+        radio_map = {
+            constants.OUTPUT_MODE_CURSOR: "OutputRadioCursor",
+            constants.OUTPUT_MODE_TEXTBOX: "OutputRadioTextBox",
+            constants.OUTPUT_MODE_REPLACE: "OutputRadioReplace",
+            constants.OUTPUT_MODE_CLIPBOARD: "OutputRadioClipboard",
+        }
+        for mode_key, radio_id in radio_map.items():
+            ctrl = self.get_control(radio_id)
+            if ctrl:
+                ctrl.setState(mode_key == default_output_mode)
         self.initial_settings[constants.CFG_KEY_DEFAULT_OUTPUT_MODE] = default_output_mode
         self.initial_settings[constants.CFG_KEY_LAST_OUTPUT_MODE] = default_output_mode
 
-        # Default Preprocessing
+        # Preprocessing
         grayscale = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, constants.DEFAULT_PREPROC_GRAYSCALE, self.ctx)
         binarize = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_BINARIZE, constants.DEFAULT_PREPROC_BINARIZE, self.ctx)
         cb_gray = self.get_control("DefaultGrayscaleCheckbox")
@@ -822,9 +917,7 @@ class SettingsDialogHandler(BaseDialogHandler):
                 selected_pos = i
 
         if dropdown.getItemCount() > 0:
-            # ComboBox uses setText, not selectItemPos (that's ListBox only)
-            selected_text = output_mode_items[selected_pos][1]
-            dropdown.setText(selected_text)
+            self._select_dropdown_item(dropdown, selected_pos)
 
     def _get_tesseract_languages_for_settings(self):
         # This is similar to _get_tesseract_languages in OptionsDialogHandler
@@ -835,7 +928,7 @@ class SettingsDialogHandler(BaseDialogHandler):
         if PYTESSERACT_AVAILABLE and not cached_langs:
             try:
                 tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, self.ctx)
-                tess_exec = uno_utils.find_tesseract_executable(tess_path_cfg, self.ctx)
+                tess_exec = uno_utils.find_tesseract_executable(tess_path_cfg)
                 if tess_exec:
                     original_cmd = pytesseract.pytesseract.tesseract_cmd
                     pytesseract.pytesseract.tesseract_cmd = tess_exec
@@ -865,61 +958,137 @@ class SettingsDialogHandler(BaseDialogHandler):
             return
 
         stored_value = uno_utils.get_setting(current_value_key, default_value, self.ctx)
-        dropdown.getModel().removeAllItems()
-        
+        logger.info(f"Populating {control_name}: stored_value='{stored_value}', default='{default_value}'")
+
+        # Use the Model API for menulist controls
+        model = dropdown.getModel()
+        model.StringItemList = ()   # clear all items
+
         selected_pos = 0
-        # Ensure items_map is not None and is a dictionary
         if items_map and isinstance(items_map, dict):
-            item_keys = list(items_map.keys()) 
+            item_keys = list(items_map.keys())
+            texts = []
             for i, key in enumerate(item_keys):
-                display_text = items_map[key]
-                dropdown.addItem(display_text, i)
+                display_text = f"{items_map[key]} ({key})"
+                texts.append(display_text)
                 if str(key) == str(stored_value):
                     selected_pos = i
+                    logger.info(f"  Matched '{key}' at position {i}")
+
+            # Set all items at once via the model
+            model.StringItemList = tuple(texts)
             
-            if dropdown.getItemCount() > 0:
-                # ComboBox uses setText, not selectItemPos (that's ListBox only)
-                selected_text = items_map[item_keys[selected_pos]] if item_keys else ""
-                dropdown.setText(selected_text)
+            if len(texts) > 0:
+                # Select via model SelectedItems (tuple of selected indices)
+                model.SelectedItems = (selected_pos,)
+                # Also set via control API for cross-version compatibility
+                try:
+                    dropdown.selectItemPos(selected_pos, True)
+                except Exception:
+                    pass
+                logger.info(f"  Selected position {selected_pos} of {len(texts)} items")
         else:
-            logger.error(f"items_map for {control_name} is invalid or empty. Cannot populate dropdown.")
-            # Add a default item or error message to the dropdown
-            dropdown.addItem("Error: Could not load languages", 0)
-            dropdown.setText("Error: Could not load languages")
+            logger.error(f"items_map for {control_name} is invalid or empty.")
+            model.StringItemList = ("Error: Could not load items",)
+            model.SelectedItems = (0,)
+
+    def _populate_language_listbox(self, filter_text=""):
+        """Populate the unified LanguagesListbox, optionally filtered by search text."""
+        lb = self.get_control("LanguagesListbox")
+        if not lb:
+            return
+        
+        model = lb.getModel()
+        model.MultiSelection = True
+        
+        # Build filtered list
+        filter_lower = filter_text.strip().lower()
+        self._visible_lang_keys = []
+        texts = []
+        sel_indices = []
+        
+        for key in self._all_lang_keys:
+            display = f"{self._all_lang_map[key]} ({key})"
+            if filter_lower and filter_lower not in display.lower():
+                continue
+            texts.append(display)
+            self._visible_lang_keys.append(key)
+            if key in self._selected_codes:
+                sel_indices.append(len(texts) - 1)
+        
+        model.StringItemList = tuple(texts)
+        if sel_indices:
+            model.SelectedItems = tuple(sel_indices)
+        
+        self._update_selected_langs_label()
+
+    def _sync_selected_codes_from_listbox(self):
+        """Read current listbox selections and update _selected_codes."""
+        lb = self.get_control("LanguagesListbox")
+        if not lb:
+            return
+        try:
+            sel_positions = lb.getSelectedItemsPos()
+            visible_keys = getattr(self, '_visible_lang_keys', [])
+            # First, remove codes for visible items (they may have been deselected)
+            visible_set = set(visible_keys)
+            self._selected_codes -= visible_set
+            # Then add back the ones that are selected
+            for pos in sel_positions:
+                if 0 <= pos < len(visible_keys):
+                    self._selected_codes.add(visible_keys[pos])
+        except Exception:
+            pass
+        self._update_selected_langs_label()
 
     def _get_selected_default_language_code(self):
-        """Get language code from manual input first, fallback to dropdown selection."""
-        manual_field = self.get_control("DefaultLanguageTextField")
-        if manual_field:
-            manual_value = self._normalize_language_list(manual_field.getText().strip())
-            if manual_value:
-                return manual_value
+        """Build language string from multi-select listbox selections."""
+        self._sync_selected_codes_from_listbox()
+        codes = sorted(self._selected_codes) if self._selected_codes else [constants.DEFAULT_OCR_LANGUAGE]
+        return '+'.join(codes)
 
-        lang_dropdown = self.get_control("DefaultLanguageDropdown")
-        if lang_dropdown and lang_dropdown.getItemCount() > 0:
-            selected_lang_display = lang_dropdown.getSelectedItem()
-            if selected_lang_display:
-                current_langs_map = getattr(self, "_settings_languages_cache", None)
-                if not current_langs_map:
-                    current_langs_map = self._get_tesseract_languages_for_settings()
-                for code, display in current_langs_map.items():
-                    if str(display) == str(selected_lang_display):
-                        return code
-                if selected_lang_display in current_langs_map:
-                    return selected_lang_display
-
-        return constants.DEFAULT_OCR_LANGUAGE
+    def _update_selected_langs_label(self):
+        """Update the 'Selected: eng+hin+spa' label."""
+        label = self.get_control("SelectedLangsLabel")
+        if not label:
+            return
+        codes = sorted(self._selected_codes) if self._selected_codes else [constants.DEFAULT_OCR_LANGUAGE]
+        label.setText(f"Selected: {'+'.join(codes)}")
 
     def _get_selected_output_mode(self):
-        output_dropdown = self.get_control("DefaultOutputModeDropdown")
-        if output_dropdown and output_dropdown.getItemCount() > 0:
-            selected_pos = output_dropdown.getSelectedItemPos()
-            if 0 <= selected_pos < len(self._output_mode_code_order):
-                return self._output_mode_code_order[selected_pos]
-        return constants.DEFAULT_OUTPUT_MODE
+        """Read output mode from radio buttons (4 options)."""
+        radio_map = {
+            "OutputRadioCursor": "at_cursor",
+            "OutputRadioTextBox": "new_text_box",
+            "OutputRadioReplace": "replace",
+            "OutputRadioClipboard": "clipboard",
+        }
+        for radio_id, mode_key in radio_map.items():
+            ctrl = self.get_control(radio_id)
+            if ctrl and ctrl.getState():
+                return mode_key
+        return "at_cursor"
+
+    @staticmethod
+    def _normalize_output_mode(mode_value):
+        """Normalize UI output mode values into canonical constants."""
+        normalized = str(mode_value).strip().lower().replace("-", "_").replace(" ", "_")
+        alias_map = {
+            "atcursor": constants.OUTPUT_MODE_CURSOR,
+            "at_cursor": constants.OUTPUT_MODE_CURSOR,
+            "cursor": constants.OUTPUT_MODE_CURSOR,
+            "new_text_box": constants.OUTPUT_MODE_TEXTBOX,
+            "newtextbox": constants.OUTPUT_MODE_TEXTBOX,
+            "textbox": constants.OUTPUT_MODE_TEXTBOX,
+            "replace": constants.OUTPUT_MODE_REPLACE,
+            "replace_image": constants.OUTPUT_MODE_REPLACE,
+            "clipboard": constants.OUTPUT_MODE_CLIPBOARD,
+            "to_clipboard": constants.OUTPUT_MODE_CLIPBOARD,
+        }
+        return alias_map.get(normalized, str(mode_value).strip())
 
     def actionPerformed(self, event):
-        super().actionPerformed(event) # Handles save_settings, cancel, help (if not overridden)
+        super().actionPerformed(event)
         command = event.ActionCommand
         logger.debug(f"SettingsDialogHandler actionPerformed: {command}")
         
@@ -929,47 +1098,76 @@ class SettingsDialogHandler(BaseDialogHandler):
             self._test_tesseract_path()
         elif command == "refresh_languages_settings":
             self._refresh_languages()
-        elif command == "check_dependencies":
-            self._check_and_display_dependencies()
-            status_label = self.get_control("SettingsStatusLabel")
-            if status_label: 
-                status_label.setText("Dependencies checked")
-        elif command == "install_guide":
-            self._show_installation_guide()
-        elif command == "help":
-            self._handle_help_action()
+        elif command == "setup":
+            self._show_setup()
+        elif command == "wiki":
+            self._open_wiki()
+        elif command == "search_languages":
+            self._filter_languages()
+
+    def _filter_languages(self):
+        """Filter the language listbox based on search field text."""
+        search_field = self.get_control("LanguageSearchField")
+        if not search_field:
+            return
+        # Save current selections before filtering
+        self._sync_selected_codes_from_listbox()
+        # Re-populate with filter
+        self._populate_language_listbox(search_field.getText())
 
     def _refresh_languages(self):
         """Refresh the language list by clearing cache and reloading."""
-        self._settings_languages_cache = None # Clear cache
+        self._settings_languages_cache = None
         langs = self._get_tesseract_languages_for_settings()
-        self._populate_dropdown_settings("DefaultLanguageDropdown", langs, constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE)
+        self._all_lang_keys = list(langs.keys())
+        self._all_lang_map = langs
+        self._populate_language_listbox()
         uno_utils.show_message_box("Languages Refreshed", "The list of available OCR languages has been updated.", "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
 
-    def _show_installation_guide(self):
-        """Show detailed installation guidance for missing dependencies."""
-        if not self.dependency_status:
+    def _show_setup(self):
+        """Open the dedicated Setup & Diagnostics dialog."""
+        try:
+            setup_handler = TejOCRSetupDialogHandler(self.ctx, self.parent_frame)
+            setup_handler.show()
+            # Refresh our status labels after setup dialog closes
             self._check_and_display_dependencies()
-        
-        guide_text = f"""TejOCR Installation Guide
+            status_label = self.get_control("SettingsStatusLabel")
+            if status_label:
+                status_label.setText("Dependencies checked")
+        except Exception as e:
+            logger.error(f"Failed to open Setup dialog: {e}", exc_info=True)
+            # Fallback to message box
+            self._check_and_display_dependencies()
+            guide = self.dependency_status.get('next_steps', '') if self.dependency_status else ''
+            summary = self.dependency_status.get('summary', '') if self.dependency_status else ''
+            packages = self.dependency_status.get('python_packages', '') if self.dependency_status else ''
+            uno_utils.show_message_box("TejOCR Setup", f"Status: {summary}\n\nPackages:\n{packages}\n\n{guide}", "infobox",
+                                      parent_frame=self.parent_frame, ctx=self.ctx)
 
-{self.dependency_status.get('installation_guide', 'Installation guidance not available')}
-
-For more detailed instructions, visit:
-https://github.com/tesseract-ocr/tesseract/wiki
-
-Need help? Check the TejOCR documentation or contact support."""
-
-        uno_utils.show_message_box("Installation Guide", guide_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+    def _open_wiki(self):
+        """Open the TejOCR wiki page in the default browser."""
+        import webbrowser
+        url = "https://github.com/varshneydevansh/TejOCR/wiki"
+        try:
+            webbrowser.open(url)
+            status_label = self.get_control("SettingsStatusLabel")
+            if status_label:
+                status_label.setText("Wiki opened in browser")
+        except Exception as e:
+            logger.error(f"Failed to open browser: {e}")
+            uno_utils.show_message_box(
+                "Wiki",
+                f"Could not open browser.\nVisit: {url}",
+                "infobox", parent_frame=self.parent_frame, ctx=self.ctx
+            )
 
     def _handle_help_action(self):
         """Show help information for the Settings dialog."""
         help_text = f"""{constants.EXTENSION_FULL_NAME} - Settings Help
 
 DEPENDENCY STATUS:
-• Shows current status of required components
-• Green ✅ means component is working
-• Red ❌ means component needs installation
+- Shows current status of required components
+- Click Setup to check and see install commands
 
 TESSERACT CONFIGURATION:
 • Set path to Tesseract executable
@@ -1101,7 +1299,13 @@ Details: {message}""",
 
             # Default Output Mode
             selected_output_mode = self._get_selected_output_mode()
-            if selected_output_mode != self.initial_settings.get(constants.CFG_KEY_DEFAULT_OUTPUT_MODE):
+            selected_output_mode = self._normalize_output_mode(selected_output_mode)
+            if (
+                selected_output_mode
+                != self.initial_settings.get(constants.CFG_KEY_DEFAULT_OUTPUT_MODE)
+                or selected_output_mode
+                != self.initial_settings.get(constants.CFG_KEY_LAST_OUTPUT_MODE)
+            ):
                 logger.info(f"Updating default output mode: {selected_output_mode}")
                 uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OUTPUT_MODE, selected_output_mode, self.ctx)
                 uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, selected_output_mode, self.ctx)
@@ -1199,13 +1403,219 @@ def _build_settings_unavailable_message(reason=None):
         + reason_text
     )
 
+# --- Setup Dialog Handler ---
+
+class TejOCRSetupDialogHandler(unohelper.Base, XActionListener):
+    """Handler for the dedicated Setup & Diagnostics dialog."""
+    
+    COLOR_GREEN = 0x009900
+    COLOR_RED   = 0xCC0000
+    COLOR_AMBER = 0xCC8800
+
+    def __init__(self, ctx, parent_frame=None):
+        self.ctx = ctx
+        self.parent_frame = parent_frame
+        self.dialog = None
+        self.dependency_status = None
+        self._install_command = ""
+
+    def show(self):
+        """Create and show the Setup dialog."""
+        smgr = self.ctx.ServiceManager
+        dp = smgr.createInstanceWithContext("com.sun.star.awt.ContainerWindowProvider", self.ctx)
+        
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_setup_dialog.xdl"
+        try:
+            # Try creating dialog via DialogProvider
+            dprov = smgr.createInstanceWithContext("com.sun.star.awt.DialogProvider2", self.ctx)
+            self.dialog = dprov.createDialog(dialog_url)
+        except Exception as e:
+            logger.error(f"Failed to create setup dialog: {e}", exc_info=True)
+            raise
+
+        # Attach button listeners
+        for btn_name, cmd in [("CopyCommandButton", "copy_command"),
+                              ("ReCheckButton", "recheck"),
+                              ("CloseSetupButton", "close_setup")]:
+            try:
+                ctrl = self.dialog.getControl(btn_name)
+                if ctrl:
+                    ctrl.getModel().ActionCommand = cmd
+                    ctrl.addActionListener(self)
+            except Exception:
+                pass
+
+        # Run initial check
+        self._run_check()
+        
+        # Show modal
+        self.dialog.execute()
+
+    def _run_check(self):
+        """Run dependency checks and populate the dialog."""
+        self.dependency_status = _check_dependencies()
+        ds = self.dependency_status
+
+        # Color each component row
+        rows = [
+            ("TesseractRow", ds.get('tesseract_ok', False),
+             f"Tesseract OCR:  {ds.get('tesseract', 'Unknown')}"),
+            ("NumpyRow", ds.get('numpy_ok', False), None),
+            ("PytesseractRow", ds.get('pytesseract_ok', False), None),
+            ("PillowRow", ds.get('pillow_ok', False), None),
+            ("UnoRow", True, "uno: Built-in (always available)"),
+        ]
+
+        # Parse per-package lines from python_packages string
+        pkg_lines = ds.get('python_packages', '').split('\n')
+        pkg_map = {}
+        for line in pkg_lines:
+            lower = line.lower()
+            if 'numpy' in lower:
+                pkg_map['numpy'] = line
+            elif 'pytesseract' in lower:
+                pkg_map['pytesseract'] = line
+            elif 'pillow' in lower or 'pil' in lower:
+                pkg_map['pillow'] = line
+
+        rows[1] = ("NumpyRow", ds.get('numpy_ok', False),
+                   pkg_map.get('numpy', 'numpy: Unknown'))
+        rows[2] = ("PytesseractRow", ds.get('pytesseract_ok', False),
+                   pkg_map.get('pytesseract', 'pytesseract: Unknown'))
+        rows[3] = ("PillowRow", ds.get('pillow_ok', False),
+                   pkg_map.get('pillow', 'Pillow: Unknown'))
+
+        for ctrl_name, is_ok, text in rows:
+            try:
+                ctrl = self.dialog.getControl(ctrl_name)
+                if ctrl:
+                    ctrl.setText(text)
+                    ctrl.getModel().TextColor = self.COLOR_GREEN if is_ok else self.COLOR_RED
+            except Exception:
+                pass
+
+        # Fill install instructions
+        next_steps = ds.get('next_steps', '')
+        self._install_command = next_steps
+
+        try:
+            cmd_field = self.dialog.getControl("InstallCommandField")
+            if cmd_field:
+                cmd_field.setText(next_steps)
+        except Exception:
+            pass
+
+    def actionPerformed(self, event):
+        command = event.ActionCommand
+        if command == "copy_command":
+            self._copy_to_clipboard()
+        elif command == "recheck":
+            self._run_check()
+        elif command == "close_setup":
+            if self.dialog:
+                self.dialog.endExecute()
+
+    def _copy_to_clipboard(self):
+        """Copy install command to system clipboard using OS utilities."""
+        import subprocess
+        import sys
+        
+        text = self._install_command
+        copied = False
+        
+        try:
+            if sys.platform == "darwin":
+                # macOS
+                proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+                proc.communicate(text.encode("utf-8"))
+                copied = proc.returncode == 0
+            elif sys.platform.startswith("linux"):
+                # Linux — try xclip first, then xsel
+                for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]:
+                    try:
+                        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                        proc.communicate(text.encode("utf-8"))
+                        if proc.returncode == 0:
+                            copied = True
+                            break
+                    except FileNotFoundError:
+                        continue
+            elif sys.platform == "win32":
+                proc = subprocess.Popen(["clip.exe"], stdin=subprocess.PIPE)
+                proc.communicate(text.encode("utf-8"))
+                copied = proc.returncode == 0
+        except Exception as e:
+            logger.error(f"Clipboard subprocess failed: {e}", exc_info=True)
+        
+        # Visual feedback
+        try:
+            ctrl = self.dialog.getControl("InstallCommandField")
+            if ctrl:
+                if copied:
+                    ctrl.setText("✓ Copied to clipboard!\n\n" + text)
+                else:
+                    ctrl.setText("⚠ Copy failed — select and copy manually:\n\n" + text)
+        except Exception:
+            pass
+        
+        if not copied:
+            uno_utils.show_message_box("Copy",
+                f"Could not access clipboard.\n\nPlease select and copy manually:\n{text}",
+                "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+
+    def disposing(self, event):
+        pass
+
+
 # --- Global Dialog Functions ---
+
+def _get_lo_python_path():
+    """Dynamically detect the running LibreOffice's Python executable for pip commands.
+    
+    Walks up from sys.executable to find the LibreOfficePython.framework python3 binary.
+    Works for both production (/Applications/LibreOffice.app) and dev builds.
+    """
+    import sys
+    import os
+    import glob
+    
+    exe = sys.executable
+    
+    # Walk up from sys.executable looking for LibreOfficePython.framework
+    path = os.path.abspath(exe)
+    for _ in range(15):  # max depth
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        # Look for the framework python3 relative to this parent
+        pattern = os.path.join(parent, "Frameworks", "LibreOfficePython.framework",
+                               "Versions", "*", "bin", "python3")
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
+        path = parent
+    
+    # Fallback: try standard macOS paths
+    for fallback in [
+        "/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3",
+        "/Applications/LibreOfficeDev.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3",
+    ]:
+        if os.path.isfile(fallback):
+            return fallback
+    
+    # Last resort: quote sys.executable itself
+    return f'"{exe}"'
 
 def _check_dependencies():
     """Check status of all OCR dependencies and provide user guidance."""
     import subprocess
     import sys
     import os
+    import glob
+    
+    # Dynamically detect the running LibreOffice's Python for pip commands
+    pip_python = _get_lo_python_path()
+    pip_cmd = f'{pip_python} -m pip install'
     
     status = {
         'summary': '',
@@ -1216,8 +1626,9 @@ def _check_dependencies():
     }
     
     # Check Tesseract
-    tesseract_status = "❌ NOT FOUND"
+    tesseract_status = "NOT FOUND"
     tesseract_path = "Not detected"
+    tesseract_ok = False
     tesseract_commands = ['tesseract']
     configured_ctx = None
     configured_path = ""
@@ -1239,7 +1650,8 @@ def _check_dependencies():
             result = subprocess.run([command, '--version'], capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 version = result.stdout.strip().split()[1] if result.stdout.strip().split() else "Unknown"
-                tesseract_status = f"✅ INSTALLED (v{version})"
+                tesseract_status = f"Installed (v{version})"
+                tesseract_ok = True
                 if command == configured_path:
                     tesseract_path = configured_path
                 else:
@@ -1257,10 +1669,10 @@ def _check_dependencies():
     numpy_available = False
     try:
         import numpy
-        python_packages.append(f"✅ numpy: {numpy.__version__}")
+        python_packages.append(f"numpy: {numpy.__version__} (OK)")
         numpy_available = True
     except ImportError:
-        python_packages.append("❌ numpy: Not found in LibreOffice Python (required for pytesseract)")
+        python_packages.append("numpy: Not found (required for pytesseract)")
         numpy_available = False
     
     # Check pytesseract using the new engine initialization
@@ -1268,61 +1680,58 @@ def _check_dependencies():
     try:
         from tejocr import tejocr_engine
         if tejocr_engine._initialize_pytesseract():
-            python_packages.append("✅ pytesseract: Available and working")
+            python_packages.append("pytesseract: Available and working (OK)")
             pytesseract_available = True
         else:
             if numpy_available:
-                python_packages.append("❌ pytesseract: Available but not working (check tesseract installation)")
+                python_packages.append("pytesseract: Available but not working (check tesseract installation)")
             else:
-                python_packages.append("❌ pytesseract: Cannot load due to missing numpy")
+                python_packages.append("pytesseract: Cannot load due to missing numpy")
             pytesseract_available = False
     except Exception as e:
         error_msg = str(e)[:50]
         if "numpy" in error_msg.lower():
-            python_packages.append("❌ pytesseract: Failed due to missing numpy")
+            python_packages.append("pytesseract: Failed due to missing numpy")
         else:
-            python_packages.append(f"❌ pytesseract: Error checking - {error_msg}")
+            python_packages.append(f"pytesseract: Error checking - {error_msg}")
         pytesseract_available = False
     
     # Check PIL/Pillow
     try:
         import PIL
-        python_packages.append(f"✅ Pillow: {PIL.__version__}")
+        python_packages.append(f"Pillow: {PIL.__version__} (OK)")
         pillow_available = True
     except ImportError:
-        python_packages.append("❌ Pillow: Not found in LibreOffice Python")
+        python_packages.append("Pillow: Not found in LibreOffice Python")
         pillow_available = False
     
     # Check UNO - Should always be available in LibreOffice
     try:
         import uno
-        python_packages.append("✅ uno: Available in LibreOffice")
+        python_packages.append("uno: Available in LibreOffice (OK)")
         uno_available = True
     except ImportError:
-        python_packages.append("❌ uno: Not available (unexpected)")
+        python_packages.append("uno: Not available (unexpected)")
         uno_available = False
     
     status['python_packages'] = '\n'.join(python_packages)
     
-    # More accurate readiness assessment
-    tesseract_ok = "✅" in tesseract_status
+    # Store boolean flags for structured access
+    status['tesseract_ok'] = tesseract_ok
+    status['numpy_ok'] = numpy_available
+    status['pytesseract_ok'] = pytesseract_available
+    status['pillow_ok'] = pillow_available
     
     logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, numpy_available={numpy_available}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
     
     # Use the more accurate variables from above
     if tesseract_ok and numpy_available and pytesseract_available and pillow_available:
-        status['summary'] = "🎉 ALL DEPENDENCIES READY! OCR functionality available."
-        status['next_steps'] = """NEXT STEPS:
-═════════════════════════════
-
-✅ All dependencies installed and ready!
-🚀 You can now use all OCR features
-📋 Start using OCR with images in your documents
-
-Your TejOCR extension is ready for full functionality!"""
+        status['summary'] = "All dependencies ready. OCR functionality available."
+        status['next_steps'] = """All dependencies installed and ready.
+You can now use all OCR features."""
         
     elif tesseract_ok and (pytesseract_available or pillow_available or numpy_available):
-        status['summary'] = "⚠️  PARTIALLY READY - Some Python packages missing"
+        status['summary'] = "Partially ready -- some Python packages missing"
         missing = []
         if not numpy_available:
             missing.append("numpy")
@@ -1331,83 +1740,89 @@ Your TejOCR extension is ready for full functionality!"""
         if not pillow_available:
             missing.append("Pillow")
         
-        status['next_steps'] = f"""NEXT STEPS:
-═════════════════════════════
+        status['next_steps'] = f"""Install missing packages: {', '.join(missing)}
 
-⚠️  Install missing packages: {', '.join(missing)}
-📋 Run: /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install {' '.join(missing)}
-🔄 Restart LibreOffice after installation"""
+Run in Terminal:
+{pip_cmd} {' '.join(missing)}
+
+Restart LibreOffice after installation."""
         
     elif tesseract_ok:
-        status['summary'] = "🔧 TESSERACT READY - Python packages needed"
-        status['next_steps'] = """NEXT STEPS:
-═════════════════════════════
+        status['summary'] = "Tesseract ready -- Python packages needed"
+        status['next_steps'] = f"""Install Python packages for LibreOffice:
 
-🔧 Install Python packages for LibreOffice:
-📋 Run: /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow
-🔄 Restart LibreOffice after installation"""
+Run in Terminal:
+{pip_cmd} numpy pytesseract pillow
+
+Restart LibreOffice after installation."""
         
     else:
-        status['summary'] = "🚀 SETUP NEEDED - Ready to install dependencies"
-        status['next_steps'] = """NEXT STEPS:
-═════════════════════════════
+        status['summary'] = "Setup needed -- dependencies not installed"
+        status['next_steps'] = """Quick Setup:
+1. Install Tesseract OCR
+2. Install Python packages
+3. Restart LibreOffice
 
-🎯 Quick Setup (recommended):
-1️⃣ Install Tesseract OCR
-2️⃣ Install Python packages  
-3️⃣ Restart LibreOffice
-
-See installation guide below for your platform."""
+See the Install Guide for your platform."""
     
     # Platform-specific installation guide
     import platform
     system = platform.system().lower()
     
     if system == "darwin":  # macOS
-        status['installation_guide'] = """🍎 macOS Installation:
+        status['installation_guide'] = f"""macOS Installation:
 
-1️⃣ TESSERACT:
+1. TESSERACT:
    brew install tesseract
 
-2️⃣ PYTHON PACKAGES:
-   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow
+2. EXTRA LANGUAGES (optional):
+   brew install tesseract-lang
 
-3️⃣ VERIFY:
+3. PYTHON PACKAGES:
+   {pip_cmd} numpy pytesseract pillow
+
+4. VERIFY:
    tesseract --version"""
    
     elif system == "linux":
-        status['installation_guide'] = """🐧 Linux Installation:
+        status['installation_guide'] = f"""Linux Installation:
 
-1️⃣ TESSERACT:
+1. TESSERACT:
    sudo apt install tesseract-ocr   # Ubuntu/Debian
    sudo dnf install tesseract       # Fedora
    sudo pacman -S tesseract         # Arch
 
-2️⃣ PYTHON PACKAGES:
-   pip3 install numpy pytesseract pillow
+2. EXTRA LANGUAGES (optional):
+   sudo apt install tesseract-ocr-all   # Ubuntu/Debian (all languages)
+   sudo apt install tesseract-ocr-hin   # or individual: hin, fra, deu, etc.
 
-3️⃣ VERIFY:
+3. PYTHON PACKAGES:
+   {pip_cmd} numpy pytesseract pillow
+
+4. VERIFY:
    tesseract --version"""
    
     elif system == "windows":
-        status['installation_guide'] = """🪟 Windows Installation:
+        status['installation_guide'] = f"""Windows Installation:
 
-1️⃣ TESSERACT:
+1. TESSERACT:
    Download from: https://github.com/UB-Mannheim/tesseract/wiki
    Run installer and add to PATH
+   (Select additional languages during installation)
 
-2️⃣ PYTHON PACKAGES:
-   pip install numpy pytesseract pillow
+2. PYTHON PACKAGES:
+   {pip_cmd} numpy pytesseract pillow
 
-3️⃣ VERIFY:
+3. VERIFY:
    tesseract --version"""
    
     else:
-        status['installation_guide'] = """🖥️ General Installation:
+        status['installation_guide'] = f"""Installation:
 
-1️⃣ TESSERACT: Install from https://tesseract-ocr.github.io/
-2️⃣ PYTHON PACKAGES: pip install numpy pytesseract pillow
-3️⃣ VERIFY: tesseract --version"""
+1. TESSERACT: Install from https://tesseract-ocr.github.io/
+2. EXTRA LANGUAGES: Install language data for your platform
+3. PYTHON PACKAGES: {pip_cmd} numpy pytesseract pillow
+4. VERIFY: tesseract --version"""
     
     return status
 
@@ -1611,6 +2026,7 @@ def _show_tesseract_check_dialog(ctx, parent_frame, toolkit, parent_peer):
 
 def _show_installation_help_dialog(ctx, parent_frame, toolkit, parent_peer):
     """Show installation help dialog."""
+    pip_python = _get_lo_python_path()
     help_text = f"""Installation Help - {constants.EXTENSION_FULL_NAME}
 
 QUICK SETUP (macOS):
@@ -1618,10 +2034,18 @@ QUICK SETUP (macOS):
 1. Install Tesseract:
    brew install tesseract
 
-2. Install Python packages:
-   /Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow
+2. Install extra languages (optional):
+   brew install tesseract-lang
 
-3. Restart LibreOffice
+3. Install Python packages:
+   {pip_python} -m pip install numpy pytesseract pillow
+
+4. Restart LibreOffice
+
+OTHER PLATFORMS:
+• Linux: sudo apt install tesseract-ocr tesseract-ocr-all
+• Windows: Download from github.com/UB-Mannheim/tesseract/wiki
+  (select languages during install)
 
 VERIFICATION:
 • Open Terminal
@@ -1629,7 +2053,7 @@ VERIFICATION:
 • Should show version 5.x or higher
 
 TROUBLESHOOTING:
-• Ensure Homebrew is installed
+• Ensure Homebrew is installed (macOS)
 • Check Python packages in LibreOffice Python
 • Restart LibreOffice after installation
 

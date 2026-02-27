@@ -10,6 +10,7 @@
 import uno
 import unohelper
 import os
+import platform
 import tempfile
 import shutil # For shutil.which
 import logging # Ensure logging is imported at the top
@@ -22,6 +23,7 @@ _ = locale_setup.get_translator().gettext
 # Centralized logger definition for the module
 # This needs to be defined *before* it's used at the module level
 _loggers = {}
+_DIALOG_MODEL_SUPPORT_CACHE = {}
 
 def get_logger(name="TejOCR"):
     """Gets a configured logger instance.
@@ -109,6 +111,124 @@ logger = get_logger("TejOCR.uno_utils")
 logger.info("uno_utils.py: Module loaded and logger initialized.")
 
 
+def get_log_file_path():
+    """Return the canonical extension log path in the current user temp directory."""
+    try:
+        user_temp_dir = tempfile.gettempdir()
+        log_dir = os.path.join(user_temp_dir, "TejOCRLogs")
+        return os.path.join(log_dir, "tejocr.log")
+    except Exception:
+        return None
+
+
+def read_log_file_tail(max_chars=12000):
+    """Read the last part of the log file for diagnostics.
+
+    Args:
+        max_chars: Maximum number of characters to return.
+
+    Returns:
+        str: The latest log content, or an error message.
+    """
+    log_path = get_log_file_path()
+    if not log_path:
+        return "Log path is not available."
+    if not os.path.exists(log_path):
+        return _("No log file found yet at: {path}").format(path=log_path)
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as log_file:
+            content = log_file.read()
+        if max_chars and len(content) > max_chars:
+            return _("... (showing last {max_chars} characters)\n\n").format(
+                max_chars=max_chars
+            ) + content[-max_chars:]
+        return content
+    except Exception as read_error:
+        logger.warning(f"read_log_file_tail: unable to read '{log_path}': {read_error}")
+        return _("Unable to read log file. {error}").format(error=read_error)
+
+
+def _safe_set_property(control, property_name, value, context=""):
+    """Set a UNO property while tolerating unsupported properties in a fallback-safe way."""
+    try:
+        control.setPropertyValue(property_name, value)
+        return True
+    except Exception as e:
+        logger.debug(
+            "Could not set property '{property_name}' on {context}: {error}".format(
+                property_name=property_name,
+                context=context or control,
+                error=e,
+            )
+        )
+        return False
+
+
+def show_log_viewer(ctx=None, parent_frame=None, max_chars=12000, title=None):
+    """Show a readonly diagnostics dialog with recent log output."""
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            logger.warning("show_log_viewer: No ctx available; cannot open log viewer.")
+            return False
+
+    if title is None:
+        title = _("TejOCR Logs")
+
+    log_path = get_log_file_path()
+    if not log_path:
+        message = _("Could not resolve the log file path.")
+        return show_message_box(
+            title,
+            message,
+            type="errorbox",
+            parent_frame=parent_frame,
+            ctx=ctx,
+        ) == uno_utils_result_ok()
+
+    log_content = read_log_file_tail(max_chars=max_chars)
+    editor_text = _("Log file: {path}\n\n{content}").format(
+        path=log_path,
+        content=log_content
+    )
+
+    # The multiline input box is used as a read-only log viewer (Save is intentionally disabled).
+    result = show_multiline_input_box(
+        title=title,
+        message=_("Diagnostics"),
+        default_text=editor_text,
+        ctx=ctx,
+        parent_frame=parent_frame,
+        width=800,
+        height=500,
+    )
+    if result is None:
+        truncated_preview = log_content
+        if len(truncated_preview) > 2500:
+            truncated_preview = _("... (showing last 2,500 characters)\n\n") + truncated_preview[-2500:]
+        show_message_box(
+            title=title,
+            message=_(
+                "Diagnostics could not be edited in this build.\n\n"
+                "Log file: {path}\n\n"
+                "{preview}"
+            ).format(path=log_path, preview=truncated_preview),
+            type="infobox",
+            parent_frame=parent_frame,
+            ctx=ctx,
+        )
+    return result is not None
+
+
+def uno_utils_result_ok():
+    """Return the UNO OK result constant used by message boxes."""
+    try:
+        return uno.getConstantByName("com.sun.star.awt.MessageBoxResults.OK")
+    except Exception:
+        return 1
+
+
 # --- Constants for dialog results ---
 OK_BUTTON = 1  # Standard result for OK from FilePicker/Dialogs
 CANCEL_BUTTON = 0  # Standard result for Cancel from dialogs
@@ -140,23 +260,229 @@ def _get_service_manager(ctx):
         logger.error(f"Failed to get ServiceManager from context: {e}", exc_info=True)
         return None
 
-def create_instance(service_name, ctx):
+def _iter_service_contexts(ctx):
+    """Yield candidate UNO contexts for service creation."""
+    yielded = set()
+
+    if ctx is not None:
+        try:
+            yielded.add(id(ctx))
+            yield ctx
+        except Exception:
+            pass
+
+    try:
+        fallback_ctx = uno.getComponentContext()
+    except Exception:
+        fallback_ctx = None
+
+    if fallback_ctx is not None:
+        fallback_ctx_id = id(fallback_ctx)
+        if fallback_ctx_id not in yielded:
+            yielded.add(fallback_ctx_id)
+            yield fallback_ctx
+
+def create_instance(service_name, ctx=None):
     """Creates an instance of a UNO service using the provided component context."""
+    if not service_name:
+        logger.error("create_instance called without a service name.")
+        return None
+
+    attempted_contexts = []
+    last_exception = None
+
+    for candidate_ctx in _iter_service_contexts(ctx):
+        attempted_contexts.append(_context_cache_key(candidate_ctx))
+        try:
+            # Get service manager directly from context for this specific call
+            smgr = _get_service_manager(candidate_ctx)
+            if not smgr:
+                logger.error(
+                    f"Could not get ServiceManager from context '{_context_cache_key(candidate_ctx)}' for '{service_name}'."
+                )
+                continue
+
+            try:
+                instance = smgr.createInstanceWithContext(service_name, candidate_ctx)
+                if instance:
+                    if candidate_ctx is not ctx:
+                        logger.debug(
+                            f"create_instance: '{service_name}' created with context "
+                            f"{_context_cache_key(candidate_ctx)}."
+                        )
+                    return instance
+
+                logger.debug(
+                    f"createInstanceWithContext returned None for '{service_name}' in context "
+                    f"{_context_cache_key(candidate_ctx)}."
+                )
+            except Exception as e:
+                logger.debug(
+                    f"createInstanceWithContext failed for '{service_name}' in context "
+                    f"{_context_cache_key(candidate_ctx)}: {e}"
+                )
+                last_exception = e
+
+            try:
+                instance = smgr.createInstance(service_name)
+                if instance:
+                    if candidate_ctx is not ctx:
+                        logger.debug(
+                            f"create_instance: '{service_name}' created with fallback context "
+                            f"{_context_cache_key(candidate_ctx)} via createInstance()."
+                        )
+                    return instance
+            except Exception as fallback_error:
+                last_exception = fallback_error
+                logger.debug(
+                    f"createInstance fallback failed for '{service_name}' in context "
+                    f"{_context_cache_key(candidate_ctx)}: {fallback_error}"
+                )
+        except Exception as e:
+            last_exception = e
+            logger.debug(
+                f"Failed to create '{service_name}' in context {_context_cache_key(candidate_ctx)}: {e}"
+            )
+
+    if attempted_contexts:
+        logger.debug(
+            f"create_instance exhausted contexts {attempted_contexts} for service '{service_name}'."
+        )
+    else:
+        logger.error(f"create_instance called for '{service_name}' but no contexts were available.")
+
+    if last_exception is not None:
+        logger.debug(
+            f"create_instance: last error for '{service_name}': {last_exception}"
+        )
+    return None
+
+
+def _context_cache_key(ctx):
+    """Create a stable cache key for a UNO context."""
+    return f"id:{id(ctx)}" if ctx is not None else "no_ctx"
+
+
+def _settings_file_path():
+    """Returns the fallback settings file path."""
+    return os.path.join(get_user_temp_dir(), "TejOCRSettings", "settings.txt")
+
+
+def get_settings_file_path():
+    """Public helper for callers that need to surface the settings file path."""
+    return _settings_file_path()
+
+
+def supports_uno_dialog_model(ctx):
+    """Return whether dialog models can be created in this UNO context.
+
+    This is a fast capability check used by fallback input handlers.
+    """
+    cache_key = _context_cache_key(ctx)
+
+    # Cache only hard failures for this runtime. Some UNO builds can report
+    # success once and fail later, so we re-check creation on each call unless we
+    # already know the service is unavailable for this context.
+    if _DIALOG_MODEL_SUPPORT_CACHE.get(cache_key, True) is False:
+        logger.debug("supports_uno_dialog_model: Returning cached negative result for context.")
+        return False
+
     if not ctx:
-        logger.error(f"create_instance called for '{service_name}' without a valid UNO context.")
+        logger.error("supports_uno_dialog_model called without a UNO context.")
+        _DIALOG_MODEL_SUPPORT_CACHE[cache_key] = False
+        return False
+
+    try:
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
+        if not dialog_model:
+            logger.error("supports_uno_dialog_model: Service returned None for com.sun.star.awt.UnoControlDialogModel")
+            _DIALOG_MODEL_SUPPORT_CACHE[cache_key] = False
+            return False
+
+        logger.debug("supports_uno_dialog_model: Successfully created a dialog model probe instance.")
+
+        # Verify we can also instantiate a dialog control and attach the model.
+        # Some UNO environments can create the model service but fail when creating controls.
+        dialog_ctrl = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
+        if not dialog_ctrl:
+            logger.error("supports_uno_dialog_model: Service returned None for com.sun.star.awt.UnoControlDialog")
+            _DIALOG_MODEL_SUPPORT_CACHE[cache_key] = False
+            return False
+
+        try:
+            dialog_ctrl.setModel(dialog_model)
+            logger.debug("supports_uno_dialog_model: Probe dialog control accepted model attachment.")
+        except Exception as model_attach_error:
+            logger.error(
+                f"supports_uno_dialog_model: Probe failed to attach model: {model_attach_error}"
+            )
+            _DIALOG_MODEL_SUPPORT_CACHE[cache_key] = False
+            return False
+
+        # Dispose probe instances to avoid leaking UI resources.
+        for instance in (dialog_ctrl, dialog_model):
+            dispose_fn = getattr(instance, "dispose", None)
+            if callable(dispose_fn):
+                try:
+                    dispose_fn()
+                except Exception as dispose_error:
+                    logger.debug(f"supports_uno_dialog_model: Probe dispose failed: {dispose_error}")
+
+        return True
+
+    except Exception as probe_error:
+        logger.error(
+            f"supports_uno_dialog_model: Dialog model capability check failed: {probe_error}",
+            exc_info=True,
+        )
+        _DIALOG_MODEL_SUPPORT_CACHE[cache_key] = False
+        return False
+
+
+def show_file_picker(title, filters=None, default_directory="", ctx=None, parent_frame=None):
+    """Shows a file picker and returns the selected file path.
+
+    filters should be an iterable of (name, pattern) tuples.
+    """
+    logger.debug(f"show_file_picker called: title='{title}', filters='{filters}', default_directory='{default_directory}'")
+    
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            logger.warning("show_file_picker: No context available and uno.getComponentContext() failed.")
+            return None
+
+    file_picker = create_instance("com.sun.star.ui.dialogs.FilePicker", ctx)
+    if not file_picker:
+        logger.error("show_file_picker: Failed to create FilePicker instance.")
         return None
 
     try:
-        # Get service manager directly from context for this specific call
-        smgr = ctx.getServiceManager() # Assuming _get_service_manager is not needed here, direct call
-        if not smgr:
-            logger.error(f"Could not get ServiceManager from the provided context for '{service_name}'.")
-            return None
-            
-        return smgr.createInstanceWithContext(service_name, ctx)
+        file_picker.setTitle(title)
+        
+        if filters:
+            for filter_name, filter_pattern in filters:
+                file_picker.appendFilter(filter_name, filter_pattern)
+        else:
+            file_picker.appendFilter(_("All Files"), "*.*")
+        
+        if default_directory:
+            try:
+                file_picker.setDisplayDirectory(unohelper.systemPathToFileUrl(default_directory))
+            except Exception as e_dir:
+                logger.debug(f"show_file_picker: Could not set default directory '{default_directory}': {e_dir}")
+        
+        if file_picker.execute() == OK_BUTTON:
+            selected_files = file_picker.getFiles()
+            if selected_files:
+                return unohelper.fileUrlToSystemPath(selected_files[0])
     except Exception as e:
-        logger.error(f"Failed to create instance of '{service_name}': {e}", exc_info=True)
-        return None
+        logger.error(f"show_file_picker: Failed while showing picker: {e}", exc_info=True)
+        uno_utils_error_hint = _("File picker failed: {error}").format(error=e)
+        logger.debug(uno_utils_error_hint)
+    
+    return None
 
 # --- UI Utilities ---
 def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None, buttons=None):
@@ -220,6 +546,29 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
         except Exception as e:
             logger.debug(f"show_message_box: Error creating toolkit for parent peer: {e}")
 
+    # Normalize and normalize known aliases for message box type
+    # Some older call sites pass query intent through button names by mistake,
+    # so we map that to a plain message box to keep fallback UX predictable.
+    type_normalized = "messagebox"
+    if type is not None:
+        try:
+            type_normalized = str(type).strip().lower()
+        except Exception:
+            type_normalized = "messagebox"
+
+    type_alias = {
+        "ok_cancel": "messagebox",
+        "okcancel": "messagebox",
+        "yes_no": "messagebox",
+        "yesno": "messagebox",
+        "yes_no_cancel": "messagebox",
+        "yesnocancel": "messagebox",
+        "message": "messagebox",
+        "query": "querybox",
+    }
+
+    type_lower = type_alias.get(type_normalized, type_normalized)
+
     # Determine MessageBoxType with better fallback handling
     box_type_numeric_map = {
         "infobox": 1,
@@ -231,8 +580,6 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
     
     # Try to get the constant, with multiple fallback strategies
     msg_type_enum = None
-    type_lower = type.lower()
-    
     # Strategy 1: Try the exact constant name
     box_type_str_map = {
         "infobox": "INFOBOX",
@@ -330,6 +677,97 @@ def get_current_frame(ctx):
         logger.error(f"{_('Error getting current frame:')} {e}", exc_info=True)
     return None
 
+
+def _show_minimal_input_fallback(title, message, default_text="", ctx=None, parent_frame=None):
+    """Minimal fallback text-input dialog used when the full input dialog creation fails."""
+    try:
+        if ctx is None:
+            return None
+
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
+        if not dialog_model:
+            logger.error(f"Fallback input dialog: Could not create dialog model for '{title}'")
+            return None
+
+        _safe_set_property(dialog_model, "PositionX", 140, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionY", 140, f"{title}.model")
+        _safe_set_property(dialog_model, "Width", 320, f"{title}.model")
+        _safe_set_property(dialog_model, "Height", 130, f"{title}.model")
+        _safe_set_property(dialog_model, "Title", title, f"{title}.model")
+        _safe_set_property(dialog_model, "Closeable", True, f"{title}.model")
+        _safe_set_property(dialog_model, "Moveable", True, f"{title}.model")
+
+        label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        _safe_set_property(label_model, "PositionX", 10, f"{title}.label")
+        _safe_set_property(label_model, "PositionY", 10, f"{title}.label")
+        _safe_set_property(label_model, "Width", 300, f"{title}.label")
+        _safe_set_property(label_model, "Height", 40, f"{title}.label")
+        _safe_set_property(label_model, "Label", message, f"{title}.label")
+        dialog_model.insertByName("label", label_model)
+
+        text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        _safe_set_property(text_model, "PositionX", 10, f"{title}.textfield")
+        _safe_set_property(text_model, "PositionY", 55, f"{title}.textfield")
+        _safe_set_property(text_model, "Width", 300, f"{title}.textfield")
+        _safe_set_property(text_model, "Height", 15, f"{title}.textfield")
+        _safe_set_property(text_model, "Text", default_text, f"{title}.textfield")
+        dialog_model.insertByName("textfield", text_model)
+
+        ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        _safe_set_property(ok_button_model, "PositionX", 190, f"{title}.ok")
+        _safe_set_property(ok_button_model, "PositionY", 95, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Width", 55, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Height", 20, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Label", _("OK"), f"{title}.ok")
+        _safe_set_property(ok_button_model, "PushButtonType", 1, f"{title}.ok")
+        dialog_model.insertByName("ok_button", ok_button_model)
+
+        cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        _safe_set_property(cancel_button_model, "PositionX", 250, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PositionY", 95, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Width", 65, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Height", 20, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Label", _("Cancel"), f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PushButtonType", 2, f"{title}.cancel")
+        dialog_model.insertByName("cancel_button", cancel_button_model)
+
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+        if not toolkit:
+            logger.error("Fallback input dialog: Failed to get toolkit.")
+            return None
+
+        dialog = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
+        if not dialog:
+            logger.error("Fallback input dialog: Failed to create dialog control.")
+            return None
+
+        dialog.setModel(dialog_model)
+        parent_peer = None
+        if parent_frame:
+            try:
+                parent_peer = parent_frame.getContainerWindow().getPeer()
+            except Exception:
+                parent_peer = None
+        if parent_peer is None:
+            try:
+                parent_peer = toolkit.getDesktopWindow()
+            except Exception:
+                parent_peer = None
+
+        dialog.createPeer(toolkit, parent_peer)
+        result = dialog.execute()
+
+        user_text = default_text
+        if result == 1:
+            control = dialog.getControl("textfield")
+            if control:
+                user_text = control.getText()
+        dialog.dispose()
+        return user_text if result == 1 else None
+    except Exception as e:
+        logger.error(f"show_input_box fallback dialog failed: {e}", exc_info=True)
+        return None
+
 def show_input_box(title, message, default_text="", ctx=None, parent_frame=None):
     """Shows a truly interactive input dialog with an editable text field."""
     logger.debug(f"show_input_box called: {title} - {message} - default: {default_text}")
@@ -339,78 +777,98 @@ def show_input_box(title, message, default_text="", ctx=None, parent_frame=None)
             ctx = uno.getComponentContext()
         except Exception:
             logger.warning(f"show_input_box: No ctx provided and uno.getComponentContext() failed.")
-            return default_text
+            return None
+
+    if not supports_uno_dialog_model(ctx):
+        logger.error("show_input_box: UnoControlDialogModel is unavailable; interactive input dialog cannot be shown.")
+        return None
     
     try:
         # Create dialog model
-        dialog_model = ctx.getServiceManager().createInstanceWithContext(
-            "com.sun.star.awt.UnoControlDialogModel", ctx
-        )
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
         
         if not dialog_model:
-            logger.error("Failed to create dialog model")
-            return default_text
+            logger.error("Failed to create input dialog model")
+            raise RuntimeError("Could not create dialog model")
         
         # Set dialog properties
-        dialog_model.setPropertyValue("PositionX", 100)
-        dialog_model.setPropertyValue("PositionY", 100)
-        dialog_model.setPropertyValue("Width", 300)
-        dialog_model.setPropertyValue("Height", 120)
-        dialog_model.setPropertyValue("Title", title)
-        dialog_model.setPropertyValue("Closeable", True)
-        dialog_model.setPropertyValue("Moveable", True)
+        _safe_set_property(dialog_model, "PositionX", 100, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionY", 100, f"{title}.model")
+        _safe_set_property(dialog_model, "Width", 300, f"{title}.model")
+        _safe_set_property(dialog_model, "Height", 120, f"{title}.model")
+        _safe_set_property(dialog_model, "Title", title, f"{title}.model")
+        _safe_set_property(dialog_model, "Closeable", True, f"{title}.model")
+        _safe_set_property(dialog_model, "Moveable", True, f"{title}.model")
         
         # Create label for message
         label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
-        label_model.setPropertyValue("PositionX", 10)
-        label_model.setPropertyValue("PositionY", 10)
-        label_model.setPropertyValue("Width", 280)
-        label_model.setPropertyValue("Height", 30)
-        label_model.setPropertyValue("Label", message)
-        label_model.setPropertyValue("MultiLine", True)
+        _safe_set_property(label_model, "PositionX", 10, f"{title}.label")
+        _safe_set_property(label_model, "PositionY", 10, f"{title}.label")
+        _safe_set_property(label_model, "Width", 280, f"{title}.label")
+        _safe_set_property(label_model, "Height", 30, f"{title}.label")
+        _safe_set_property(label_model, "Label", message, f"{title}.label")
+        _safe_set_property(label_model, "MultiLine", True, f"{title}.label")
         dialog_model.insertByName("label", label_model)
         
         # Create text input field
         text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
-        text_model.setPropertyValue("PositionX", 10)
-        text_model.setPropertyValue("PositionY", 45)
-        text_model.setPropertyValue("Width", 280)
-        text_model.setPropertyValue("Height", 15)
-        text_model.setPropertyValue("Text", default_text)
+        _safe_set_property(text_model, "PositionX", 10, f"{title}.textfield")
+        _safe_set_property(text_model, "PositionY", 45, f"{title}.textfield")
+        _safe_set_property(text_model, "Width", 280, f"{title}.textfield")
+        _safe_set_property(text_model, "Height", 15, f"{title}.textfield")
+        _safe_set_property(text_model, "Text", default_text, f"{title}.textfield")
         dialog_model.insertByName("textfield", text_model)
         
         # Create OK button
         ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-        ok_button_model.setPropertyValue("PositionX", 150)
-        ok_button_model.setPropertyValue("PositionY", 75)
-        ok_button_model.setPropertyValue("Width", 60)
-        ok_button_model.setPropertyValue("Height", 20)
-        ok_button_model.setPropertyValue("Label", "OK")
-        ok_button_model.setPropertyValue("PushButtonType", 1)  # OK button
+        _safe_set_property(ok_button_model, "PositionX", 150, f"{title}.ok")
+        _safe_set_property(ok_button_model, "PositionY", 75, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Width", 60, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Height", 20, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Label", "OK", f"{title}.ok")
+        _safe_set_property(ok_button_model, "PushButtonType", 1, f"{title}.ok")  # OK button
         dialog_model.insertByName("ok_button", ok_button_model)
         
         # Create Cancel button
         cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-        cancel_button_model.setPropertyValue("PositionX", 220)
-        cancel_button_model.setPropertyValue("PositionY", 75)
-        cancel_button_model.setPropertyValue("Width", 60)
-        cancel_button_model.setPropertyValue("Height", 20)
-        cancel_button_model.setPropertyValue("Label", "Cancel")
-        cancel_button_model.setPropertyValue("PushButtonType", 2)  # Cancel button
+        _safe_set_property(cancel_button_model, "PositionX", 220, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PositionY", 75, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Width", 60, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Height", 20, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Label", "Cancel", f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PushButtonType", 2, f"{title}.cancel")
         dialog_model.insertByName("cancel_button", cancel_button_model)
         
         # Create dialog control
         toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
         if not toolkit:
             logger.error("Failed to create toolkit")
-            return default_text
-            
-        dialog = toolkit.createWindow(dialog_model)
+            return None
+
+        dialog = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
         if not dialog:
-            logger.error("Failed to create dialog window")
-            return default_text
+            logger.error("Failed to create dialog control")
+            return None
+        
+        dialog.setModel(dialog_model)
+        
+        # Parent peer for dialog.
+        parent_peer = None
+        if parent_frame:
+            try:
+                parent_peer = parent_frame.getContainerWindow().getPeer()
+            except Exception:
+                parent_peer = None
+        if parent_peer is None:
+            try:
+                parent_peer = toolkit.getDesktopWindow()
+            except Exception:
+                parent_peer = None
+        if parent_peer is None:
+            logger.warning("No parent peer available for input dialog")
         
         # Execute dialog
+        dialog.createPeer(toolkit, parent_peer)
         result = dialog.execute()
         
         # Get the text if OK was pressed
@@ -428,51 +886,138 @@ def show_input_box(title, message, default_text="", ctx=None, parent_frame=None)
         
     except Exception as e:
         logger.error(f"show_input_box: Failed to create interactive dialog: {e}", exc_info=True)
-        # Fallback to simple message box approach for critical cases
-        logger.info("Falling back to simplified choice-based input")
-        
-        # For language selection, offer common choices
-        if "language" in message.lower() or "lang" in title.lower():
-            try:
-                from tejocr import tejocr_engine
-                available_langs = tejocr_engine.get_available_languages()
-                if "eng" in available_langs:
-                    result = show_message_box(
-                        title=title,
-                        message=f"{message}\n\nUse English (recommended)?",
-                        type="querybox",
-                        buttons="yes_no_cancel",
-                        parent_frame=parent_frame,
-                        ctx=ctx
-                    )
-                    if result == 2:  # YES
-                        return "eng"
-                    elif result == 3:  # NO
-                        return default_text
-                    else:  # CANCEL
-                        return None
-            except Exception:
-                pass
-        
-        # For paths, offer auto-detect
-        elif "path" in message.lower() or "tesseract" in message.lower():
-            result = show_message_box(
-                title=title,
-                message=f"{message}\n\nUse auto-detect?",
-                type="querybox",
-                buttons="yes_no_cancel",
-                parent_frame=parent_frame,
-                ctx=ctx
+        logger.warning(
+            "show_input_box: No fallback UI available in this UNO runtime. "
+            "Returning None to indicate user input could not be collected."
+        )
+        return None
+
+
+def show_multiline_input_box(title, message, default_text="", ctx=None, parent_frame=None, width=640, height=280):
+    """Shows an editable multi-line text dialog and returns the entered text.
+
+    This is intentionally defensive: if multi-line controls are not supported in
+    a particular LibreOffice build, it falls back to a single-line dialog.
+    """
+    logger.debug(
+        f"show_multiline_input_box called: {title} - {message} - default length: {len(default_text or '')}"
+    )
+
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            logger.warning(
+                "show_multiline_input_box: No ctx provided and uno.getComponentContext() failed."
             )
-            if result == 2:  # YES
-                return ""  # Auto-detect
-            elif result == 3:  # NO
-                return default_text
-            else:  # CANCEL
-                return None
-        
-        # Generic fallback
-        return default_text
+            return None
+
+    if not supports_uno_dialog_model(ctx):
+        logger.error("show_multiline_input_box: UnoControlDialogModel is unavailable; multiline edit dialog cannot be shown.")
+        return None
+
+    safe_width = max(340, int(width))
+    safe_height = max(180, int(height))
+    label_height = int(max(24, min(72, safe_height * 0.22)))
+    input_y = label_height + 8
+    input_height = max(100, safe_height - label_height - 46)
+    button_y = safe_height - 36
+
+    try:
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
+        if not dialog_model:
+            logger.error("Failed to create multiline input dialog model")
+            raise RuntimeError("Could not create dialog model")
+
+        _safe_set_property(dialog_model, "PositionX", 120, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionY", 120, f"{title}.model")
+        _safe_set_property(dialog_model, "Width", safe_width, f"{title}.model")
+        _safe_set_property(dialog_model, "Height", safe_height, f"{title}.model")
+        _safe_set_property(dialog_model, "Title", title, f"{title}.model")
+        _safe_set_property(dialog_model, "Closeable", True, f"{title}.model")
+        _safe_set_property(dialog_model, "Moveable", True, f"{title}.model")
+
+        label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        _safe_set_property(label_model, "PositionX", 10, f"{title}.label")
+        _safe_set_property(label_model, "PositionY", 10, f"{title}.label")
+        _safe_set_property(label_model, "Width", safe_width - 20, f"{title}.label")
+        _safe_set_property(label_model, "Height", label_height, f"{title}.label")
+        _safe_set_property(label_model, "MultiLine", True, f"{title}.label")
+        _safe_set_property(label_model, "Label", message, f"{title}.label")
+        dialog_model.insertByName("label", label_model)
+
+        text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        _safe_set_property(text_model, "PositionX", 10, f"{title}.text")
+        _safe_set_property(text_model, "PositionY", input_y, f"{title}.text")
+        _safe_set_property(text_model, "Width", safe_width - 20, f"{title}.text")
+        _safe_set_property(text_model, "Height", input_height, f"{title}.text")
+        _safe_set_property(text_model, "Text", default_text, f"{title}.text")
+        _safe_set_property(text_model, "MultiLine", True, f"{title}.text")
+        try:
+            text_model.setPropertyValue("VScroll", True)
+            text_model.setPropertyValue("HScroll", True)
+        except Exception:
+            pass
+        dialog_model.insertByName("textfield", text_model)
+
+        ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        _safe_set_property(ok_button_model, "PositionX", safe_width - 150, f"{title}.ok")
+        _safe_set_property(ok_button_model, "PositionY", button_y, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Width", 60, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Height", 20, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Label", _("OK"), f"{title}.ok")
+        _safe_set_property(ok_button_model, "PushButtonType", 1, f"{title}.ok")
+        dialog_model.insertByName("ok_button", ok_button_model)
+
+        cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        _safe_set_property(cancel_button_model, "PositionX", safe_width - 80, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PositionY", button_y, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Width", 70, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Height", 20, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Label", _("Cancel"), f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PushButtonType", 2, f"{title}.cancel")
+        dialog_model.insertByName("cancel_button", cancel_button_model)
+
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+        if not toolkit:
+            logger.error("Failed to create toolkit for multiline input dialog")
+            raise RuntimeError("Toolkit unavailable")
+
+        dialog = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
+        if not dialog:
+            logger.error("Failed to create multiline dialog control")
+            raise RuntimeError("Dialog control unavailable")
+
+        dialog.setModel(dialog_model)
+
+        parent_peer = None
+        if parent_frame:
+            try:
+                parent_peer = parent_frame.getContainerWindow().getPeer()
+            except Exception:
+                parent_peer = None
+        if parent_peer is None:
+            try:
+                parent_peer = toolkit.getDesktopWindow()
+            except Exception:
+                parent_peer = None
+
+        dialog.createPeer(toolkit, parent_peer)
+        result = dialog.execute()
+        final_value = default_text
+        if result == 1:
+            control = dialog.getControl("textfield")
+            if control:
+                final_value = control.getText()
+        dialog.dispose()
+        return final_value if result == 1 else None
+    except Exception as e:
+        logger.error(
+            f"show_multiline_input_box: Failed to create/edit multiline dialog: {e}",
+            exc_info=True,
+        )
+        logger.error("show_multiline_input_box: Multiline dialog unavailable in this UNO runtime.")
+        return None
 
 # Note: Interactive dialog functions have been moved to tejocr_interactive_dialogs.py
 def show_interactive_settings_dialog_deprecated(ctx, parent_frame=None):
@@ -488,9 +1033,7 @@ def show_interactive_settings_dialog_deprecated(ctx, parent_frame=None):
     
     try:
         # Create dialog model
-        dialog_model = ctx.getServiceManager().createInstanceWithContext(
-            "com.sun.star.awt.UnoControlDialogModel", ctx
-        )
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
         
         if not dialog_model:
             logger.error("Failed to create settings dialog model")
@@ -773,9 +1316,7 @@ def show_interactive_ocr_options_dialog_deprecated(ctx, parent_frame=None, sourc
     
     try:
         # Create dialog model
-        dialog_model = ctx.getServiceManager().createInstanceWithContext(
-            "com.sun.star.awt.UnoControlDialogModel", ctx
-        )
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
         
         if not dialog_model:
             logger.error("Failed to create OCR options dialog model")
@@ -1071,14 +1612,59 @@ def get_setting(key, default_value, ctx, node=constants.CFG_NODE_SETTINGS):
     """Reads a setting from TejOCR configuration with file-based fallback."""
     # Quick fallback to file-based settings due to configuration schema issues
     try:
-        settings_file = os.path.join(get_user_temp_dir(), "TejOCRSettings", "settings.txt")
+        settings_file = _settings_file_path()
+        if not settings_file:
+            raise RuntimeError("Could not resolve settings file path")
         if os.path.exists(settings_file):
             with open(settings_file, 'r', encoding='utf-8') as f:
+                file_settings = {}
                 for line in f:
-                    if '=' in line and line.strip().startswith(key + '='):
-                        value = line.split('=', 1)[1].strip()
-                        logger.debug(f"get_setting: Found {key}={value} in file")
-                        return value
+                    if '=' not in line:
+                        continue
+                    k, v = line.strip().split('=', 1)
+                    if k:
+                        file_settings[k.strip()] = v.strip()
+
+            if key in file_settings:
+                value = file_settings[key]
+
+                # Compatibility rule for output mode:
+                # If the canonical key exists but still points to the default value,
+                # honor the legacy `output_mode` key when present because some
+                # previous runtime snapshots may have only updated legacy output mode.
+                if key == constants.CFG_KEY_DEFAULT_OUTPUT_MODE:
+                    canonical_value = str(value).strip().lower()
+                    legacy_value = file_settings.get("output_mode")
+                    if legacy_value is not None:
+                        legacy_value = str(legacy_value).strip()
+                        legacy_normalized = legacy_value.replace(" ", "_").replace("-", "_").lower()
+                        if canonical_value in ("", constants.DEFAULT_OUTPUT_MODE) and legacy_normalized:
+                            logger.debug(
+                                "get_setting: Found legacy output_mode={legacy} and default output setting is default cursor. "
+                                "Using legacy value for compatibility.".format(legacy=legacy_value)
+                            )
+                            return legacy_value
+                        if not value and legacy_value:
+                            logger.debug(
+                                "get_setting: Found empty default_output_mode; using legacy output_mode={legacy}.".format(
+                                    legacy=legacy_value
+                                )
+                            )
+                            return legacy_value
+
+                logger.debug(f"get_setting: Found {key}={value} in file")
+                return value
+
+            # Backward-compatible alias for environments/docs that still use
+            # `output_mode` instead of `default_output_mode` in the fallback file.
+            if key == constants.CFG_KEY_DEFAULT_OUTPUT_MODE and "output_mode" in file_settings:
+                value = file_settings["output_mode"]
+                logger.debug(
+                    "get_setting: Found legacy output_mode={value} while reading default_output_mode. Using legacy value.".format(
+                        value=value
+                    )
+                )
+                return value
     except Exception as e:
         logger.debug(f"get_setting: File fallback failed: {e}")
     
@@ -1089,9 +1675,11 @@ def set_setting(key, value, ctx, node=constants.CFG_NODE_SETTINGS):
     """Writes a setting to TejOCR configuration with file-based fallback."""
     # Quick fallback to file-based settings due to configuration schema issues  
     try:
-        settings_dir = os.path.join(get_user_temp_dir(), "TejOCRSettings")
+        settings_dir = os.path.dirname(_settings_file_path())
+        if not settings_dir:
+            raise RuntimeError("Could not resolve settings directory")
         os.makedirs(settings_dir, exist_ok=True)
-        settings_file = os.path.join(settings_dir, "settings.txt")
+        settings_file = _settings_file_path()
         
         # Read existing settings
         existing_settings = {}
@@ -1101,9 +1689,18 @@ def set_setting(key, value, ctx, node=constants.CFG_NODE_SETTINGS):
                     if '=' in line:
                         k, v = line.strip().split('=', 1)
                         existing_settings[k] = v
-        
+
+        serialized_value = str(value)
+
+        # Keep both output mode keys in sync to remain compatible with older fallback UIs.
+        # This prevents cases where a legacy `output_mode` edit overrides `default_output_mode` silently.
+        if key == constants.CFG_KEY_DEFAULT_OUTPUT_MODE:
+            existing_settings["output_mode"] = serialized_value
+        if key == "output_mode":
+            existing_settings[constants.CFG_KEY_DEFAULT_OUTPUT_MODE] = serialized_value
+
         # Update the specific setting
-        existing_settings[key] = str(value)
+        existing_settings[key] = serialized_value
         
         # Write back all settings
         with open(settings_file, 'w', encoding='utf-8') as f:
@@ -1360,18 +1957,165 @@ def find_tesseract_executable(configured_path=""):
     2. Checks common system PATH locations.
     Returns the path to the executable or None if not found.
     """
-    # module_logger.debug(f"Searching for Tesseract. Configured path: '{configured_path}'")
-    if configured_path and os.path.isfile(configured_path):
-        # module_logger.debug(f"Tesseract found at configured path: {configured_path}")
-        return configured_path
+    configured_path = (configured_path or "").strip() if isinstance(configured_path, str) else ""
+    logger.debug(f"Searching for Tesseract. Configured path: '{configured_path}'")
+
+    def _normalize_candidate(path_candidate):
+        if not path_candidate:
+            return ""
+        expanded = os.path.expandvars(
+            os.path.expanduser(str(path_candidate).strip())
+        )
+        expanded = expanded.strip().strip('"').strip("'")
+        normalized = os.path.normpath(expanded)
+        if os.path.isdir(normalized):
+            return ""
+        return normalized
     
-    # shutil.which checks the system's PATH environment variable.
-    found_path = shutil.which("tesseract")
-    if found_path:
-        # module_logger.debug(f"Tesseract found in PATH: {found_path}")
-        return found_path
-            
-    # module_logger.warning("Tesseract executable not found in configured path or system PATH.")
+    def _is_executable(path_candidate):
+        if not path_candidate or not os.path.isfile(path_candidate):
+            return False
+        return os.access(path_candidate, os.X_OK) or os.path.splitext(path_candidate)[1].lower() in (".exe", ".bat", ".cmd")
+
+    def _candidate_variants(base_path):
+        normalized = _normalize_candidate(base_path)
+        if not normalized:
+            return ()
+
+        if os.path.isdir(normalized):
+            return (
+                os.path.join(normalized, "tesseract"),
+                os.path.join(normalized, "tesseract.exe"),
+                os.path.join(normalized, "tesseract.bat"),
+                os.path.join(normalized, "tesseract.cmd"),
+            )
+
+        if os.path.splitext(normalized)[1]:
+            return (normalized,)
+        return (
+            normalized,
+            f"{normalized}.exe",
+            f"{normalized}.bat",
+            f"{normalized}.cmd",
+        )
+
+    # 1) Check environment-provided overrides first.
+    explicit_paths = [
+        os.environ.get("TESSERACT_PATH"),
+        os.environ.get("TESSERACT_CMD"),
+        os.environ.get("TESSERACT_EXE")
+    ]
+    for explicit in explicit_paths:
+        for candidate in _candidate_variants(explicit):
+            if _is_executable(candidate):
+                logger.debug(f"Tesseract found via environment variable: {candidate}")
+                return candidate
+    
+    # 2) Check configured path if provided.
+    if configured_path:
+        for configured_candidate in _candidate_variants(configured_path):
+            if _is_executable(configured_candidate):
+                logger.debug(f"Tesseract found from configured path: {configured_candidate}")
+                return configured_candidate
+        configured_path_cmd = _normalize_candidate(shutil.which(configured_path))
+        if _is_executable(configured_path_cmd):
+            logger.debug(f"Tesseract found by resolving configured executable '{configured_path}' through PATH: {configured_path_cmd}")
+            return configured_path_cmd
+    
+    # 3) Check current PATH and known wrappers.
+    for candidate_name in ("tesseract", "tesseract.exe"):
+        found_path = shutil.which(candidate_name)
+        if _is_executable(found_path):
+            logger.debug(f"Tesseract found on PATH ({candidate_name}): {found_path}")
+            return found_path
+
+    # 3b) Windows PATHEXT-aware PATH scan for tesseract command variants.
+    if os.name == "nt":
+        path_exts = [ext.strip().lower() for ext in (os.environ.get("PATHEXT") or ".exe;.bat;.cmd").split(";")]
+        for path_entry in (os.environ.get("PATH") or "").split(os.pathsep):
+            if not path_entry:
+                continue
+            for ext in path_exts:
+                if not ext:
+                    continue
+                if not ext.startswith("."):
+                    ext = f".{ext}"
+                candidate = os.path.join(path_entry, f"tesseract{ext}")
+                if _is_executable(candidate):
+                    logger.debug(f"Tesseract found on PATH with extension {ext}: {candidate}")
+                    return candidate
+    
+    # 4) Check common install locations (cross-platform)
+    common_locations = [
+        "/usr/local/bin/tesseract",
+        "/opt/homebrew/bin/tesseract",
+        "/usr/bin/tesseract",
+        "/usr/local/Cellar/tesseract/bin/tesseract",
+        "/bin/tesseract",
+        "/opt/homebrew/opt/tesseract/bin/tesseract",
+    ]
+
+    if os.name == "nt":
+        windows_root_candidates = [
+            os.getenv("ProgramFiles"),
+            os.getenv("ProgramFiles(x86)"),
+            os.getenv("ProgramW6432"),
+            os.getenv("LOCALAPPDATA"),
+            os.getenv("APPDATA"),
+            os.getenv("USERPROFILE"),
+            os.getenv("SCOOP"),
+            os.getenv("SCOOP_GLOBAL"),
+            os.getenv("ChocolateyInstall"),
+        ]
+
+        windows_crumbs = (
+            "Tesseract-OCR\\tesseract.exe",
+            "Tesseract-OCR\\bin\\tesseract.exe",
+            "Programs\\Tesseract-OCR\\tesseract.exe",
+            os.path.join("scoop", "apps", "tesseract", "current", "tesseract.exe"),
+            os.path.join("scoop", "shims", "tesseract.exe"),
+            os.path.join("tesseract", "tesseract.exe"),
+            os.path.join("msys64", "mingw64", "bin", "tesseract.exe"),
+            os.path.join("msys64", "usr", "bin", "tesseract.exe"),
+            os.path.join("mingw64", "bin", "tesseract.exe"),
+        )
+
+        direct_windows_locations = (
+            r"C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+            r"C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe",
+            r"C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe",
+            r"C:\\Users\\%USERNAME%\\AppData\\Local\\Programs\\tesseract-ocr\\tesseract.exe",
+            r"C:\\tools\\tesseract\\tesseract.exe",
+            r"C:\\msys64\\usr\\bin\\tesseract.exe",
+            r"C:\\msys64\\mingw64\\bin\\tesseract.exe",
+        )
+
+        for root in windows_root_candidates:
+            if not root:
+                continue
+            normalized_root = _normalize_candidate(root)
+            if not normalized_root:
+                continue
+            for crumb in windows_crumbs:
+                candidate = os.path.normpath(os.path.join(normalized_root, crumb))
+                if _is_executable(candidate):
+                    logger.debug(f"Tesseract found in windows install root {normalized_root}: {candidate}")
+                    return candidate
+
+        for location in direct_windows_locations:
+            candidate = os.path.normpath(os.path.expandvars(location))
+            if _is_executable(candidate):
+                logger.debug(f"Tesseract found in direct windows location: {candidate}")
+                return candidate
+    
+    for path in common_locations:
+        expanded_candidate = os.path.expandvars(path)
+        normalized_candidate = os.path.normpath(expanded_candidate)
+        if _is_executable(normalized_candidate):
+            logger.debug(f"Tesseract found in common location: {normalized_candidate}")
+            return normalized_candidate
+    
+    logger.warning("Tesseract executable not found in common locations or PATH.")
     return None
 
 

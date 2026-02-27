@@ -1,0 +1,8 @@
+# Build artifacts and local environment files
+*.oxt
+__pycache__/
+*.pyc
+logs.txt
+.DS_Store
+dist/
+

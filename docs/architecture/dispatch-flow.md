@@ -55,10 +55,13 @@ _handle_ocr_selected_image()
   -> output.handle_ocr_output(...)
 
 _handle_ocr_image_from_file()
-  -> pick path via file picker
-  -> _perform_ocr_with_options(source='file', image_path=...)
-  -> ensure_tesseract_is_ready_and_run(...)
-  -> engine.perform_ocr(...)
+  -> pick file paths (images/PDFs) via file picker
+  -> _perform_batch_ocr(file_paths=...)
+  -> pdf parsing (if applicable)
+  -> loop over items:
+     -> ensure_tesseract_is_ready_and_run(...)
+     -> engine.perform_ocr(...)
+  -> merge results (optional)
   -> output.handle_ocr_output(...)
 ```
 
@@ -66,12 +69,13 @@ _handle_ocr_image_from_file()
 flowchart TD
   A["_handle_ocr_selected_image"] --> B["is_graphic_object_selected"]
   B --> C["_perform_ocr_with_options(selected)"]
-  D["_handle_ocr_image_from_file"] --> E["show_file_picker"]
-  E --> F["_perform_ocr_with_options(file)"]
+  D["_handle_ocr_image_from_file"] --> E["show_file_picker (multi-select)"]
+  E --> F["_perform_batch_ocr(file_paths)"]
   C --> G["_ensure_tesseract_is_ready_and_run"]
-  F --> G
+  F --> F1["Extract PDF pages & loop items"]
+  F1 --> G
   G --> H["engine.perform_ocr"]
-  H --> I["output.handle_ocr_output"]
+  H --> I["output.handle_ocr_output (merged or per-page)"]
 ```
 
 ## Status enablement

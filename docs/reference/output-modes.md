@@ -18,11 +18,15 @@ Canonical output mode values are stored in `constants` as:
 ## Runtime call chain
 
 ```text
-_handle_ocr_selected_image / _handle_ocr_image_from_file
-  -> _capture_selected_image_anchor (selected only)
+_handle_ocr_selected_image
+  -> _capture_selected_image_anchor
   -> _perform_ocr_with_options(...)
-     -> tejocr_engine.perform_ocr(...)
-     -> handle_ocr_output(...) in tejocr_output.py
+
+_handle_ocr_image_from_file
+  -> _perform_batch_ocr(...)
+     -> (rasterizes PDFs if needed)
+     -> loops over items calling _perform_ocr_with_options(...) natively
+     -> handle_ocr_output(...) in tejocr_output.py (merged or loop individual)
         -> _insert_text_at_cursor / _insert_text_into_new_textbox /
            _replace_image_with_text / _copy_text_to_clipboard
 ```
@@ -31,10 +35,10 @@ _handle_ocr_selected_image / _handle_ocr_image_from_file
 
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
-  A["_perform_ocr_with_options(source_type, image, output_mode)"]
-  A --> B{"source_type"}
-  B -->|"selected"| C["pass insertion_anchor + replacement_target to handle_ocr_output"]
-  B -->|"file"| D["pass only insertion_anchor=None"]
+  A["_perform_ocr_with_options / _perform_batch_ocr"]
+  A --> B{"source_type / batch mode"}
+  B -->|"selected image"| C["pass insertion_anchor + replacement_target to handle_ocr_output"]
+  B -->|"file / batch"| D["pass only insertion_anchor=None"]
 
   C --> E["mode = at_cursor | new_text_box | to_clipboard | replace_image"]
   D --> E

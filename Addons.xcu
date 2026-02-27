@@ -46,12 +46,12 @@
                         <value>uno:org.libreoffice.TejOCR.OCRImageFromFile</value>
                     </prop>
                     <prop oor:name="Title" oor:type="xs:string">
-                        <value xml:lang="en-US">OCR Image from ~File...</value>
-                        <value xml:lang="hi-IN">फ़ाइल से छवि ओसीआर...</value>
-                        <value xml:lang="es-ES">OCR Imagen desde ~Archivo...</value>
-                        <value xml:lang="fr-FR">OCR Image à partir d'un ~Fichier...</value>
-                        <value xml:lang="de-DE">OCR Bild aus ~Datei...</value>
-                        <value xml:lang="zh-CN">从文件识别图像...</value>
+                        <value xml:lang="en-US">OCR Image/PDF from ~File...</value>
+                        <value xml:lang="hi-IN">फाइल/पीडीएफ़ से OCR...</value>
+                        <value xml:lang="es-ES">OCR Imagen/PDF desde ~Archivo...</value>
+                        <value xml:lang="fr-FR">OCR Image/PDF depuis ~Fichier...</value>
+                        <value xml:lang="de-DE">OCR Bild/PDF aus ~Datei...</value>
+                        <value xml:lang="zh-CN">从文件识别图片/PDF...</value>
                     </prop>
                     <prop oor:name="Target" oor:type="xs:string">
                         <value>_self</value>

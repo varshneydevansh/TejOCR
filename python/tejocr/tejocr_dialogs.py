@@ -14,22 +14,15 @@ import unohelper
 # Standard Python imports
 import os
 
-# Diagnostic print
-print(f"DEBUG: tejocr_dialogs.py: Right before UNO interface imports. uno module: {uno}")
-
 # Import UNO interfaces directly from the uno module (safer than com.sun.star imports)
 # These are commonly exposed by the uno module itself
 try:
     from uno import XActionListener, XItemListener
-    print("DEBUG: tejocr_dialogs.py: Successfully imported XActionListener, XItemListener from uno module")
 except ImportError:
     # Fallback: Access via UNO type system
-    print("DEBUG: tejocr_dialogs.py: Fallback - importing XActionListener, XItemListener via com.sun.star")
     try:
         from com.sun.star.awt import XActionListener, XItemListener
-        print("DEBUG: tejocr_dialogs.py: Successfully imported XActionListener, XItemListener from com.sun.star.awt")
     except ImportError as e:
-        print(f"DEBUG: tejocr_dialogs.py: CRITICAL - Could not import XActionListener, XItemListener: {e}")
         # This would be a critical failure, but we'll define dummy classes to prevent module loading failure
         class XActionListener: pass
         class XItemListener: pass
@@ -37,9 +30,7 @@ except ImportError:
 # Import other UNO types with similar safety
 try:
     from com.sun.star.task import XJobExecutor
-    print("DEBUG: tejocr_dialogs.py: Successfully imported XJobExecutor")
 except ImportError as e:
-    print(f"DEBUG: tejocr_dialogs.py: Warning - Could not import XJobExecutor: {e}")
     class XJobExecutor: pass
 
 # Then your project's modules
@@ -108,6 +99,14 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
         self._last_successful_dialog_url = None
         self._last_dialog_creation_error = None
         self._last_dialog_creation_errors = []
+        self._feedback_cache = {}
+
+        # Feedback colors
+        self.COLOR_BTN_PRIMARY = 0x2d7bff
+        self.COLOR_BTN_SUCCESS = 0x22C55E
+        self.COLOR_BTN_WARNING = 0xF59E0B
+        self.COLOR_BTN_DANGER = 0xEF4444
+        self.COLOR_TEXT_ON_DARK = 0xFFFFFF
 
     @staticmethod
     def _bool_to_state(value):
@@ -236,6 +235,133 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
         # Custom dialogs might vary, so we use our flag set by action listeners
         return self.closed_by_ok or result == 1 
 
+    def _get_action_command(self, event):
+        """Best-effort extraction of an action command from a LibreOffice event."""
+        if event is None:
+            return None
+
+        # Common event payload path.
+        for attr in ("ActionCommand", "actionCommand", "Actioncommand"):
+            try:
+                value = getattr(event, attr, None)
+                if callable(value):
+                    value = value()
+                if value:
+                    return str(value)
+            except Exception:
+                pass
+
+        # Fallback to source model payload.
+        try:
+            source = getattr(event, "Source", None)
+            if callable(source):
+                source = source()
+            if source:
+                model = getattr(source, "getModel", None)
+                if callable(model):
+                    model = model()
+                if model:
+                    value = getattr(model, "ActionCommand", None)
+                    if callable(value):
+                        value = value()
+                    if value:
+                        return str(value)
+                    value = getattr(model, "getActionCommand", None)
+                    if callable(value):
+                        value = value()
+                        if value:
+                            return str(value)
+        except Exception:
+            pass
+
+        return None
+
+    def _get_event_source_control(self, event):
+        """Best-effort extraction of control object from action event."""
+        if event is None:
+            return None
+        try:
+            source = getattr(event, "Source", None)
+            if callable(source):
+                source = source()
+            if source:
+                return source
+        except Exception:
+            pass
+        return None
+
+    def _capture_control_feedback_state(self, control):
+        if not control:
+            return {}
+        state = {}
+        try:
+            state["text"] = control.getText()
+        except Exception:
+            state["text"] = None
+        try:
+            state["enabled"] = control.isEnabled()
+        except Exception:
+            state["enabled"] = None
+        try:
+            model = control.getModel()
+            state["bg"] = getattr(model, "BackgroundColor", None)
+            state["fg"] = getattr(model, "TextColor", None)
+        except Exception:
+            state["bg"] = None
+            state["fg"] = None
+        return state
+
+    def _restore_control_feedback_state(self, control, state):
+        if not control or not isinstance(state, dict):
+            return
+        try:
+            if state.get("text") is not None:
+                control.setText(state["text"])
+        except Exception:
+            pass
+        try:
+            if state.get("enabled") is not None:
+                control.setEnable(state["enabled"])
+        except Exception:
+            pass
+        try:
+            model = control.getModel()
+            if state.get("bg") is not None:
+                model.BackgroundColor = state["bg"]
+            if state.get("fg") is not None:
+                model.TextColor = state["fg"]
+        except Exception:
+            pass
+
+    def _set_control_feedback(
+        self,
+        control,
+        text=None,
+        enabled=None,
+        bg_color=None,
+        fg_color=None,
+    ):
+        if not control:
+            return
+        if text is not None:
+            try:
+                control.setText(text)
+            except Exception:
+                pass
+        if enabled is not None:
+            try:
+                control.setEnable(enabled)
+            except Exception:
+                pass
+        try:
+            model = control.getModel()
+            if bg_color is not None:
+                model.BackgroundColor = bg_color
+            if fg_color is not None:
+                model.TextColor = fg_color
+        except Exception:
+            pass
+
     def dispose(self):
         """Disposes of the dialog."""
         if self.dialog:
@@ -245,7 +371,7 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
     # --- XActionListener --- (Common actions)
     def actionPerformed(self, event):
         """Handles action events (e.g., button clicks)."""
-        command = event.ActionCommand
+        command = self._get_action_command(event)
         # print(f"BaseDialog: ActionPerformed - {command}")
         if command == "ok" or command == "run_ocr" or command == "save_settings": # Common OK/Run commands
             self.closed_by_ok = True
@@ -421,16 +547,68 @@ class OptionsDialogHandler(BaseDialogHandler):
             selected_control.setState(True)
 
     def actionPerformed(self, event):
-        super().actionPerformed(event) # Handles run_ocr, cancel, help (if not overridden)
-        command = event.ActionCommand
-        logger.debug(f"OptionsDialogHandler actionPerformed: {command}")
-        
+        source_control = self._get_event_source_control(event)
+        command = self._get_action_command(event)
+        if not command:
+            logger.warning("OptionsDialog: action event missing command.")
+            return
+
+        # Give immediate visual feedback on user action.
+        if command == "run_ocr":
+            baseline = self._capture_control_feedback_state(source_control)
+            status_label = self.get_control("StatusLabel")
+            self._set_control_feedback(
+                source_control,
+                text="Processing...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            if status_label:
+                status_label.setText("Starting OCR processing...")
+            super().actionPerformed(event)  # Handles run_ocr/cancel/help (if not overridden)
+            self._restore_control_feedback_state(source_control, baseline)
+            return
+
         if command == "refresh_languages":
-            self._refresh_languages()
+            baseline = self._capture_control_feedback_state(source_control)
+            status_label = self.get_control("StatusLabel")
+            self._set_control_feedback(
+                source_control,
+                text="Refreshing...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            if status_label:
+                status_label.setText("Refreshing language list...")
+            try:
+                self._refresh_languages()
+            finally:
+                self._restore_control_feedback_state(source_control, baseline)
+            return
+
+        if command == "cancel":
+            baseline = self._capture_control_feedback_state(source_control)
+            status_label = self.get_control("StatusLabel")
+            if status_label:
+                status_label.setText("Cancelling...")
+            self._set_control_feedback(
+                source_control,
+                text="Cancelling...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            super().actionPerformed(event)
+            self._restore_control_feedback_state(source_control, baseline)
+            return
+
+        super().actionPerformed(event) # Handles run_ocr, cancel, help (if not overridden)
+        logger.debug(f"OptionsDialogHandler actionPerformed: {command}")
+
         # NOTE: "help" is handled by super().actionPerformed() — do not duplicate here
-        elif command == "run_ocr":
-            # The base class will call _handle_ok_action()
-            pass
+        # "run_ocr" handling is already handled through super() above.
 
     def _refresh_languages(self):
         """Refresh the language list."""
@@ -442,45 +620,35 @@ class OptionsDialogHandler(BaseDialogHandler):
 
     def _show_help(self):
         """Show help for the OCR Options dialog."""
-        help_text = f"""{constants.EXTENSION_FULL_NAME} - OCR Options Help
+        help_text = f"""ℹ️ {constants.EXTENSION_FULL_NAME} - OCR Options Help
 
-LANGUAGE SELECTION:
+✅ LANGUAGE SELECTION:
 • Choose the language of text in your image
 • Correct language selection improves accuracy
-• Use 'Refresh' to update available languages
 
-OUTPUT MODE:
+✅ BATCH & PDF OPTIONS:
+• Select one or more image files and/or PDFs via the 'OCR File' menu.
+• Merge bulk/PDF results combines all pages into one output block.
+• Disable merge to insert each source/page separately.
+
+✅ OUTPUT MODE:
 • Cursor: Insert text at current cursor position
 • Text Box: Create a new text box with the text
 • Replace Image: Replace selected image with text
 • Clipboard: Copy text to system clipboard
 
-ADVANCED OPTIONS:
-• Preset is inherited from Settings and defines a profile for extraction:
-  - Fast: faster processing
-  - Balanced: default profile
-  - Accuracy: higher quality extraction
-  - Custom: values from manual controls are preserved
-• PSM: page segmentation mode (0-13). Higher control gives more layout-specific behavior.
-  - 0: OSD only
+⚠️ ADVANCED OPTIONS:
+• Preset defines a profile for extraction: Fast, Balanced, Accuracy.
+• PSM: Page segments (0-13). 
   - 3: fully automatic layout (recommended default)
   - 6: single uniform text block
-• OEM: OCR engine mode (0-3).
-  - 0: legacy engine only
-  - 1: LSTM engine only
-  - 2: legacy + LSTM engines
+  - 11: sparse text anywhere
+• OEM: Engine mode (0-3).
+  - 1: LSTM engine only (good for modern)
   - 3: auto (recommended default)
-• If you change PSM or OEM here, they are used for this OCR run only.
-  To change default Preset/PSM/OEM values for future runs, use Settings.
-• Preprocessing: image enhancement options (Grayscale, Binarize)
 
-BUTTONS:
-• Start OCR: Begin text recognition
-• Cancel: Close without processing
-• Help: Show this help message
-
-TIP:
-• Want a different PSM/OEM profile? Use Settings to change defaults."""
+💡 TIP:
+• Change PSM/OEM/Preset defaults in the main TejOCR Settings dialog."""
         
         uno_utils.show_message_box("OCR Options Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
 
@@ -850,6 +1018,18 @@ class SettingsDialogHandler(BaseDialogHandler):
         logger.info("Checking dependencies for Settings dialog...")
         
         try:
+            # Refresh runtime detection so installs completed in this session are visible.
+            try:
+                import importlib
+                importlib.invalidate_caches()
+                try:
+                    from tejocr import tejocr_pdf
+                    importlib.reload(tejocr_pdf)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
             self.dependency_status = _check_dependencies()
             
             # Tesseract status
@@ -866,16 +1046,28 @@ class SettingsDialogHandler(BaseDialogHandler):
             p   = self.dependency_status.get('pytesseract_ok', False)
             pil = self.dependency_status.get('pillow_ok', False)
             count = sum([n, p, pil])
+            pdf_ok = bool(self.dependency_status.get('pdf_renderer_available', False))
+            pdf_status = "PDF: ok" if pdf_ok else "PDF: missing"
 
             if count >= 3:
-                self._set_label("PythonPackagesStatusLabel",
-                                "Python: All 3 packages OK", self.COLOR_GREEN)
+                python_status = "Py: 3/3"
             elif count > 0:
-                self._set_label("PythonPackagesStatusLabel",
-                                f"Python: {count}/3 packages installed", self.COLOR_AMBER)
+                python_status = f"Py: {count}/3"
             else:
-                self._set_label("PythonPackagesStatusLabel",
-                                "Python: No packages found", self.COLOR_RED)
+                python_status = "Py: 0/3"
+
+            if pdf_ok and count >= 3:
+                status_color = self.COLOR_GREEN
+            elif count == 0 and not pdf_ok:
+                status_color = self.COLOR_RED
+            else:
+                status_color = self.COLOR_AMBER
+
+            self._set_label(
+                "PythonPackagesStatusLabel",
+                f"{python_status} | {pdf_status}",
+                status_color,
+            )
                     
         except Exception as e:
             logger.error(f"Error checking dependencies in settings: {e}", exc_info=True)
@@ -977,6 +1169,15 @@ class SettingsDialogHandler(BaseDialogHandler):
         if cb_preview:
             cb_preview.setState(self._bool_to_state(preview))
 
+        merge_batch = uno_utils.get_setting(
+            constants.CFG_KEY_MERGE_BATCH_RESULTS,
+            constants.DEFAULT_MERGE_BATCH_RESULTS,
+            self.ctx,
+        )
+        cb_merge_batch = self.get_control("DefaultMergeBatchCheckbox")
+        if cb_merge_batch:
+            cb_merge_batch.setState(self._bool_to_state(merge_batch))
+
         self.initial_settings[constants.CFG_KEY_DEFAULT_PRESET] = self._coerce_preset_value(
             uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PRESET, constants.DEFAULT_OCR_PRESET, self.ctx),
             constants.DEFAULT_OCR_PRESET,
@@ -992,6 +1193,7 @@ class SettingsDialogHandler(BaseDialogHandler):
             constants.DEFAULT_OEM_MODE,
         )
         self.initial_settings[constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT] = self._bool_to_state(preview)
+        self.initial_settings[constants.CFG_KEY_MERGE_BATCH_RESULTS] = self._bool_to_state(merge_batch)
         
         status_label = self.get_control("SettingsStatusLabel")
         if status_label:
@@ -1247,24 +1449,169 @@ class SettingsDialogHandler(BaseDialogHandler):
         return alias_map.get(normalized, str(mode_value).strip())
 
     def actionPerformed(self, event):
-        super().actionPerformed(event)
-        command = event.ActionCommand
+        source_control = self._get_event_source_control(event)
+        command = self._get_action_command(event)
+        if not command:
+            logger.warning("SettingsDialog: action event missing command.")
+            return
+
+        status_label = self.get_control("SettingsStatusLabel")
+
+        def _execute_with_feedback(
+            control,
+            run_text,
+            start_status,
+            action_callable,
+            done_status=None,
+            bg_color=None,
+            fg_color=None,
+        ):
+            baseline = self._capture_control_feedback_state(control)
+            if control:
+                try:
+                    control.setFocus()
+                except Exception:
+                    pass
+            self._set_control_feedback(
+                control,
+                text=run_text,
+                enabled=False,
+                bg_color=bg_color,
+                fg_color=fg_color,
+            )
+            if status_label and start_status:
+                status_label.setText(start_status)
+            try:
+                action_callable()
+                if status_label and done_status:
+                    status_label.setText(done_status)
+            finally:
+                self._restore_control_feedback_state(control, baseline)
+
+        if command in {"save_settings", "cancel"}:
+            baseline = self._capture_control_feedback_state(source_control)
+            if command == "save_settings":
+                self._set_control_feedback(
+                    source_control,
+                    text="Saving...",
+                    enabled=False,
+                    bg_color=self.COLOR_BTN_SUCCESS,
+                    fg_color=self.COLOR_TEXT_ON_DARK,
+                )
+                if status_label:
+                    status_label.setText("Saving settings...")
+                super().actionPerformed(event)
+                if status_label:
+                    status_label.setText("Settings saved. Closing...")
+                self._restore_control_feedback_state(source_control, baseline)
+                return
+
+            self._set_control_feedback(
+                source_control,
+                text="Canceling...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            if status_label:
+                status_label.setText("Cancelling settings...")
+            super().actionPerformed(event)
+            self._restore_control_feedback_state(source_control, baseline)
+            return
+
         logger.debug(f"SettingsDialogHandler actionPerformed: {command}")
-        
+
+        if command == "help":
+            _execute_with_feedback(
+                source_control,
+                "Opening help...",
+                "Opening Settings help...",
+                self._handle_help_action,
+                "Settings help opened.",
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
+
         if command == "browse_tesseract_path":
-            self._browse_tesseract_path()
+            _execute_with_feedback(
+                source_control,
+                "Browsing...",
+                "Opening file picker...",
+                self._browse_tesseract_path,
+                "Tesseract path updated.",
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
         elif command == "test_tesseract":
-            self._test_tesseract_path()
+            _execute_with_feedback(
+                source_control,
+                "Testing...",
+                "Testing Tesseract...",
+                self._test_tesseract_path,
+                "Tesseract test completed.",
+                bg_color=self.COLOR_BTN_SUCCESS,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
         elif command == "refresh_languages_settings":
-            self._refresh_languages()
+            _execute_with_feedback(
+                source_control,
+                "Refreshing...",
+                "Refreshing OCR language list...",
+                self._refresh_languages,
+                "OCR language list refreshed.",
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
         elif command == "setup":
-            self._show_setup()
+            _execute_with_feedback(
+                source_control,
+                "Opening setup...",
+                "Opening setup diagnostics...",
+                self._show_setup,
+                "Dependencies checked.",
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
         elif command == "wiki":
-            self._open_wiki()
+            _execute_with_feedback(
+                source_control,
+                "Opening wiki...",
+                "Opening TejOCR wiki...",
+                self._open_wiki,
+                "Wiki opened in browser.",
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
         elif command == "filtertube":
-            self._open_filtertube()
+            _execute_with_feedback(
+                source_control,
+                "Opening FilterTube...",
+                "Opening FilterTube site...",
+                self._open_filtertube,
+                "FilterTube opened in browser.",
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
         elif command == "search_languages":
-            self._filter_languages()
+            _execute_with_feedback(
+                source_control,
+                "Filter",
+                "Filtering languages...",
+                self._filter_languages,
+                "Language filter applied.",
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
+
+        super().actionPerformed(event)
 
     def _filter_languages(self):
         """Filter the language listbox based on search field text."""
@@ -1296,7 +1643,8 @@ class SettingsDialogHandler(BaseDialogHandler):
             if status_label:
                 status_label.setText("Dependencies checked")
         except Exception as e:
-            logger.error(f"Failed to open Setup dialog: {e}", exc_info=True)
+            import traceback
+            logger.error(f"Failed to open Setup dialog: {e}\n{traceback.format_exc()}")
             # Fallback to message box
             self._check_and_display_dependencies()
             guide = self.dependency_status.get('next_steps', '') if self.dependency_status else ''
@@ -1343,24 +1691,24 @@ class SettingsDialogHandler(BaseDialogHandler):
 
     def _handle_help_action(self):
         """Show help information for the Settings dialog."""
-        help_text = f"""{constants.EXTENSION_FULL_NAME} - Settings Help
+        help_text = f"""ℹ️ {constants.EXTENSION_FULL_NAME} - Settings Help
 
-DEPENDENCY STATUS:
+✅ DEPENDENCY STATUS:
 • Current status of required components
 • Open Setup & Diagnostics to test dependencies and view install commands
 
-TESSERACT CONFIGURATION:
+✅ TESSERACT CONFIGURATION:
 • Set path to Tesseract executable manually
 • Use 'Browse' to find installation folder
 • Use 'Test' to verify the path works
 
-DEFAULT OPTIONS:
+✅ DEFAULT OPTIONS:
 • Set preferences for OCR operations:
   - Language: Default language or multi-language list (ex: eng+spa)
   - Output: Default destination for OCR text insertion
   - Preprocessing: Image enhancement options like Grayscale or Binarize
 
-ADVANCED PARAMETERS (PRESET, PSM, OEM):
+⚠️ ADVANCED PARAMETERS (PRESET, PSM, OEM):
 • Preset: Chooses a default quality profile for future OCR runs.
   - Fast: psm=11, oem=3, scale=1.0, pre-processing disabled
   - Balanced: psm=3, oem=3, scale=1.0, grayscale only (Recommended)
@@ -1378,14 +1726,16 @@ ADVANCED PARAMETERS (PRESET, PSM, OEM):
   - 2: Legacy + LSTM engines combined
   - 3: Auto (Recommended default)
 
-HOW IT IS USED:
+💡 HOW IT IS USED:
 • These settings are saved and applied automatically as defaults for new OCR runs.
 • For single-run temporary changes, use the OCR Options dialog before text extraction.
 
-BUTTONS:
-• Save: Saves settings permanently
-• Cancel: Discards any unsaved changes
-• Help: Shows this help message"""
+✅ BATCH & PDF:
+• You can select multiple image files or one/more PDFs in the "OCR Image/PDF from File" run.
+• Check 'Merge bulk/PDF into single output' to combine all recognized text at once with page headers.
+• Requires `pdftoppm` (poppler) or `mutool` installed for PDF support.
+• When merge is disabled, each image or each PDF page is treated as a separate OCR result and inserted
+  using the selected output mode."""
         
         uno_utils.show_message_box("Settings Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
 
@@ -1520,6 +1870,7 @@ Details: {message}""",
             psm_control = self.get_control("DefaultPSMDropdown")
             oem_control = self.get_control("DefaultOEMDropdown")
             preview_control = self.get_control("DefaultPreviewCheckbox")
+            merge_batch_control = self.get_control("DefaultMergeBatchCheckbox")
 
             if grayscale_control:
                 new_grayscale = grayscale_control.getState()
@@ -1575,6 +1926,12 @@ Details: {message}""",
                 new_preview = preview_control.getState()
                 if new_preview != self.initial_settings.get(constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT):
                     uno_utils.set_setting(constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT, new_preview, self.ctx)
+                    changes_made = True
+
+            if merge_batch_control:
+                new_merge_batch = merge_batch_control.getState()
+                if new_merge_batch != self.initial_settings.get(constants.CFG_KEY_MERGE_BATCH_RESULTS):
+                    uno_utils.set_setting(constants.CFG_KEY_MERGE_BATCH_RESULTS, new_merge_batch, self.ctx)
                     changes_made = True
             
             # Update status
@@ -1655,24 +2012,91 @@ def _build_settings_unavailable_message(reason=None):
 
 # --- Setup Dialog Handler ---
 
-class TejOCRSetupDialogHandler(unohelper.Base, XActionListener):
+class TejOCRSetupDialogHandler(BaseDialogHandler):
     """Handler for the dedicated Setup & Diagnostics dialog."""
-    
-    COLOR_GREEN = 0x009900
-    COLOR_RED   = 0xCC0000
-    COLOR_AMBER = 0xCC8800
 
+    COLOR_GREEN = 0x009900
+    COLOR_RED = 0xCC0000
+    COLOR_AMBER = 0xCC8800
+    _SETUP_COMMAND_BY_NAME = {
+        "CopyCommandButton": "copy_command",
+        "ReCheckButton": "recheck",
+        "CloseSetupButton": "close_setup",
+        "copyCommand": "copy_command",
+        "copycommandbutton": "copy_command",
+        "recheckbutton": "recheck",
+        "closesetupbutton": "close_setup",
+        "recheck": "recheck",
+        "close": "close_setup",
+    }
+    _SETUP_COMMAND_ALIASES = {
+        "copy": "copy_command",
+        "copycommand": "copy_command",
+        "copy command": "copy_command",
+        "copycommandbutton": "copy_command",
+        "recheck": "recheck",
+        "re-check": "recheck",
+        "recheckbutton": "recheck",
+        "re_check": "recheck",
+        "close": "close_setup",
+        "close_setup": "close_setup",
+        "closebutton": "close_setup",
+        "closesetupbutton": "close_setup",
+        "close dialog": "close_setup",
+    }
+    
     def __init__(self, ctx, parent_frame=None):
-        self.ctx = ctx
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_setup_dialog.xdl"
+        super().__init__(ctx, dialog_url)
         self.parent_frame = parent_frame
-        self.dialog = None
         self.dependency_status = None
         self._install_command = ""
+        self._copy_payload = ""
+        self._copy_payload_commands = []
+
+    def _collect_pdf_install_plan(self, status_payload):
+        """Build deterministic install commands required for PDF OCR."""
+        ds = status_payload or {}
+        plans = []
+        seen = set()
+
+        def _add_cmd(cmd):
+            clean = _normalize_command_for_copy(cmd)
+            if not clean:
+                return
+            lowered = clean.lower()
+            if lowered in seen:
+                return
+            seen.add(lowered)
+            plans.append(clean)
+
+        for source in (
+            ds.get("pdf_renderer_hints") or [],
+            ds.get("next_steps") or "",
+            _renderer_install_hints_for_platform(),
+            ds.get("pdf_renderer_error") or "",
+        ):
+            for cmd in _collect_system_renderer_commands(source):
+                _add_cmd(cmd)
+
+        _add_cmd(_resolve_pdf_install_command(ds))
+
+        if not plans:
+            fallback = _build_pip_command(_get_lo_python_path())
+            if fallback:
+                _add_cmd("{cmd} pdf2image".format(cmd=fallback))
+
+        return plans
+
+    @staticmethod
+    def _build_command_list_text(commands):
+        if not commands:
+            return "Install command not available."
+        return "\n".join("{idx}. {cmd}".format(idx=index + 1, cmd=command) for index, command in enumerate(commands))
 
     def show(self):
         """Create and show the Setup dialog."""
         smgr = self.ctx.ServiceManager
-        dp = smgr.createInstanceWithContext("com.sun.star.awt.ContainerWindowProvider", self.ctx)
         
         dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_setup_dialog.xdl"
         try:
@@ -1690,7 +2114,15 @@ class TejOCRSetupDialogHandler(unohelper.Base, XActionListener):
             try:
                 ctrl = self.dialog.getControl(btn_name)
                 if ctrl:
-                    ctrl.getModel().ActionCommand = cmd
+                    try:
+                        ctrl.setActionCommand(cmd)
+                    except Exception:
+                        ctrl.getModel().ActionCommand = cmd
+                    try:
+                        # Also keep a model-level tag for older/unreliable LO layouts.
+                        ctrl.getModel().HelpText = cmd
+                    except Exception:
+                        pass
                     ctrl.addActionListener(self)
             except Exception:
                 pass
@@ -1703,18 +2135,93 @@ class TejOCRSetupDialogHandler(unohelper.Base, XActionListener):
 
     def _run_check(self):
         """Run dependency checks and populate the dialog."""
-        self.dependency_status = _check_dependencies()
-        ds = self.dependency_status
+        self._set_copy_status("Running dependency checks...", "info")
+        self._copy_payload = ""
+        self._install_command = ""
+        # Ensure runtime PATH is fresh for PDF renderer probes during active
+        # LibreOffice sessions.
+        try:
+            os_env_path = os.environ.get("PATH", "")
+            extra_paths = (
+                "/opt/homebrew/bin",
+                "/opt/homebrew/opt/poppler/bin",
+                "/usr/local/bin",
+                "/usr/local/opt/poppler/bin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+            )
+            merged_paths = []
+            for p in (os_env_path.split(os.pathsep) + list(extra_paths)):
+                if p and p not in merged_paths:
+                    merged_paths.append(p)
+            os.environ["PATH"] = os.pathsep.join(merged_paths)
+        except Exception:
+            pass
 
-        # Color each component row
-        rows = [
-            ("TesseractRow", ds.get('tesseract_ok', False),
-             f"Tesseract OCR:  {ds.get('tesseract', 'Unknown')}"),
-            ("NumpyRow", ds.get('numpy_ok', False), None),
-            ("PytesseractRow", ds.get('pytesseract_ok', False), None),
-            ("PillowRow", ds.get('pillow_ok', False), None),
-            ("UnoRow", True, "uno: Built-in (always available)"),
-        ]
+        # Refresh module caches before checking so installs done in this session are detected.
+        try:
+            import importlib
+            importlib.invalidate_caches()
+            try:
+                from tejocr import tejocr_pdf
+                importlib.reload(tejocr_pdf)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        self.dependency_status = _check_dependencies()
+        ds = self.dependency_status or {}
+        status_hint = (ds.get("pdf_renderer_error") or "").strip()
+
+        # Always re-scan the runtime for renderer binaries to avoid stale cached status after
+        # in-session installations/updates (especially for poppler tools installed from Homebrew).
+        runtime_renderer_ok, runtime_renderer_engine = _detect_pdf_renderer_binary()
+        declared_renderer_ok = bool(ds.get("pdf_renderer_available", False))
+        declared_renderer_engine = (ds.get("pdf_renderer_engine") or "").strip()
+
+        if runtime_renderer_ok:
+            ds["pdf_renderer_available"] = True
+            ds["pdf_renderer_engine"] = runtime_renderer_engine
+            ds["pdf_renderer_status"] = "PDF Renderer: Available ({})".format(
+                runtime_renderer_engine
+            )
+            ds["pdf_renderer_error"] = ""
+            logger.info(
+                "Runtime PDF renderer probe detected engine=%s; refreshing setup status.",
+                runtime_renderer_engine,
+            )
+        elif declared_renderer_ok:
+            # Keep dependency view stable if the module probe is authoritative for the session.
+            ds["pdf_renderer_available"] = True
+            ds["pdf_renderer_engine"] = declared_renderer_engine
+            if declared_renderer_engine:
+                ds["pdf_renderer_status"] = "PDF Renderer: Available ({})".format(
+                    declared_renderer_engine
+                )
+            else:
+                ds["pdf_renderer_status"] = "PDF Renderer: Available"
+            ds["pdf_renderer_error"] = ""
+            logger.debug("Runtime renderer probe missed, keeping previously detected renderer as available.")
+        else:
+            ds["pdf_renderer_available"] = False
+            ds["pdf_renderer_engine"] = ""
+            ds["pdf_renderer_error"] = ds.get("pdf_renderer_error") or "No PDF renderer detected for PDF OCR"
+            ds["pdf_renderer_status"] = "PDF Renderer: Not found"
+        pdf_renderer_ok = bool(ds.get("pdf_renderer_available", False))
+        pdf_renderer_engine = (ds.get("pdf_renderer_engine") or "").strip()
+        if pdf_renderer_ok:
+            pdf_renderer_status = (
+                f"PDF Renderer: Available ({pdf_renderer_engine})"
+                if pdf_renderer_engine
+                else "PDF Renderer: Available"
+            )
+        else:
+            pdf_renderer_status = "PDF Renderer: Not found"
+
+        install_plan = self._collect_pdf_install_plan(ds) if not pdf_renderer_ok else []
 
         # Parse per-package lines from python_packages string
         pkg_lines = ds.get('python_packages', '').split('\n')
@@ -1728,12 +2235,20 @@ class TejOCRSetupDialogHandler(unohelper.Base, XActionListener):
             elif 'pillow' in lower or 'pil' in lower:
                 pkg_map['pillow'] = line
 
-        rows[1] = ("NumpyRow", ds.get('numpy_ok', False),
-                   pkg_map.get('numpy', 'numpy: Unknown'))
-        rows[2] = ("PytesseractRow", ds.get('pytesseract_ok', False),
-                   pkg_map.get('pytesseract', 'pytesseract: Unknown'))
-        rows[3] = ("PillowRow", ds.get('pillow_ok', False),
-                   pkg_map.get('pillow', 'Pillow: Unknown'))
+        # Color each component row
+        rows = [
+            ("TesseractRow", ds.get('tesseract_ok', False),
+             f"✅ Tesseract OCR: {ds.get('tesseract', 'Unknown')}" if ds.get('tesseract_ok') else f"❌ Tesseract OCR: Not found"),
+            ("NumpyRow", ds.get('numpy_ok', False),
+             f"✅ {pkg_map.get('numpy')}" if ds.get('numpy_ok') else f"❌ Numpy: Missing"),
+            ("PytesseractRow", ds.get('pytesseract_ok', False),
+             f"✅ {pkg_map.get('pytesseract')}" if ds.get('pytesseract_ok') else f"❌ Pytesseract: Missing"),
+            ("PillowRow", ds.get('pillow_ok', False),
+             f"✅ {pkg_map.get('pillow')}" if ds.get('pillow_ok') else f"❌ Pillow: Missing"),
+            ("PdfRendererRow", pdf_renderer_ok,
+             f"✅ {pdf_renderer_status}" if pdf_renderer_ok else f"⚠ {pdf_renderer_status}"),
+            ("UnoRow", True, "✅ uno: Built-in (always available)"),
+        ]
 
         for ctrl_name, is_ok, text in rows:
             try:
@@ -1744,74 +2259,360 @@ class TejOCRSetupDialogHandler(unohelper.Base, XActionListener):
             except Exception:
                 pass
 
-        # Fill install instructions
-        next_steps = ds.get('next_steps', '')
-        self._install_command = next_steps
+        next_steps = ds.get("next_steps", "") if isinstance(ds.get("next_steps"), str) else ""
+        command_candidates = [] if pdf_renderer_ok else install_plan
+
+        if pdf_renderer_ok:
+            self._copy_payload = ""
+            self._install_command = ""
+            self._copy_payload_commands = []
+        else:
+            self._copy_payload_commands = command_candidates
+            self._install_command = command_candidates[0] if command_candidates else ""
+            self._copy_payload = self._build_command_list_text(command_candidates)
+
+        details_lines = []
+        if not pdf_renderer_ok:
+            details_lines.append("PDF OCR (PDF files) needs a PDF renderer.")
+            if status_hint:
+                details_lines.append(f"Current check: {status_hint}")
+            if command_candidates:
+                details_lines.append("")
+                details_lines.append("Install command(s) to enable PDF OCR:")
+                details_lines.extend(f" - {command}" for command in command_candidates)
+            else:
+                details_lines.append(
+                    "No renderer install command detected for your current runtime."
+                )
+        else:
+            details_lines.append("PDF renderer is available.")
+            details_lines.append(
+                f"Detected engine: {pdf_renderer_engine}"
+                if pdf_renderer_engine else "PDF renderer: Available"
+            )
+
+        details_text = "\n".join(details_lines).strip()
 
         try:
             cmd_field = self.dialog.getControl("InstallCommandField")
-            if cmd_field:
-                cmd_field.setText(next_steps)
+            helper_field = self.dialog.getControl("InstallInstructionsField")
+            command_count = len(self._copy_payload_commands)
+
+            if pdf_renderer_ok:
+                self._copy_payload = ""
+                self._copy_payload_commands = []
+                if cmd_field:
+                    cmd_field.setText("No install command required.")
+            else:
+                if cmd_field:
+                    if self._copy_payload:
+                        cmd_field.setText(self._copy_payload)
+                    else:
+                        cmd_field.setText("Install command not available.")
+
+            if helper_field:
+                if details_text:
+                    helper_field.setText(details_text)
+                elif next_steps:
+                    helper_field.setText(next_steps)
+                else:
+                    helper_field.setText("No additional setup notes.")
+            elif cmd_field and next_steps:
+                # Fallback for older dialog templates.
+                if not self._copy_payload:
+                    cmd_field.setText(next_steps or "(No install command available.)")
+            if helper_field and not details_text and not next_steps:
+                # Always keep instructions visible in fallback scenarios.
+                helper_field.setText("No additional setup notes.")
+        except Exception:
+            pass
+
+        can_copy_command = bool(self._copy_payload and self._copy_payload.strip()) and not pdf_renderer_ok
+        payload_lines = [line for line in self._copy_payload.split("\n") if line.strip()]
+        payload_count = len(payload_lines)
+
+        # Keep copy control states explicit so users can tell when copy is meaningful.
+        try:
+            copy_btn = self.dialog.getControl("CopyCommandButton")
+            if copy_btn:
+                copy_btn.setEnable(can_copy_command)
+                if can_copy_command:
+                    cmd_count = max(len(self._copy_payload_commands), 1)
+                    copy_btn.setText(
+                        "Copy Command(s)" + (f" ({cmd_count})" if cmd_count > 1 else "")
+                    )
+                else:
+                    copy_btn.setText("Copy Command")
+            recheck_btn = self.dialog.getControl("ReCheckButton")
+            if recheck_btn:
+                recheck_btn.setText("Re-Check")
+                recheck_btn.setEnable(True)
+        except Exception:
+            pass
+
+        if pdf_renderer_ok:
+            self._set_copy_status("Dependency check complete: PDF renderer is available.", "ok")
+        elif can_copy_command:
+            if payload_count > 1:
+                self._set_copy_status(
+                    "Dependency check complete. Copy the recommended commands to install a PDF renderer.",
+                    "warn",
+                )
+            else:
+                self._set_copy_status(
+                    "Dependency check complete. Copy the recommended command to install a PDF renderer.",
+                    "warn",
+                )
+        else:
+            self._set_copy_status("Dependency check complete: PDF renderer is still missing.", "warn")
+
+    def _set_copy_status(self, text, level="info"):
+        """Update the status text shown beneath install actions."""
+        if not self.dialog:
+            return
+        try:
+            status_label = self.dialog.getControl("CopyStatusLabel")
+            if status_label:
+                status_label.setText(text or "")
+                try:
+                    normalized = (level or "").lower()
+                    if normalized == "ok":
+                        status_label.getModel().TextColor = self.COLOR_GREEN
+                    elif normalized in {"warn", "warning"}:
+                        status_label.getModel().TextColor = self.COLOR_AMBER
+                    elif normalized in {"error", "bad", "fail", "failed"}:
+                        status_label.getModel().TextColor = self.COLOR_RED
+                    else:
+                        status_label.getModel().TextColor = self.COLOR_AMBER
+                except Exception:
+                    pass
         except Exception:
             pass
 
     def actionPerformed(self, event):
-        command = event.ActionCommand
+        command = self._get_action_command(event)
+        if not command:
+            # Fallback to control name if action command metadata is not available.
+            source = self._get_event_source_control(event)
+            try:
+                if source and command is None:
+                    model = source.getModel()
+                    command = getattr(model, "Name", None)
+                    if callable(command):
+                        command = command()
+                    if not command:
+                        command = getattr(model, "HelpText", None)
+                        if callable(command):
+                            command = command()
+            except Exception:
+                command = None
+
+        if command:
+            command = str(command).strip()
+            mapped_command = self._SETUP_COMMAND_BY_NAME.get(command)
+            if mapped_command:
+                command = mapped_command
+            else:
+                normalized = command.lower().replace(" ", "")
+                mapped_command = self._SETUP_COMMAND_BY_NAME.get(normalized)
+                if mapped_command:
+                    command = mapped_command
+                else:
+                    mapped_command = self._SETUP_COMMAND_ALIASES.get(normalized)
+                    if not mapped_command:
+                        mapped_command = self._SETUP_COMMAND_ALIASES.get(command.lower())
+                    if mapped_command:
+                        command = mapped_command
+
+        if not command:
+            self._set_copy_status("No action command found for this control.", "error")
+            return
+
+        copy_btn = None
+        recheck_btn = None
+        try:
+            copy_btn = self.dialog.getControl("CopyCommandButton")
+        except Exception:
+            copy_btn = None
+        try:
+            recheck_btn = self.dialog.getControl("ReCheckButton")
+        except Exception:
+            recheck_btn = None
+
         if command == "copy_command":
-            self._copy_to_clipboard()
-        elif command == "recheck":
-            self._run_check()
-        elif command == "close_setup":
+            baseline = self._capture_control_feedback_state(copy_btn)
+            if copy_btn:
+                copy_btn.setFocus()
+            payload_lines = [line for line in (self._copy_payload or "").split("\n") if line.strip()]
+            payload_count = max(1, len(payload_lines))
+            copy_label = (
+                "Copying {} command(s)...".format(payload_count)
+                if payload_count > 1
+                else "Copying command..."
+            )
+            self._set_control_feedback(
+                copy_btn,
+                text=copy_label,
+                enabled=False,
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            self._set_copy_status("Copying command to clipboard...", "info")
+            copied = self._copy_to_clipboard()
+            if copied:
+                if payload_count > 1:
+                    self._set_copy_status(
+                        "Copied {} commands to clipboard.".format(payload_count),
+                        "ok",
+                    )
+                    copied_label = "Copied {} ✓".format(payload_count)
+                else:
+                    self._set_copy_status("Copied command to clipboard.", "ok")
+                    copied_label = "Copied ✓"
+                if copy_btn:
+                    self._restore_control_feedback_state(copy_btn, baseline)
+                    copy_btn.setText(copied_label)
+                    copy_btn.setEnable(True)
+                    try:
+                        copy_btn.getModel().BackgroundColor = self.COLOR_GREEN
+                    except Exception:
+                        pass
+            else:
+                self._set_copy_status("Copy failed. Use fallback text shown below.", "error")
+                if copy_btn:
+                    copy_btn.setText("Copy Command")
+                    self._restore_control_feedback_state(copy_btn, baseline)
+            return
+
+        if command == "recheck":
+            self._set_control_feedback(
+                recheck_btn,
+                text="Checking...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_PRIMARY,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            self._set_copy_status("Running dependency checks...", "info")
+            try:
+                self._run_check()
+            finally:
+                if recheck_btn:
+                    recheck_btn.setText("Re-Check")
+                    self._set_control_feedback(
+                        recheck_btn,
+                        text="Re-Check",
+                        enabled=True,
+                        bg_color=self.COLOR_BTN_PRIMARY,
+                        fg_color=self.COLOR_TEXT_ON_DARK,
+                    )
+            return
+
+        if command == "close_setup":
+            close_btn = None
+            try:
+                close_btn = self.dialog.getControl("CloseSetupButton")
+            except Exception:
+                close_btn = None
+            baseline = self._capture_control_feedback_state(close_btn)
+            self._set_copy_status("Closing setup dialog.", "info")
+            self._set_control_feedback(
+                close_btn,
+                text="Closing...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_DANGER,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
             if self.dialog:
                 self.dialog.endExecute()
+            self._restore_control_feedback_state(close_btn, baseline)
 
     def _copy_to_clipboard(self):
         """Copy install command to system clipboard using OS utilities."""
         import subprocess
         import sys
-        
-        text = self._install_command
+
+        command_lines = list(self._copy_payload_commands) if self._copy_payload_commands else []
+        if not command_lines and self._install_command:
+            command_lines = [self._install_command]
+        elif not command_lines and self._copy_payload:
+            command_lines = [self._copy_payload]
+
+        normalized_lines = []
+        seen = set()
+        for line in command_lines:
+            candidate = _normalize_command_for_copy(line)
+            if not candidate:
+                continue
+            candidate = candidate.strip()
+            if not candidate:
+                continue
+            key = candidate.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_lines.append(candidate)
+
+        text = "\n".join(normalized_lines).strip()
+
+        if not text:
+            self._set_copy_status("No install command available to copy.", "warn")
+            return False
+
         copied = False
-        
+
         try:
-            if sys.platform == "darwin":
-                # macOS
-                proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-                proc.communicate(text.encode("utf-8"))
-                copied = proc.returncode == 0
-            elif sys.platform.startswith("linux"):
-                # Linux — try xclip first, then xsel
-                for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]:
-                    try:
-                        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-                        proc.communicate(text.encode("utf-8"))
-                        if proc.returncode == 0:
-                            copied = True
-                            break
-                    except FileNotFoundError:
-                        continue
-            elif sys.platform == "win32":
-                proc = subprocess.Popen(["clip.exe"], stdin=subprocess.PIPE)
-                proc.communicate(text.encode("utf-8"))
-                copied = proc.returncode == 0
+            logger.debug(f"Copy command requested: {text}")
+            # Primary path: UNO system clipboard (works inside LibreOffice across OSes)
+            try:
+                from tejocr import tejocr_output
+                clipboard = uno_utils.create_instance(
+                    "com.sun.star.datatransfer.clipboard.SystemClipboard",
+                    self.ctx,
+                )
+                if clipboard:
+                    transferable = tejocr_output.TextTransferable(text)
+                    clipboard.setContents(transferable, None)
+                    copied = True
+            except Exception as clipboard_error:
+                logger.debug(f"UNO clipboard copy failed, trying OS fallback: {clipboard_error}")
+
+            # Fallback path for environments where UNO clipboard is unavailable
+            if not copied:
+                if sys.platform == "darwin":
+                    # macOS
+                    proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+                    proc.communicate(text.encode("utf-8"))
+                    copied = proc.returncode == 0
+                elif sys.platform.startswith("linux"):
+                    # Linux — try xclip first, then xsel
+                    for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]:
+                        try:
+                            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                            proc.communicate(text.encode("utf-8"))
+                            if proc.returncode == 0:
+                                copied = True
+                                break
+                        except FileNotFoundError:
+                            continue
+                elif sys.platform == "win32":
+                    proc = subprocess.Popen(["clip.exe"], stdin=subprocess.PIPE)
+                    proc.communicate(text.encode("utf-8"))
+                    copied = proc.returncode == 0
+                elif sys.platform.startswith("cygwin"):
+                    proc = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
+                    proc.communicate(text.encode("utf-8"))
+                    copied = proc.returncode == 0
+            logger.debug(f"Copy command succeeded: {copied}")
         except Exception as e:
             logger.error(f"Clipboard subprocess failed: {e}", exc_info=True)
-        
-        # Visual feedback
-        try:
-            ctrl = self.dialog.getControl("InstallCommandField")
-            if ctrl:
-                if copied:
-                    ctrl.setText("✓ Copied to clipboard!\n\n" + text)
-                else:
-                    ctrl.setText("⚠ Copy failed — select and copy manually:\n\n" + text)
-        except Exception:
-            pass
-        
+            copied = False
+
         if not copied:
+            self._set_copy_status("Copy failed. Use fallback text shown below.", "error")
             uno_utils.show_message_box("Copy",
                 f"Could not access clipboard.\n\nPlease select and copy manually:\n{text}",
                 "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+        return copied
 
     def disposing(self, event):
         pass
@@ -1828,33 +2629,574 @@ def _get_lo_python_path():
     import sys
     import os
     import glob
+    import shutil
+    import subprocess
     
-    exe = sys.executable
-    
-    # Walk up from sys.executable looking for LibreOfficePython.framework
-    path = os.path.abspath(exe)
-    for _ in range(15):  # max depth
-        parent = os.path.dirname(path)
-        if parent == path:
+    _exe = os.path.expanduser(os.path.abspath(sys.executable or ""))
+
+    def _is_python_executable(path):
+        if not path or not os.path.isfile(path):
+            return False
+        base = os.path.basename(path).lower()
+        if base in {"soffice", "soffice.bin", "soffice.exe"}:
+            return False
+        if not (base == "python" or base.startswith("python") or "python" in base.lower()):
+            return False
+        if not os.access(path, os.X_OK):
+            return False
+        return True
+
+    def _is_functional_python_executable(path):
+        """Return True only for real Python binaries that can report a version."""
+        if not _is_python_executable(path):
+            return False
+        try:
+            result = subprocess.run(
+                [path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            output = (result.stdout or "") + (result.stderr or "")
+            return result.returncode == 0 and "python" in output.lower()
+        except Exception:
+            return False
+
+    def _add_candidate(candidates, path):
+        if not path:
+            return
+        path = os.path.normpath(path)
+        if _is_python_executable(path) and path not in candidates:
+            candidates.append(path)
+
+    def _add_dir_candidates(candidates, base_dir):
+        # macOS and binary bundle variants.
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "Frameworks", "LibreOfficePython.framework", "Versions", "Current", "bin", "python3"),
+        )
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "Resources", "python3"),
+        )
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "Resources", "python"),
+        )
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "program", "python3"),
+        )
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "program", "python"),
+        )
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "Programs", "python3"),
+        )
+        _add_candidate(
+            candidates,
+            os.path.join(base_dir, "Programs", "python"),
+        )
+        for match in glob.glob(
+            os.path.join(base_dir, "Frameworks", "LibreOfficePython.framework", "Versions", "*", "bin", "python*")
+        ):
+            _add_candidate(candidates, match)
+
+    candidates = []
+    exe_name = os.path.basename(_exe).lower()
+    exe_parts = _exe.split(os.sep)
+
+    # If sys.executable points directly to soffice, resolve from its bundle.
+    if exe_name in {"soffice", "soffice.bin", "soffice.exe"} and "Contents" in exe_parts:
+        contents_index = exe_parts.index("Contents")
+        contents_path = os.sep.join(exe_parts[:contents_index + 1])
+        _add_dir_candidates(candidates, contents_path)
+
+    # If already running python from a valid binary path, prefer it.
+    if _is_python_executable(_exe):
+        _add_candidate(candidates, _exe)
+
+    # Walk up from executable path and try to resolve nearby LO layouts.
+    walk_path = _exe
+    for _ in range(20):
+        walk_parent = os.path.dirname(walk_path)
+        if walk_parent == walk_path:
             break
-        # Look for the framework python3 relative to this parent
-        pattern = os.path.join(parent, "Frameworks", "LibreOfficePython.framework",
-                               "Versions", "*", "bin", "python3")
-        matches = glob.glob(pattern)
-        if matches:
-            return matches[0]
-        path = parent
-    
-    # Fallback: try standard macOS paths
-    for fallback in [
-        "/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3",
-        "/Applications/LibreOfficeDev.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3",
+        if "Contents" in walk_parent:
+            parent_parts = walk_parent.split(os.sep)
+            if "Contents" in parent_parts:
+                contents_index = parent_parts.index("Contents")
+                contents_path = os.sep.join(parent_parts[:contents_index + 1])
+                _add_dir_candidates(candidates, contents_path)
+        walk_path = walk_parent
+
+    # Common installation roots
+    for base in [
+        "/Applications/LibreOffice.app/Contents",
+        "/Applications/LibreOfficeDev.app/Contents",
+        os.path.join(os.path.dirname(_exe), "Contents"),
+        os.path.dirname(os.path.dirname(_exe)),
     ]:
-        if os.path.isfile(fallback):
-            return fallback
-    
-    # Last resort: quote sys.executable itself
-    return f'"{exe}"'
+        if os.path.isdir(base):
+            _add_dir_candidates(candidates, base)
+
+    # Last resort: PATH-based Python detection
+    for path in [shutil.which("python3"), shutil.which("python"), "/usr/bin/python3", "/usr/bin/python"]:
+        if path:
+            _add_candidate(candidates, path)
+
+    for candidate in candidates:
+        if _is_functional_python_executable(candidate):
+            return candidate
+
+    # Final fallback: avoid returning soffice, return a valid python command if possible.
+    if _is_functional_python_executable(_exe):
+        return _exe
+    return ""
+
+
+def _build_pip_command(python_path):
+    """Build a safe pip install command for the detected Python executable."""
+    import shlex
+    import os
+
+    if not python_path:
+        return "python3 -m pip install"
+    base = os.path.basename(python_path).lower()
+    if not (base == "python" or base.startswith("python") or "python" in base):
+        return "python3 -m pip install"
+    if os.name == "nt":
+        return f'"{python_path}" -m pip install' if " " in python_path else f"{python_path} -m pip install"
+    try:
+        return f"{shlex.quote(python_path)} -m pip install"
+    except Exception:
+        return f'"{python_path}" -m pip install' if " " in python_path else f"{python_path} -m pip install"
+
+
+def _extract_pdf2image_command_from_text_v2(raw_command):
+    """Extract a clean `python -m pip install pdf2image` command from mixed text."""
+    if not raw_command:
+        return ""
+    if not isinstance(raw_command, str):
+        return ""
+
+    import re
+
+    lo_python = _get_lo_python_path()
+    fallback_command = _build_pip_command(lo_python)
+
+    normalized = (
+        (raw_command or "")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+        .replace("\u2007", " ")
+        .replace("\u202f", " ")
+    )
+    lines = []
+    for line in normalized.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^[\s•\-*]+", "", line)
+        line = re.sub(r"^\d+[\.)]\s*", "", line)
+        if (
+            ("pdf2image" in line.lower() or "pdf image" in line.lower() or "pdfimage" in line.lower())
+            and "install" in line.lower()
+            and ":" in line
+        ):
+            line = line.split(":", 1)[1].strip()
+        lines.append(line)
+
+    flattened = re.sub(r"\s+", " ", " ".join(lines)).strip()
+    if not flattened:
+        return ""
+
+    flattened = re.sub(r"\bpdfimage\b", "pdf2image", flattened, flags=re.IGNORECASE)
+    flattened = re.sub(r"\bpip\s+image\b", "pdf2image", flattened, flags=re.IGNORECASE)
+    flattened = re.sub(r"pdf[ -]?image", "pdf2image", flattened, flags=re.IGNORECASE)
+    flattened = flattened.replace("`", "").replace("“", "").replace("”", "")
+
+    # Explicit parser for the common status format used in setup hints.
+    explicit = re.search(
+        r"Install\s+PDF\s+conversion\s+runtime\s+in\s+this\s+Python\s*:\s*(?P<cmd>.+?)\s*pdf2image",
+        flattened,
+        flags=re.IGNORECASE,
+    )
+    if explicit:
+        explicit_cmd = (explicit.group("cmd") or "").strip()
+        if explicit_cmd:
+            return "{} pdf2image".format(explicit_cmd.strip().strip("\"'"))
+
+    patterns = [
+        r"(?P<exe>(?:\"[^\"]+\"|'[^']+'|/[^\s\"']+|\bpython(?:3)?\b))\s+-m\s+pip\s+install\s+pdf2image\b",
+        r"(?P<exe>(?:\"[^\"]+\"|'[^']+'|/[^\s\"']+|\bpython(?:3)?\b))\s+pip\s+install\s+pdf2image\b",
+        r"(?P<exe>\"[^\"]+\"|'[^']+'|[^\s\"']+)\s+-m\s+pip\s+install\s+pdf2image",
+        r"(?P<exe>\"[^\"]+\"|'[^']+'|[^\s\"']+)\s+pip\s+install\s+pdf2image",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, flattened, flags=re.IGNORECASE)
+        if not match:
+            continue
+        exe = ""
+        if match.groupdict():
+            exe = (match.group("exe") or "").strip().strip('"\'')
+        if not exe:
+            exe = match.group(0)
+        exe = exe.strip()
+        if not exe:
+            continue
+        exe_lower = exe.lower()
+        if exe_lower in {"pip", "python", "python3"}:
+            return f"{fallback_command} pdf2image" if fallback_command else ""
+        if "soffice" in exe.lower():
+            return f"{fallback_command} pdf2image" if fallback_command else ""
+        return f"{exe} -m pip install pdf2image"
+
+    if "pdf2image" in flattened.lower() and "-m pip install" in flattened.lower() and fallback_command:
+        return f"{fallback_command} pdf2image"
+
+    return ""
+
+
+def _extract_system_renderer_command(raw_hint):
+    """Extract a direct PDF renderer install command from diagnostic hint text."""
+    if not raw_hint or not isinstance(raw_hint, str):
+        return ""
+
+    import re
+
+    lines = (
+        raw_hint
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+        .replace("\u2007", " ")
+        .replace("\u202f", " ")
+    ).split("\n")
+
+    manager_tokens = (
+        "brew install",
+        "apt-get install",
+        "apt install",
+        "dnf install",
+        "yum install",
+        "zypper install",
+        "pacman -s",
+        "choco install",
+        "scoop install",
+        "pkg install",
+    )
+
+    for line in lines:
+        if not line:
+            continue
+        line = re.sub(r"^[\s•\-*]+\s*", "", line.strip())
+        if not line:
+            continue
+        lower = line.lower()
+
+        if lower.startswith("install pdf conversion runtime in this python:"):
+            candidate = line.split(":", 1)[-1].strip()
+            if candidate:
+                return _normalize_command_for_copy(candidate)
+            continue
+
+        if not any(token in lower for token in ("pdf", "poppler", "mutool", "pdftoppm", "mupdf", "pdf2image")):
+            continue
+        if any(lower.startswith(token) for token in manager_tokens):
+            return line
+
+    return ""
+
+
+def _collect_system_renderer_commands(raw_hints):
+    """Collect unique renderer install commands from hints or status text."""
+    import platform
+    import re
+
+    if isinstance(raw_hints, str):
+        raw_lines = raw_hints.split("\n")
+    elif isinstance(raw_hints, (list, tuple, set)):
+        raw_lines = list(raw_hints)
+    else:
+        return []
+
+    manager_tokens = {
+        "brew install",
+        "apt-get install",
+        "apt install",
+        "dnf install",
+        "yum install",
+        "zypper install",
+        "pacman -s",
+        "choco install",
+        "scoop install",
+        "pkg install",
+    }
+
+    normalized_system = (platform.system() or "").lower()
+    preferred_prefix = ("brew install", "apt-get install", "apt install", "choco install", "scoop install")
+    if normalized_system == "darwin":
+        preferred_prefix = ("brew install",)
+    elif normalized_system == "windows":
+        preferred_prefix = ("choco install", "scoop install")
+    elif normalized_system == "linux":
+        preferred_prefix = ("apt-get install", "apt install")
+
+    def _looks_like_command(line):
+        if not line:
+            return False
+        l = line.lower()
+        return any(l.startswith(prefix) for prefix in manager_tokens)
+
+    all_candidates = []
+    for raw_line in raw_lines:
+        if not isinstance(raw_line, str):
+            continue
+        line = raw_line.strip()
+        line = re.sub(r"^\s*[\d]+[.)]\s*", "", line)
+        line = line.strip().strip("• ").strip("- ")
+        if not line:
+            continue
+        if "pdf conversion runtime in this python" in line.lower():
+            continue
+        if _looks_like_command(line):
+            all_candidates.append(line)
+
+    def _dedupe(items):
+        seen = set()
+        out = []
+        for item in items:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
+        return out
+
+    all_candidates = _dedupe(all_candidates)
+    if not all_candidates:
+        return []
+
+    def _rank(item):
+        lowered = item.lower()
+        for idx, prefix in enumerate(preferred_prefix):
+            if lowered.startswith(prefix):
+                return idx
+        return len(preferred_prefix) + 10
+
+    # Keep UI output focused on OS-relevant package-manager commands.
+    preferred_candidates = []
+    for item in all_candidates:
+        lowered = item.lower()
+        if any(lowered.startswith(prefix) for prefix in preferred_prefix):
+            preferred_candidates.append(item)
+    if preferred_candidates:
+        all_candidates = _dedupe(preferred_candidates)
+        all_candidates = sorted(all_candidates, key=_rank)
+        return all_candidates
+
+    return sorted(all_candidates, key=_rank)
+
+
+def _renderer_install_hints_for_platform():
+    """Return OS-specific renderer system package install commands."""
+    import platform
+
+    normalized_system = (platform.system() or "").lower()
+    if normalized_system == "darwin":
+        return ["brew install poppler", "brew install mupdf"]
+    if normalized_system == "windows":
+        return ["choco install poppler", "scoop install poppler"]
+    if normalized_system == "linux":
+        return ["apt-get install poppler-utils", "apt-get install mupdf-tools"]
+    return ["brew install poppler", "apt-get install poppler-utils"]
+
+
+def _runtime_binary_search_paths():
+    """Paths checked when probing for PDF rendering binaries in runtime sessions."""
+    return (
+        "/opt/homebrew/bin",
+        "/opt/homebrew/opt/poppler/bin",
+        "/opt/homebrew/opt/poppler/bin",
+        "/opt/homebrew/opt/mupdf/bin",
+        "/opt/homebrew/opt/",
+        "/usr/local/bin",
+        "/usr/local/opt/poppler/bin",
+        "/usr/local/opt/poppler/bin",
+        "/usr/local/opt/mupdf/bin",
+        "/usr/local/opt/",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    )
+
+
+def _find_runtime_binary(binary_name):
+    """Find a runtime binary path by PATH and common fallback locations."""
+    if not binary_name:
+        return None
+
+    import shutil
+    import glob
+
+    found = shutil.which(binary_name)
+    if found:
+        return found
+
+    for root in _runtime_binary_search_paths():
+        candidate = os.path.join(root, binary_name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+
+    for pattern in (
+        "/opt/homebrew/Cellar/*/bin",
+        "/opt/homebrew/Cellar/*/*/bin",
+        "/opt/homebrew/opt/*/bin",
+        "/opt/homebrew/opt/*/*/bin",
+        "/usr/local/Cellar/*/bin",
+        "/usr/local/opt/*/bin",
+        "/usr/local/opt/*/*/bin",
+        "/opt/homebrew/Caskroom/*/*/bin",
+        "/usr/local/Caskroom/*/*/bin",
+    ):
+        for candidate_root in glob.glob(pattern):
+            candidate = os.path.join(candidate_root, binary_name)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+
+    return None
+
+
+def _detect_pdf_renderer_binary():
+    """Probe for pdf renderer engines directly from the active runtime."""
+    try:
+        from tejocr import tejocr_pdf
+
+        pdf_status = tejocr_pdf.get_pdf_renderer_status()
+        if isinstance(pdf_status, dict):
+            if bool(pdf_status.get("available")):
+                engine = (pdf_status.get("engine") or "").strip() or "pdf_renderer"
+                return True, engine
+            # Keep current behavior when poppler binary is missing.
+            if pdf_status.get("engine"):
+                return True, str(pdf_status.get("engine"))
+    except Exception:
+        logger.debug("PDF runtime check fallback to direct binary probe.", exc_info=True)
+
+    for binary_name, engine_name in (
+        ("pdftoppm", "pdftoppm"),
+        ("mutool", "mutool"),
+    ):
+        if _find_runtime_binary(binary_name):
+            return True, engine_name
+    return False, ""
+
+
+def _resolve_pdf_install_command(status_payload):
+    """Resolve the best available PDF-related install command from diagnostics payload."""
+    if not isinstance(status_payload, dict):
+        return _build_pip_command(_get_lo_python_path()) + " pdf2image"
+
+    ds = status_payload
+    status_error = (ds.get("pdf_renderer_error") or "").lower()
+
+    raw_command = ds.get("pdf2image_install_command", "")
+    clean = _normalize_command_for_copy(raw_command)
+    if clean and not (
+        "pdf2image is installed, but poppler utilities are not available" in status_error
+    ):
+        return clean
+
+    if not ds.get("pdf_renderer_available", False):
+        renderer_commands = _collect_system_renderer_commands(
+            ds.get("pdf_renderer_hints") or ds.get("next_steps")
+        )
+        if renderer_commands:
+            return renderer_commands[0]
+
+        next_steps = ds.get("next_steps", "")
+        if isinstance(next_steps, str):
+            renderer_commands = _collect_system_renderer_commands(next_steps)
+            if renderer_commands:
+                return renderer_commands[0]
+
+    for hint in (ds.get("pdf_renderer_hints") or []):
+        if not isinstance(hint, str):
+            continue
+        candidate = _extract_pdf2image_command_from_text(hint)
+        if candidate:
+            return candidate
+
+    next_steps = ds.get("next_steps", "")
+    if isinstance(next_steps, str):
+        candidate = _extract_pdf2image_command_from_text(next_steps)
+        if candidate:
+            return candidate
+
+    candidate = _normalize_command_for_copy(" ".join(ds.get("pdf_renderer_hints") or []))
+    if candidate:
+        return candidate
+
+    fallback = _build_pip_command(_get_lo_python_path())
+    if ds.get("pdf_renderer_available", False):
+        return ""
+    return f"{fallback} pdf2image" if fallback else "python3 -m pip install pdf2image"
+
+
+def _normalize_command_for_copy(raw_command):
+    """Keep only a single executable line suitable for copying."""
+    if not raw_command or not isinstance(raw_command, str):
+        return ""
+
+    candidate = _extract_pdf2image_command_from_text_v2(raw_command)
+    if candidate:
+        return candidate
+
+    import re
+
+    normalized = (
+        raw_command
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u00a0", " ")
+        .replace("\u2007", " ")
+        .replace("\u202f", " ")
+    )
+    lines = [re.sub(r"^[\s•\-*]+\s*", "", line).strip() for line in normalized.split("\n")]
+    for line in lines:
+        if not line:
+            continue
+        lower = line.lower()
+        if "install pdf conversion runtime in this python:" in lower:
+            candidate = line.split(":", 1)[-1].strip()
+            if candidate:
+                return candidate
+        if any(lower.startswith(token) for token in (
+            "brew install",
+            "apt-get install",
+            "apt install",
+            "dnf install",
+            "yum install",
+            "zypper install",
+            "pacman -s",
+            "choco install",
+            "scoop install",
+            "pkg install",
+        )):
+            return line
+        if " pdf2image" in lower and "pip install" in lower and "-m" in lower:
+            return line
+    return ""
+
+
+def _extract_pdf2image_command_from_text(text):
+    """Fallback extraction of the PDF install command from explanatory text."""
+    return _extract_pdf2image_command_from_text_v2(text)
 
 def _check_dependencies():
     """Check status of all OCR dependencies and provide user guidance."""
@@ -1862,18 +3204,96 @@ def _check_dependencies():
     import sys
     import os
     import glob
+    import platform
     
     # Dynamically detect the running LibreOffice's Python for pip commands
     pip_python = _get_lo_python_path()
-    pip_cmd = f'{pip_python} -m pip install'
+    pip_cmd = _build_pip_command(pip_python)
+    pdf2image_install_command = f"{pip_cmd} pdf2image"
     
     status = {
         'summary': '',
         'tesseract': '',
         'python_packages': '',
         'installation_guide': '',
-        'next_steps': ''
+        'next_steps': '',
+        'pdf2image_install_command': pdf2image_install_command,
+        'pdf_renderer_available': False,
+        'pdf_renderer_engine': None,
+        'pdf_renderer_hints': [],
+        'pdf_renderer_status': '',
+        'pdf_renderer_error': '',
     }
+
+    def _default_pdf_hints(pip_cmd):
+        """Build OS-aware renderer installation guidance with LO-python pip command."""
+        os_hints = _renderer_install_hints_for_platform()
+        if not os_hints:
+            os_hints = ["Please install a PDF renderer (poppler or MuPDF)"]
+        return os_hints + [f"Install PDF conversion runtime in this Python: {pip_cmd} pdf2image"]
+
+    def _status_from_pdf_renderer(renderer_status, pip_cmd):
+        if not isinstance(renderer_status, dict):
+            return {
+                "available": False,
+                "engine": None,
+                "hints": _default_pdf_hints(pip_cmd),
+                "status": "PDF Renderer: Not found",
+                "error": str(renderer_status),
+            }
+
+        available = bool(renderer_status.get("available"))
+        engine = (renderer_status.get("engine") or "").strip()
+        raw_hints = renderer_status.get("hints")
+        hints = _collect_system_renderer_commands(raw_hints)
+        if not hints:
+            hints = [hint for hint in (raw_hints or _default_pdf_hints(pip_cmd))
+                     if isinstance(hint, str) and hint.strip()]
+            if not hints:
+                hints = _default_pdf_hints(pip_cmd)
+        status_error = (renderer_status.get("error") or "").strip()
+        if available:
+            if engine:
+                status_text = f"PDF Renderer: Available ({engine})"
+            else:
+                status_text = "PDF Renderer: Available"
+            error_text = ""
+        else:
+            if status_error:
+                status_text = "PDF Renderer: Not found"
+            else:
+                status_text = "PDF Renderer: Not found"
+            error_text = status_error or "No PDF renderer detected for PDF OCR"
+        return {
+            "available": available,
+            "engine": engine,
+            "hints": hints,
+            "status": status_text,
+            "error": error_text,
+        }
+
+    # PDF renderer check (for OCRing PDF files from file mode)
+    pdf_renderer_status = {"available": False, "engine": None, "hints": []}
+    try:
+        from tejocr import tejocr_pdf as pdf_module
+        pdf_renderer_status = pdf_module.get_pdf_renderer_status()
+    except Exception as pdf_error:
+        pdf_renderer_status = {
+            "available": False,
+            "engine": None,
+            "hints": _default_pdf_hints(pip_cmd),
+            "status": "PDF renderer check failed",
+            "error": str(pdf_error),
+        }
+
+    pdf_status = _status_from_pdf_renderer(pdf_renderer_status, pip_cmd)
+    status.update({
+        'pdf_renderer_available': pdf_status["available"],
+        'pdf_renderer_engine': pdf_status["engine"],
+        'pdf_renderer_hints': pdf_status["hints"],
+        'pdf_renderer_status': pdf_status["status"],
+        'pdf_renderer_error': pdf_status["error"],
+    })
     
     # Check Tesseract
     tesseract_status = "NOT FOUND"
@@ -1974,11 +3394,22 @@ def _check_dependencies():
     
     logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, numpy_available={numpy_available}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
     
+    core_ready = (
+        tesseract_ok
+        and numpy_available
+        and pytesseract_available
+        and pillow_available
+    )
+    pdf_renderer_ready = bool(pdf_status.get("available"))
     # Use the more accurate variables from above
-    if tesseract_ok and numpy_available and pytesseract_available and pillow_available:
+    if core_ready and pdf_renderer_ready:
         status['summary'] = "All dependencies ready. OCR functionality available."
         status['next_steps'] = """All dependencies installed and ready.
 You can now use all OCR features."""
+    elif core_ready and not pdf_renderer_ready:
+        status['summary'] = "Core OCR dependencies installed; PDF renderer is missing."
+        status['next_steps'] = """Core OCR dependencies are installed.
+PDF OCR (PDF files) requires a PDF renderer."""
         
     elif tesseract_ok and (pytesseract_available or pillow_available or numpy_available):
         status['summary'] = "Partially ready -- some Python packages missing"
@@ -2014,9 +3445,39 @@ Restart LibreOffice after installation."""
 3. Restart LibreOffice
 
 See the Install Guide for your platform."""
+
+    if not pdf_status["available"]:
+        missing_pdf_message = "PDF OCR (PDF files) also needs a PDF renderer:"
+        pdf_renderer_commands = _collect_system_renderer_commands(
+            pdf_status.get("hints") or _default_pdf_hints(pip_cmd)
+        )
+        if not pdf_renderer_commands:
+            pdf_renderer_commands = _collect_system_renderer_commands(
+                _default_pdf_hints(pip_cmd)
+            )
+        pdf_hints_formatted = "\n".join(
+            "  - {cmd}".format(cmd=entry) for entry in pdf_renderer_commands
+        )
+        existing_steps = (status['next_steps'] or "No setup steps currently available.").strip()
+        if "Core OCR dependencies are installed" in existing_steps:
+            pass
+        elif "All dependencies installed" in existing_steps:
+            existing_steps = "Core OCR dependencies are installed."
+        if existing_steps:
+            status['next_steps'] = "{existing}\n\n{missing}\n{hints}".format(
+                existing=existing_steps,
+                missing=missing_pdf_message,
+                hints=pdf_hints_formatted,
+            )
+        else:
+            status['next_steps'] = "{missing}\n{hints}".format(
+                missing=missing_pdf_message,
+                hints=pdf_hints_formatted,
+            )
+        if pdf_status.get("error"):
+            status['next_steps'] += "\n\nCurrent check: {error}".format(error=pdf_status["error"])
     
     # Platform-specific installation guide
-    import platform
     system = platform.system().lower()
     
     if system == "darwin":  # macOS
@@ -2030,6 +3491,11 @@ See the Install Guide for your platform."""
 
 3. PYTHON PACKAGES:
    {pip_cmd} numpy pytesseract pillow
+
+4. PDF RENDERING (for PDFs):
+   brew install poppler
+   brew install mupdf
+   {pip_cmd} pdf2image
 
 4. VERIFY:
    tesseract --version"""
@@ -2049,6 +3515,11 @@ See the Install Guide for your platform."""
 3. PYTHON PACKAGES:
    {pip_cmd} numpy pytesseract pillow
 
+4. PDF RENDERING (for PDFs):
+   apt-get install poppler-utils
+   apt-get install mupdf-tools
+   {pip_cmd} pdf2image
+
 4. VERIFY:
    tesseract --version"""
    
@@ -2062,6 +3533,10 @@ See the Install Guide for your platform."""
 
 2. PYTHON PACKAGES:
    {pip_cmd} numpy pytesseract pillow
+
+3. PDF RENDERING (for PDFs):
+   choco install poppler
+   {pip_cmd} pdf2image
 
 3. VERIFY:
    tesseract --version"""
@@ -2077,18 +3552,16 @@ See the Install Guide for your platform."""
     return status
 
 def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None):
-    """ULTRA-SIMPLE: Shows basic development message without any complex operations."""
+    """Fallback OCR options hint shown when full dialogs are not available."""
     try:
         if ocr_source_type == "selected":
-            message = f"{constants.EXTENSION_FULL_NAME} - OCR Selected Image\n\nDEVELOPMENT STATUS: This feature is being developed.\n\nExpected: Extract text from selected image\nCurrent: Development placeholder\n\nClick OK to continue."
+            message = f"{constants.EXTENSION_FULL_NAME} - OCR Selected Image\n\nProcessing selected image OCR.\n\nThe full OCR options dialog is not available in this runtime.\nClick OK to continue with stored defaults."
         elif ocr_source_type == "file": 
-            message = f"{constants.EXTENSION_FULL_NAME} - OCR Image from File\n\nDEVELOPMENT STATUS: This feature is being developed.\n\nExpected: Process image file with OCR\nCurrent: Development placeholder\n\nClick OK to continue."
-        else:
-            message = f"{constants.EXTENSION_FULL_NAME} - {ocr_source_type}\n\nDevelopment mode active.\nFeature implementation in progress."
+            message = f"{constants.EXTENSION_FULL_NAME} - OCR Image/PDF from File\n\nProcessing file-based OCR.\n\nYou can OCR image files and PDFs in this mode.\nClick OK to continue with stored defaults."
+    else:
+        message = f"{constants.EXTENSION_FULL_NAME} - {ocr_source_type}\n\nFallback OCR mode is active.\nFeature dialogs are currently unavailable."
 
-        # Use print as primary output - guaranteed to work
-        print(f"TejOCR MESSAGE: {message}")
-        logger.info(f"OCR dialog message displayed: {ocr_source_type}")
+    logger.info(f"OCR dialog message displayed: {ocr_source_type}")
         
         # Try ultra-basic message box without complex constants
         try:
@@ -2162,7 +3635,6 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
         return 1, None  # Simple success return
         
     except Exception as e:
-        print(f"TejOCR ERROR: {e}")
         logger.error(f"Error in show_ocr_options_dialog: {e}")
         return None, None
 
@@ -2213,12 +3685,12 @@ def show_settings_dialog(ctx, parent_frame):
                     message,
                     "errorbox",
                     parent_frame=parent_frame,
-                    ctx=ctx,
-                )
-            else:
-                print(message)
-        except Exception:
-            logger.debug("Could not display settings unavailable dialog. Falling back to console output.")
+                ctx=ctx,
+            )
+        else:
+            logger.debug(message)
+    except Exception:
+        logger.debug("Could not display settings unavailable dialog. Falling back to console output.")
         return False
     except Exception as e:
         logger.error(f"show_settings_dialog failed: {e}", exc_info=True)
@@ -2235,9 +3707,9 @@ def show_settings_dialog(ctx, parent_frame):
                     ctx=ctx,
                 )
             except Exception:
-                print(message)
+                logger.debug(message)
         else:
-            print(message)
+            logger.debug(message)
         return False
     finally:
         if settings_handler is not None:
@@ -2272,11 +3744,12 @@ def _show_tesseract_check_dialog(ctx, parent_frame, toolkit, parent_peer):
             box.execute()
     except Exception as dialog_error:
         logger.warning(f"Could not show Tesseract check dialog: {dialog_error}")
-        print(f"TESSERACT CHECK: {message}")
+        logger.debug(f"TESSERACT CHECK: {message}")
 
 def _show_installation_help_dialog(ctx, parent_frame, toolkit, parent_peer):
     """Show installation help dialog."""
     pip_python = _get_lo_python_path()
+    pip_cmd = _build_pip_command(pip_python)
     help_text = f"""Installation Help - {constants.EXTENSION_FULL_NAME}
 
 QUICK SETUP (macOS):
@@ -2288,7 +3761,7 @@ QUICK SETUP (macOS):
    brew install tesseract-lang
 
 3. Install Python packages:
-   {pip_python} -m pip install numpy pytesseract pillow
+   {pip_cmd} numpy pytesseract pillow
 
 4. Restart LibreOffice
 
@@ -2315,52 +3788,9 @@ Need more help? Check the extension documentation."""
             box.execute()
     except Exception as dialog_error:
         logger.warning(f"Could not show installation help dialog: {dialog_error}")
-        print(f"INSTALLATION HELP:\n{help_text}")
+        logger.debug(f"INSTALLATION HELP:\n{help_text}")
 
 
 if __name__ == "__main__":
-    # Setup a basic console logger for __main__ block
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    main_logger = logging.getLogger("TejOCR.Dialogs.__main__")
-
-    main_logger.info("tejocr_dialogs.py should be run by LibreOffice.")
-    # Basic mock for testing URL generation (requires constants.py to be findable)
-    # This will likely fail if constants.py isn't in the python path correctly
-    try:
-        import os
-        # Assuming constants.py is in the same directory as this script if run directly
-        # or one level up if this script is in a 'python/tejocr' structure
-        # This direct run is mostly for syntax checking, real testing needs LO.
-        
-        # Attempt to construct a path to where dialogs *would* be
-        # This is highly dependent on the current working directory when run directly
-        mock_dialogs_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "dialogs")
-        if not os.path.exists(mock_dialogs_dir):
-            os.makedirs(mock_dialogs_dir)
-        
-        mock_options_xdl_path = os.path.join(mock_dialogs_dir, "tejocr_options_dialog.xdl")
-        mock_settings_xdl_path = os.path.join(mock_dialogs_dir, "tejocr_settings_dialog.xdl")
-
-        if not os.path.exists(mock_options_xdl_path):
-            with open(mock_options_xdl_path, "w") as f:
-                f.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<dlg:window xmlns:dlg=\"http://openoffice.org/2000/dialog\" dlg:id=\"TejOCROptions\"><dlg:bulletinboard/></dlg:window>")
-            main_logger.info(f"Created mock XDL: {mock_options_xdl_path}")
-
-        if not os.path.exists(mock_settings_xdl_path):
-            with open(mock_settings_xdl_path, "w") as f:
-                f.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<dlg:window xmlns:dlg=\"http://openoffice.org/2000/dialog\" dlg:id=\"TejOCRSettings\"><dlg:bulletinboard/></dlg:window>")
-            main_logger.info(f"Created mock XDL: {mock_settings_xdl_path}")
-
-        main_logger.info(f"Mock Options Dialog XDL should be at: {mock_options_xdl_path}")
-        main_logger.info(f"Mock Settings Dialog XDL should be at: {mock_settings_xdl_path}")
-        
-        # The OptionsDialogHandler URL construction depends on __file__ which behaves differently 
-        # when run directly vs imported by LO. So this direct test is limited.
-        # handler = OptionsDialogHandler(None)
-        # main_logger.info(f"Options Dialog URL (direct run, may be incorrect for LO): {handler.dialog_url}")
-
-    except ImportError as ie:
-        main_logger.error(f"ImportError, ensure constants.py is accessible: {ie}", exc_info=True)
-    except Exception as e:
-        main_logger.error(f"Error in direct run of tejocr_dialogs.py: {e}", exc_info=True) 
+    # This module is intended to be loaded by LibreOffice. No-op main entry.
+    pass

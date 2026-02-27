@@ -96,7 +96,7 @@ flowchart TD
 
 ## Release output artifacts
 
-- `TejOCR-0.1.7.oxt` (or current semver)
+- `TejOCR-<version>.oxt` (current semver in the build)
 - Temporary install cache updates in LibreOffice user profile
 
 Keep build artifacts uncommitted unless required for distribution publishing.

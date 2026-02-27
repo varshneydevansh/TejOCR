@@ -119,6 +119,11 @@ def _coerce_bool_text(raw_value, default=False):
     return default
 
 
+def _coerce_bool(raw_value, default=False):
+    """Compatibility wrapper kept for internal callers and older runtime paths."""
+    return _coerce_bool_text(raw_value, default)
+
+
 def _parse_fallback_form_fields(raw_text):
     """Parse KEY=VALUE text entered in a fallback form."""
     key_aliases = {
@@ -130,6 +135,9 @@ def _parse_fallback_form_fields(raw_text):
         "lang": "language",
         "ocr_lang": "language",
         "ocr_language": "language",
+        "preview": "show_preview",
+        "preview_before_output": "show_preview",
+        "preview_text": "show_preview",
         "path": "tesseract_path",
         "tesseract": "tesseract_path",
         "tess_path": "tesseract_path",
@@ -137,6 +145,10 @@ def _parse_fallback_form_fields(raw_text):
         "output": "output_mode",
         "dest": "output_mode",
         "destination": "output_mode",
+        "merge_batch": "merge_batch_results",
+        "merge_batch_results": "merge_batch_results",
+        "merge_results": "merge_batch_results",
+        "merge": "merge_batch_results",
     }
 
     fields = {}
@@ -163,7 +175,8 @@ def _build_fallback_form_message(title, rows):
         "{rows}\n\n"
         "Examples:\n"
         "  output_mode=cursor | clipboard | textbox | replace\n"
-        "  preview_before_output=true\n"
+        "  show_preview=true\n"
+        "  merge_batch_results=true | false\n"
         "  scale=1.2\n"
         "  tesseract_path=C:/Program Files/Tesseract-OCR/tesseract.exe\n"
         "  language=eng+hin (or comma-separated: eng,hin)\n"
@@ -364,21 +377,21 @@ def _format_path_validation_status(path_status_text, is_ready):
     state_label = _("Valid") if is_ready else _("Invalid")
     if not path_status_text:
         path_status_text = _("No status available")
-    return _("Path check: {state}. {details}").format(state=state_label, details=path_status_text)
+    return _("ℹ Path check: {state}. {details}").format(state=state_label, details=path_status_text)
 
 
 def _format_validation_warning(message):
     message = (message or "").strip()
     if not message:
         return ""
-    return _("Note: {message}").format(message=message)
+    return _("⚠️ Note: {message}").format(message=message)
 
 
 def _format_settings_snapshot(snapshot):
     return _(
-        "Path: {path}\\n"
-        "Language: {lang}\\n"
-        "Output: {output}\\n"
+        "ℹ Path: {path}\n"
+        "Language: {lang}\n"
+        "Output: {output}\n"
         "Preset: {preset} | Scale: {scale} | Improve: {improve} | Preview: {preview}"
     ).format(
         path=snapshot.get("path") or _("Auto-detect"),
@@ -632,7 +645,7 @@ def create_settings_dialog(ctx, parent_frame=None):
         tesseract_status.setPropertyValue("PositionY", 30)
         tesseract_status.setPropertyValue("Width", 300)
         tesseract_status.setPropertyValue("Height", 12)
-        tesseract_status.setPropertyValue("Label", _("Tesseract OCR: Checking..."))
+        tesseract_status.setPropertyValue("Label", _("ℹ Tesseract OCR: Checking..."))
         dialog_model.insertByName("tesseract_status", tesseract_status)
 
         # Current configuration snapshot
@@ -2205,8 +2218,8 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         # Set dialog properties
         dialog_model.setPropertyValue("PositionX", 150)
         dialog_model.setPropertyValue("PositionY", 150)
-        dialog_model.setPropertyValue("Width", 420)
-        dialog_model.setPropertyValue("Height", 390)
+        dialog_model.setPropertyValue("Width", 520)
+        dialog_model.setPropertyValue("Height", 450)
         dialog_title = _("OCR Options")
         if source_type == "selected":
             dialog_title = _("OCR Options — Selected Image")
@@ -2223,7 +2236,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         source_info = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
         source_info.setPropertyValue("PositionX", 10)
         source_info.setPropertyValue("PositionY", 10)
-        source_info.setPropertyValue("Width", 400)
+        source_info.setPropertyValue("Width", 500)
         source_info.setPropertyValue("Height", 12)
         source_info.setPropertyValue("Label", f"Processing: {source_desc}")
         dialog_model.insertByName("source_info", source_info)
@@ -2241,7 +2254,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         lang_text = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
         lang_text.setPropertyValue("PositionX", 75)
         lang_text.setPropertyValue("PositionY", 35)
-        lang_text.setPropertyValue("Width", 130)
+        lang_text.setPropertyValue("Width", 170)
         lang_text.setPropertyValue("Height", 15)
         default_lang = uno_utils.get_setting(
             constants.CFG_KEY_LAST_SELECTED_LANG,
@@ -2259,7 +2272,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         lang_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
         lang_hint.setPropertyValue("PositionX", 210)
         lang_hint.setPropertyValue("PositionY", 35)
-        lang_hint.setPropertyValue("Width", 195)
+        lang_hint.setPropertyValue("Width", 255)
         lang_hint.setPropertyValue("Height", 12)
         lang_hint.setPropertyValue("Label", _("Use language codes like: eng, hin, fra (use + for mixed)"))
         dialog_model.insertByName("lang_hint", lang_hint)
@@ -2306,8 +2319,8 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
 
         output_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
         output_hint.setPropertyValue("PositionX", 20)
-        output_hint.setPropertyValue("PositionY", 295)
-        output_hint.setPropertyValue("Width", 390)
+        output_hint.setPropertyValue("PositionY", 315)
+        output_hint.setPropertyValue("Width", 480)
         output_hint.setPropertyValue("Height", 12)
         output_hint.setPropertyValue(
             "Label",
@@ -2322,7 +2335,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         available_languages_label = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
         available_languages_label.setPropertyValue("PositionX", 220)
         available_languages_label.setPropertyValue("PositionY", 58)
-        available_languages_label.setPropertyValue("Width", 185)
+        available_languages_label.setPropertyValue("Width", 250)
         available_languages_label.setPropertyValue("Height", 28)
         available_languages_label.setPropertyValue("MultiLine", True)
         available_languages_label.setPropertyValue("Label", installed_languages)
@@ -2388,7 +2401,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         preset_combo = dialog_model.createInstance("com.sun.star.awt.UnoControlComboBoxModel")
         preset_combo.setPropertyValue("PositionX", 95)
         preset_combo.setPropertyValue("PositionY", 190)
-        preset_combo.setPropertyValue("Width", 120)
+        preset_combo.setPropertyValue("Width", 180)
         preset_combo.setPropertyValue("Height", 15)
         preset_combo.setPropertyValue("Dropdown", True)
         preset_combo.setPropertyValue("ReadOnly", True)
@@ -2404,10 +2417,10 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         preset_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
         preset_hint.setPropertyValue("PositionX", 225)
         preset_hint.setPropertyValue("PositionY", 190)
-        preset_hint.setPropertyValue("Width", 180)
+        preset_hint.setPropertyValue("Width", 260)
         preset_hint.setPropertyValue("Height", 28)
         preset_hint.setPropertyValue("MultiLine", True)
-        preset_hint.setPropertyValue("Label", _("Fast / Balanced / Accuracy presets (custom for manual control)"))
+        preset_hint.setPropertyValue("Label", _("💡 Fast / Balanced / Accuracy presets (custom for manual control)"))
         dialog_model.insertByName("preset_hint", preset_hint)
 
         # PSM label
@@ -2423,7 +2436,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         psm_combo = dialog_model.createInstance("com.sun.star.awt.UnoControlComboBoxModel")
         psm_combo.setPropertyValue("PositionX", 55)
         psm_combo.setPropertyValue("PositionY", 225)
-        psm_combo.setPropertyValue("Width", 350)
+        psm_combo.setPropertyValue("Width", 180)
         psm_combo.setPropertyValue("Height", 15)
         psm_combo.setPropertyValue("Dropdown", True)
         psm_combo.setPropertyValue("ReadOnly", True)
@@ -2433,6 +2446,14 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
             current_psm = constants.DEFAULT_PSM_MODE
         psm_combo.setPropertyValue("Text", f"{current_psm}: {constants.TESSERACT_PSM_MODES[current_psm]}")
         dialog_model.insertByName("psm_combo", psm_combo)
+
+        psm_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        psm_hint.setPropertyValue("PositionX", 245)
+        psm_hint.setPropertyValue("PositionY", 225)
+        psm_hint.setPropertyValue("Width", 250)
+        psm_hint.setPropertyValue("Height", 12)
+        psm_hint.setPropertyValue("Label", _("💡 PSM 3 = Auto, 11 = Sparse"))
+        dialog_model.insertByName("psm_hint", psm_hint)
 
         # OEM label
         oem_label = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
@@ -2447,7 +2468,7 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         oem_combo = dialog_model.createInstance("com.sun.star.awt.UnoControlComboBoxModel")
         oem_combo.setPropertyValue("PositionX", 55)
         oem_combo.setPropertyValue("PositionY", 245)
-        oem_combo.setPropertyValue("Width", 350)
+        oem_combo.setPropertyValue("Width", 180)
         oem_combo.setPropertyValue("Height", 15)
         oem_combo.setPropertyValue("Dropdown", True)
         oem_combo.setPropertyValue("ReadOnly", True)
@@ -2457,6 +2478,14 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
             current_oem = constants.DEFAULT_OEM_MODE
         oem_combo.setPropertyValue("Text", f"{current_oem}: {constants.TESSERACT_OEM_MODES[current_oem]}")
         dialog_model.insertByName("oem_combo", oem_combo)
+        
+        oem_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        oem_hint.setPropertyValue("PositionX", 245)
+        oem_hint.setPropertyValue("PositionY", 245)
+        oem_hint.setPropertyValue("Width", 250)
+        oem_hint.setPropertyValue("Height", 12)
+        oem_hint.setPropertyValue("Label", _("💡 OEM 3 = Default, 1 = LSTM (Modern)"))
+        dialog_model.insertByName("oem_hint", oem_hint)
 
         # Scale label
         scale_label = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
@@ -2482,12 +2511,12 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         scale_hint.setPropertyValue("PositionY", 270)
         scale_hint.setPropertyValue("Width", 265)
         scale_hint.setPropertyValue("Height", 12)
-        scale_hint.setPropertyValue("Label", _("1.0 = original size (1.5+ can help blurry scans)"))
+        scale_hint.setPropertyValue("Label", _("💡 1.0 = original size (1.5+ can help blurry scans)"))
         dialog_model.insertByName("scale_hint", scale_hint)
 
         preview_check = dialog_model.createInstance("com.sun.star.awt.UnoControlCheckBoxModel")
         preview_check.setPropertyValue("PositionX", 10)
-        preview_check.setPropertyValue("PositionY", 295)
+        preview_check.setPropertyValue("PositionY", 335)
         preview_check.setPropertyValue("Width", 390)
         preview_check.setPropertyValue("Height", 15)
         preview_check.setPropertyValue("Label", _("Preview OCR text before inserting"))
@@ -2502,10 +2531,27 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         preview_check.setPropertyValue("State", 1 if default_preview else 0)
         dialog_model.insertByName("preview_check", preview_check)
 
+        default_merge_batch = _coerce_bool_text(
+            uno_utils.get_setting(
+                constants.CFG_KEY_MERGE_BATCH_RESULTS,
+                constants.DEFAULT_MERGE_BATCH_RESULTS,
+                ctx,
+            )
+        )
+        if source_type != "selected":
+            merge_batch_check = dialog_model.createInstance("com.sun.star.awt.UnoControlCheckBoxModel")
+            merge_batch_check.setPropertyValue("PositionX", 10)
+            merge_batch_check.setPropertyValue("PositionY", 355)
+            merge_batch_check.setPropertyValue("Width", 500)
+            merge_batch_check.setPropertyValue("Height", 15)
+            merge_batch_check.setPropertyValue("Label", _("Merge all file/PDF results into a single output block"))
+            merge_batch_check.setPropertyValue("State", 1 if default_merge_batch else 0)
+            dialog_model.insertByName("merge_batch_check", merge_batch_check)
+
         # Status label
         status_label = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
         status_label.setPropertyValue("PositionX", 10)
-        status_label.setPropertyValue("PositionY", 315)
+        status_label.setPropertyValue("PositionY", 380 if source_type != "selected" else 355)
         status_label.setPropertyValue("Width", 280)
         status_label.setPropertyValue("Height", 12)
         status_label.setPropertyValue("Label", _("Status: Ready"))
@@ -2513,19 +2559,23 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         
         # Start OCR button
         start_btn = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-        start_btn.setPropertyValue("PositionX", 250)
-        start_btn.setPropertyValue("PositionY", 350)
+        start_btn.setPropertyValue("PositionX", 290)
+        start_btn.setPropertyValue("PositionY", 415)
         start_btn.setPropertyValue("Width", 70)
         start_btn.setPropertyValue("Height", 20)
         start_btn.setPropertyValue("Label", _("Start OCR"))
         start_btn.setPropertyValue("DefaultButton", True)
         start_btn.setPropertyValue("ActionCommand", "start_ocr_action")
+        # Modern crisp green styling
+        start_btn.setPropertyValue("BackgroundColor", 0x1F883D)
+        start_btn.setPropertyValue("TextColor", 0xFFFFFF)
+        start_btn.setPropertyValue("FontWeight", 150.0) # Bold weight
         dialog_model.insertByName("start_btn", start_btn)
         
         # Cancel button
         cancel_btn = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
-        cancel_btn.setPropertyValue("PositionX", 330)
-        cancel_btn.setPropertyValue("PositionY", 350)
+        cancel_btn.setPropertyValue("PositionX", 370)
+        cancel_btn.setPropertyValue("PositionY", 415)
         cancel_btn.setPropertyValue("Width", 70)
         cancel_btn.setPropertyValue("Height", 20)
         cancel_btn.setPropertyValue("Label", _("Cancel"))
@@ -2575,116 +2625,296 @@ def show_interactive_ocr_options_dialog(ctx, parent_frame=None, source_type="sel
                 self.result_improve = False
                 self.result_extra = {}
                 self.cancelled = True
+                self.COLOR_BTN_PRIMARY = 0x2d7bff
+                self.COLOR_BTN_SUCCESS = 0x22c55e
+                self.COLOR_BTN_WARNING = 0xf59e0b
+                self.COLOR_BTN_DANGER = 0xef4444
+                self.COLOR_TEXT_ON_DARK = 0xffffff
+                self.COLOR_OK = 0x16a34a
+                self.COLOR_WARN = 0xd97706
+                self.COLOR_ERROR = 0xdc2626
+
+            def _capture_control_state(self, control):
+                if not control:
+                    return {}
+                state = {}
+                try:
+                    state["text"] = control.getText()
+                except Exception:
+                    state["text"] = None
+                try:
+                    state["enabled"] = control.isEnabled()
+                except Exception:
+                    state["enabled"] = None
+                try:
+                    model = control.getModel()
+                    state["bg"] = getattr(model, "BackgroundColor", None)
+                    state["fg"] = getattr(model, "TextColor", None)
+                except Exception:
+                    state["bg"] = None
+                    state["fg"] = None
+                return state
+
+            def _restore_control_state(self, control, state):
+                if not control or not isinstance(state, dict):
+                    return
+                try:
+                    if state.get("text") is not None:
+                        control.setText(state["text"])
+                except Exception:
+                    pass
+                try:
+                    if state.get("enabled") is not None:
+                        control.setEnable(state["enabled"])
+                except Exception:
+                    pass
+                try:
+                    model = control.getModel()
+                    if state.get("bg") is not None:
+                        model.BackgroundColor = state["bg"]
+                    if state.get("fg") is not None:
+                        model.TextColor = state["fg"]
+                except Exception:
+                    pass
+
+            def _set_control_feedback(self, control, text=None, enabled=None, bg_color=None, fg_color=None):
+                if not control:
+                    return
+                if text is not None:
+                    try:
+                        control.setText(text)
+                    except Exception:
+                        pass
+                if enabled is not None:
+                    try:
+                        control.setEnable(enabled)
+                    except Exception:
+                        pass
+                try:
+                    model = control.getModel()
+                    if bg_color is not None:
+                        model.BackgroundColor = bg_color
+                    if fg_color is not None:
+                        model.TextColor = fg_color
+                except Exception:
+                    pass
+
+            def _set_status(self, text, color=None):
+                try:
+                    status = self.dialog.getControl("status_label")
+                    if status:
+                        status.setText(text or "")
+                        if color is not None:
+                            try:
+                                status.getModel().TextColor = color
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
             
             def actionPerformed(self, event):
                 try:
-                    # Use ActionCommand instead of getName to fix the error
-                    action_command = event.ActionCommand
-                    
-                    if action_command == "start_ocr_action":
-                        # Get selected options
-                        self.result_lang = self.dialog.getControl("lang_text").getText().strip()
-                        if not self.result_lang:
-                            self.result_lang = constants.DEFAULT_OCR_LANGUAGE
-                        available_languages = ()
-                        try:
-                            available_languages = tuple(tejocr_engine.get_available_languages() or ())
-                        except Exception:
-                            available_languages = ()
-
-                        validated_lang, invalid_codes, validated = _validate_language_codes(
-                            self.result_lang,
-                            available_languages,
-                        )
-                        self.result_lang = validated_lang or constants.DEFAULT_OCR_LANGUAGE
-                        language_warning = _build_language_validation_message(
-                            self.result_lang,
-                            invalid_codes,
-                            validated,
-                        )
-                        if language_warning:
+                    def _extract_action_command(event_obj):
+                        if event_obj is None:
+                            return None
+                        for attr in ("ActionCommand", "actionCommand"):
                             try:
-                                self.dialog.getControl("status_label").setText(language_warning)
+                                value = getattr(event_obj, attr)
+                                if value:
+                                    return str(value)
                             except Exception:
                                 pass
+                        try:
+                            source = getattr(event_obj, "Source", None)
+                            if source:
+                                command = getattr(source, "getActionCommand", None)
+                                if callable(command):
+                                    value = command()
+                                    if value:
+                                        return str(value)
+                        except Exception:
+                            pass
+                        return None
 
-                        preset_text = self.dialog.getControl("preset_combo").getText()
-                        selected_preset = _coerce_preset_value(
-                            preset_text,
-                            constants.DEFAULT_OCR_PRESET
+                    action_command = _extract_action_command(event)
+                    if not action_command:
+                        return
+
+                    start_btn = None
+                    cancel_btn = None
+                    status_label = None
+                    try:
+                        start_btn = self.dialog.getControl("start_btn")
+                        cancel_btn = self.dialog.getControl("cancel_btn")
+                        status_label = self.dialog.getControl("status_label")
+                    except Exception:
+                        pass
+
+                    def _run_feedback(
+                        control,
+                        run_text,
+                        start_status,
+                        execute_callable,
+                        done_status=None,
+                        bg_color=None,
+                        fg_color=None,
+                    ):
+                        state = self._capture_control_state(control)
+                        if control:
+                            try:
+                                control.setFocus()
+                            except Exception:
+                                pass
+                        self._set_control_feedback(
+                            control,
+                            text=run_text,
+                            enabled=False,
+                            bg_color=bg_color,
+                            fg_color=fg_color,
                         )
-                        preset_profile = constants.OCR_QUALITY_PRESETS.get(selected_preset, {})
-                        
-                        self.result_output = _output_mode_from_text(
-                            self.dialog.getControl("output_combo").getText(),
-                            constants.OUTPUT_MODE_CURSOR
+                        if status_label and start_status:
+                            self._set_status(start_status, self.COLOR_OK)
+                        try:
+                            execute_callable()
+                            if status_label and done_status:
+                                self._set_status(done_status, self.COLOR_OK)
+                        except Exception:
+                            if status_label and start_status:
+                                self._set_status("OCR options action failed.", self.COLOR_ERROR)
+                            raise
+                        finally:
+                            self._restore_control_state(control, state)
+                    
+                    if action_command == "start_ocr_action":
+                        def _collect_options():
+                            # Get selected options
+                            self.result_lang = self.dialog.getControl("lang_text").getText().strip()
+                            if not self.result_lang:
+                                self.result_lang = constants.DEFAULT_OCR_LANGUAGE
+                            available_languages = ()
+                            try:
+                                available_languages = tuple(tejocr_engine.get_available_languages() or ())
+                            except Exception:
+                                available_languages = ()
+
+                            validated_lang, invalid_codes, validated = _validate_language_codes(
+                                self.result_lang,
+                                available_languages,
+                            )
+                            self.result_lang = validated_lang or constants.DEFAULT_OCR_LANGUAGE
+                            language_warning = _build_language_validation_message(
+                                self.result_lang,
+                                invalid_codes,
+                                validated,
+                            )
+                            if language_warning:
+                                self._set_status(language_warning, self.COLOR_WARN)
+
+                            preset_text = self.dialog.getControl("preset_combo").getText()
+                            selected_preset = _coerce_preset_value(
+                                preset_text,
+                                constants.DEFAULT_OCR_PRESET
+                            )
+                            preset_profile = constants.OCR_QUALITY_PRESETS.get(selected_preset, {})
+                            
+                            self.result_output = _output_mode_from_text(
+                                self.dialog.getControl("output_combo").getText(),
+                                constants.OUTPUT_MODE_CURSOR
+                            )
+                            if self.source_type != "selected" and self.result_output == constants.OUTPUT_MODE_REPLACE:
+                                self.result_output = constants.OUTPUT_MODE_CURSOR
+                            if not self.result_output:
+                                self.result_output = constants.OUTPUT_MODE_CURSOR
+
+                            self.result_improve = bool(self.dialog.getControl("improve_check").getState())
+
+                            psm_raw = self.dialog.getControl("psm_combo").getText()
+                            psm_value = _mode_value(psm_raw, constants.DEFAULT_PSM_MODE)
+                            if psm_value not in constants.TESSERACT_PSM_MODES:
+                                psm_value = constants.DEFAULT_PSM_MODE
+
+                            oem_raw = self.dialog.getControl("oem_combo").getText()
+                            oem_value = _mode_value(oem_raw, constants.DEFAULT_OEM_MODE)
+                            if oem_value not in constants.TESSERACT_OEM_MODES:
+                                oem_value = constants.DEFAULT_OEM_MODE
+
+                            scale_raw = self.dialog.getControl("scale_text").getText()
+                            scale_value = _coerce_scale_text(scale_raw, constants.DEFAULT_SCALE_FACTOR)
+                            result_improve = bool(self.dialog.getControl("improve_check").getState())
+                            result_grayscale = bool(self.dialog.getControl("grayscale_check").getState())
+                            result_binarize = bool(self.dialog.getControl("binarize_check").getState())
+                            result_invert = bool(self.dialog.getControl("invert_check").getState())
+                            result_preview = bool(self.dialog.getControl("preview_check").getState())
+                            result_merge_batch = False
+                            if self.source_type != "selected":
+                                try:
+                                    result_merge_batch = bool(self.dialog.getControl("merge_batch_check").getState())
+                                except Exception:
+                                    result_merge_batch = constants.DEFAULT_MERGE_BATCH_RESULTS
+
+                            if selected_preset != constants.OCR_PRESET_CUSTOM and preset_profile:
+                                psm_value = str(
+                                    preset_profile.get("psm", psm_value)
+                                ).strip() or psm_value
+                                oem_value = str(
+                                    preset_profile.get("oem", oem_value)
+                                ).strip() or oem_value
+                                scale_value = _coerce_scale_text(
+                                    preset_profile.get("scale", scale_value),
+                                    scale_value
+                                )
+                                result_improve = bool(
+                                    preset_profile.get("improve_image", result_improve)
+                                )
+                                result_grayscale = bool(
+                                    preset_profile.get("grayscale", result_grayscale)
+                                )
+                                result_binarize = bool(
+                                    preset_profile.get("binarize", result_binarize)
+                                )
+                                result_invert = bool(
+                                    preset_profile.get("invert", result_invert)
+                                )
+
+                            self.result_extra = {
+                                "show_preview": result_preview,
+                                "preset": selected_preset,
+                                "psm": psm_value,
+                                "oem": oem_value,
+                                "scale": scale_value,
+                                "grayscale": result_grayscale,
+                                "binarize": result_binarize,
+                                "invert": result_invert,
+                                "merge_batch_results": result_merge_batch,
+                                "language_warning": language_warning,
+                            }
+                            self.result_improve = result_improve
+                            self.cancelled = False
+
+                        _run_feedback(
+                            start_btn,
+                            "Starting OCR...",
+                            "Collecting OCR options...",
+                            _collect_options,
+                            "Launching OCR...",
+                            bg_color=self.COLOR_BTN_SUCCESS,
+                            fg_color=self.COLOR_TEXT_ON_DARK,
                         )
-                        if self.source_type != "selected" and self.result_output == constants.OUTPUT_MODE_REPLACE:
-                            self.result_output = constants.OUTPUT_MODE_TEXTBOX
-                        
-                        if not self.result_output:
-                            self.result_output = constants.OUTPUT_MODE_CURSOR
-                        
-                        self.result_improve = bool(self.dialog.getControl("improve_check").getState())
-
-                        psm_raw = self.dialog.getControl("psm_combo").getText()
-                        psm_value = _mode_value(psm_raw, constants.DEFAULT_PSM_MODE)
-                        if psm_value not in constants.TESSERACT_PSM_MODES:
-                            psm_value = constants.DEFAULT_PSM_MODE
-
-                        oem_raw = self.dialog.getControl("oem_combo").getText()
-                        oem_value = _mode_value(oem_raw, constants.DEFAULT_OEM_MODE)
-                        if oem_value not in constants.TESSERACT_OEM_MODES:
-                            oem_value = constants.DEFAULT_OEM_MODE
-
-                        scale_raw = self.dialog.getControl("scale_text").getText()
-                        scale_value = _coerce_scale_text(scale_raw, constants.DEFAULT_SCALE_FACTOR)
-                        result_improve = bool(self.dialog.getControl("improve_check").getState())
-                        result_grayscale = bool(self.dialog.getControl("grayscale_check").getState())
-                        result_binarize = bool(self.dialog.getControl("binarize_check").getState())
-                        result_invert = bool(self.dialog.getControl("invert_check").getState())
-                        result_preview = bool(self.dialog.getControl("preview_check").getState())
-
-                        if selected_preset != constants.OCR_PRESET_CUSTOM and preset_profile:
-                            psm_value = str(
-                                preset_profile.get("psm", psm_value)
-                            ).strip() or psm_value
-                            oem_value = str(
-                                preset_profile.get("oem", oem_value)
-                            ).strip() or oem_value
-                            scale_value = _coerce_scale_text(
-                                preset_profile.get("scale", scale_value),
-                                scale_value
-                            )
-                            result_improve = bool(
-                                preset_profile.get("improve_image", result_improve)
-                            )
-                            result_grayscale = bool(
-                                preset_profile.get("grayscale", result_grayscale)
-                            )
-                            result_binarize = bool(
-                                preset_profile.get("binarize", result_binarize)
-                            )
-                            result_invert = bool(
-                                preset_profile.get("invert", result_invert)
-                            )
-
-                        self.result_extra = {
-                            "show_preview": result_preview,
-                            "preset": selected_preset,
-                            "psm": psm_value,
-                            "oem": oem_value,
-                            "scale": scale_value,
-                            "grayscale": result_grayscale,
-                            "binarize": result_binarize,
-                            "invert": result_invert,
-                            "language_warning": language_warning,
-                        }
-                        self.result_improve = result_improve
-                        self.cancelled = False
                         self.dialog.endExecute()
                     
                     elif action_command == "cancel_ocr_action":
+                        def _cancel_operation():
+                            self.cancelled = True
+
+                        _run_feedback(
+                            cancel_btn,
+                            "Cancelling...",
+                            "Cancelling OCR...",
+                            _cancel_operation,
+                            "OCR cancelled.",
+                            bg_color=self.COLOR_BTN_DANGER,
+                            fg_color=self.COLOR_TEXT_ON_DARK,
+                        )
                         self.cancelled = True
                         self.dialog.endExecute()
                 
@@ -2752,37 +2982,33 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
         ).lower()
         == "true"
     )
-    default_binarize = (
+    default_binarize = _coerce_bool_text(
         uno_utils.get_setting(
             constants.CFG_KEY_DEFAULT_BINARIZE,
             str(constants.DEFAULT_PREPROC_BINARIZE),
             ctx
-        ).lower()
-        == "true"
+        )
     )
-    default_invert = (
+    default_invert = _coerce_bool_text(
         uno_utils.get_setting(
             constants.CFG_KEY_DEFAULT_INVERT,
             str(constants.DEFAULT_PREPROC_INVERT),
             ctx,
-        ).lower()
-        == "true"
+        )
     )
-    default_preview = (
+    default_preview = _coerce_bool_text(
         uno_utils.get_setting(
             constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT,
             constants.DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT,
             ctx,
-        ).lower()
-        == "true"
+        )
     )
-    default_improve = (
+    default_improve = _coerce_bool_text(
         uno_utils.get_setting(
             constants.CFG_KEY_IMPROVE_IMAGE_DEFAULT,
             "false",
             ctx
-        ).lower()
-        == "true"
+        )
     )
     default_psm = uno_utils.get_setting(
         constants.CFG_KEY_DEFAULT_PSM,
@@ -2810,6 +3036,12 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
         ),
         constants.DEFAULT_OCR_PRESET
     )
+    raw_default_merge_batch = uno_utils.get_setting(
+        constants.CFG_KEY_MERGE_BATCH_RESULTS,
+        constants.DEFAULT_MERGE_BATCH_RESULTS,
+        ctx,
+    )
+    default_merge_batch = _coerce_bool_text(raw_default_merge_batch, constants.DEFAULT_MERGE_BATCH_RESULTS == "true")
 
     if not uno_utils.supports_uno_dialog_model(ctx):
         logger.warning(
@@ -2830,6 +3062,7 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
                 "grayscale": default_grayscale,
                 "binarize": default_binarize,
                 "invert": default_invert,
+                "merge_batch_results": default_merge_batch,
                 "language_warning": "",
             },
         )
@@ -2847,6 +3080,7 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
             "output_mode={output}".format(output=default_output),
             "show_preview={preview}".format(preview="true" if default_preview else "false"),
             "preset={preset}".format(preset=default_preset),
+            "merge_batch_results={merge}".format(merge="true" if default_merge_batch else "false"),
             "",
             "# " + _("Advanced controls (preset=custom to apply as-is)"),
             "psm={psm}".format(psm=default_psm),
@@ -2890,11 +3124,15 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
         default_output,
     )
     if source_type != "selected" and final_output == constants.OUTPUT_MODE_REPLACE:
-        final_output = constants.OUTPUT_MODE_TEXTBOX
+        final_output = constants.OUTPUT_MODE_CURSOR
 
     final_preview = _coerce_bool_text(
         values.get("show_preview", str(default_preview).lower()),
         default_preview,
+    )
+    final_merge_batch = _coerce_bool_text(
+        values.get("merge_batch_results", str(default_merge_batch).lower()),
+        default_merge_batch,
     )
 
     selected_preset = _coerce_preset_value(values.get("preset", default_preset), default_preset)
@@ -2951,6 +3189,11 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
         uno_utils.set_setting(constants.CFG_KEY_LAST_SELECTED_LANG, final_lang, ctx)
         uno_utils.set_setting(constants.CFG_KEY_LAST_OUTPUT_MODE, final_output, ctx)
         uno_utils.set_setting(constants.CFG_KEY_DEFAULT_INVERT, "true" if final_invert else "false", ctx)
+        uno_utils.set_setting(
+            constants.CFG_KEY_MERGE_BATCH_RESULTS,
+            "true" if final_merge_batch else "false",
+            ctx,
+        )
     except Exception:
         pass
 
@@ -2960,6 +3203,7 @@ def _show_fallback_ocr_options_prompts(ctx, parent_frame=None, source_type="sele
         final_improve,
         {
             "show_preview": final_preview,
+            "merge_batch_results": final_merge_batch,
             "preset": selected_preset,
             "psm": final_psm,
             "oem": final_oem,

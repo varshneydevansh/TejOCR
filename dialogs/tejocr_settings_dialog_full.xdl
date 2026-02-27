@@ -43,27 +43,28 @@
     <!-- Preprocessing Checkboxes -->
     <dlg:checkbox dlg:id="DefaultGrayscaleCheckbox" dlg:tab-index="27" dlg:left="330" dlg:top="253" dlg:width="120" dlg:height="12" dlg:value="Grayscale filter"/>
     <dlg:checkbox dlg:id="DefaultBinarizeCheckbox" dlg:tab-index="28" dlg:left="330" dlg:top="267" dlg:width="120" dlg:height="12" dlg:value="Binarize (BW)"/>
-    <dlg:checkbox dlg:id="DefaultPreviewCheckbox" dlg:tab-index="29" dlg:left="20" dlg:top="282" dlg:width="160" dlg:height="12" dlg:value="Preview OCR text before insert"/>
+    <dlg:checkbox dlg:id="DefaultPreviewCheckbox" dlg:tab-index="29" dlg:left="20" dlg:top="282" dlg:width="180" dlg:height="12" dlg:value="Preview OCR text before insert"/>
+    <dlg:checkbox dlg:id="DefaultMergeBatchCheckbox" dlg:tab-index="30" dlg:left="210" dlg:top="282" dlg:width="240" dlg:height="12" dlg:value="Merge bulk/PDF into single output"/>
 
     <!-- === Tesseract Parameters === -->
-    <dlg:fixedline dlg:id="SectionParams" dlg:tab-index="30" dlg:left="10" dlg:top="300" dlg:width="450" dlg:height="10" dlg:value="Tesseract Parameters"/>
+    <dlg:fixedline dlg:id="SectionParams" dlg:tab-index="31" dlg:left="10" dlg:top="300" dlg:width="450" dlg:height="10" dlg:value="Tesseract Parameters"/>
     
     <!-- 3-Column Parameter layout -->
-    <dlg:text dlg:id="DefaultPresetLabel" dlg:tab-index="31" dlg:left="20" dlg:top="316" dlg:width="60" dlg:height="12" dlg:value="Preset:"/>
-    <dlg:text dlg:id="DefaultPSMLabel" dlg:tab-index="32" dlg:left="165" dlg:top="316" dlg:width="40" dlg:height="12" dlg:value="PSM:"/>
-    <dlg:text dlg:id="DefaultOEMLabel" dlg:tab-index="33" dlg:left="310" dlg:top="316" dlg:width="40" dlg:height="12" dlg:value="OEM:"/>
+    <dlg:text dlg:id="DefaultPresetLabel" dlg:tab-index="32" dlg:left="20" dlg:top="316" dlg:width="60" dlg:height="12" dlg:value="Preset:"/>
+    <dlg:text dlg:id="DefaultPSMLabel" dlg:tab-index="33" dlg:left="165" dlg:top="316" dlg:width="40" dlg:height="12" dlg:value="PSM:"/>
+    <dlg:text dlg:id="DefaultOEMLabel" dlg:tab-index="34" dlg:left="310" dlg:top="316" dlg:width="40" dlg:height="12" dlg:value="OEM:"/>
 
     <!-- Open Listboxes (dropdown="false") -->
-    <dlg:menulist dlg:id="DefaultPresetDropdown" dlg:tab-index="34" dlg:left="20" dlg:top="330" dlg:width="135" dlg:height="65" dlg:dropdown="false"/>
-    <dlg:menulist dlg:id="DefaultPSMDropdown" dlg:tab-index="35" dlg:left="165" dlg:top="330" dlg:width="135" dlg:height="65" dlg:dropdown="false"/>
-    <dlg:menulist dlg:id="DefaultOEMDropdown" dlg:tab-index="36" dlg:left="310" dlg:top="330" dlg:width="140" dlg:height="65" dlg:dropdown="false"/>
+    <dlg:menulist dlg:id="DefaultPresetDropdown" dlg:tab-index="35" dlg:left="20" dlg:top="330" dlg:width="135" dlg:height="65" dlg:dropdown="false"/>
+    <dlg:menulist dlg:id="DefaultPSMDropdown" dlg:tab-index="36" dlg:left="165" dlg:top="330" dlg:width="135" dlg:height="65" dlg:dropdown="false"/>
+    <dlg:menulist dlg:id="DefaultOEMDropdown" dlg:tab-index="37" dlg:left="310" dlg:top="330" dlg:width="140" dlg:height="65" dlg:dropdown="false"/>
 
     <!-- === Footer === -->
-    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="37" dlg:left="10" dlg:top="408" dlg:width="450" dlg:height="10"/>
-    <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="38" dlg:left="10" dlg:top="424" dlg:width="450" dlg:height="10" dlg:value="Ready"/>
-    <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="39" dlg:left="10" dlg:top="434" dlg:width="55" dlg:height="22" dlg:value="Help..."/>
-    <dlg:button dlg:id="CancelButton" dlg:tab-index="40" dlg:left="345" dlg:top="434" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
-    <dlg:button dlg:id="SaveButton" dlg:tab-index="41" dlg:left="410" dlg:top="434" dlg:width="50" dlg:height="22" dlg:default="true" dlg:value="Save"/>
+    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="38" dlg:left="10" dlg:top="408" dlg:width="450" dlg:height="10"/>
+    <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="39" dlg:left="10" dlg:top="424" dlg:width="450" dlg:height="10" dlg:value="Ready"/>
+    <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="40" dlg:left="10" dlg:top="434" dlg:width="55" dlg:height="22" dlg:value="Help..."/>
+    <dlg:button dlg:id="CancelButton" dlg:tab-index="41" dlg:left="345" dlg:top="434" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
+    <dlg:button dlg:id="SaveButton" dlg:tab-index="42" dlg:left="410" dlg:top="434" dlg:width="50" dlg:height="22" dlg:default="true" dlg:value="Save"/>
 
   </dlg:bulletinboard>
 </dlg:window>

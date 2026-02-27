@@ -6,7 +6,7 @@
   <p>OCR inside Writer, with predictable output behavior</p>
 
   [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/varshneydevansh/TejOCR)
-  [![Version](https://img.shields.io/badge/version-0.1.7-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
+  [![Version](https://img.shields.io/badge/version-0.1.8-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
   [![License](https://img.shields.io/badge/license-MPL%202.0-green.svg)](LICENSE)
   [![LibreOffice](https://img.shields.io/badge/libreoffice-4.0+-7f52ff.svg)](https://www.libreoffice.org/)
   [![Repository Size](https://img.shields.io/github/repo-size/varshneydevansh/TejOCR?color=orange)](https://github.com/varshneydevansh/TejOCR)
@@ -97,7 +97,8 @@ flowchart TD
 
 - **Input sources**
   - Selected Writer image
-  - Local image file
+  - Local image file (single or multi-select for batch processing)
+  - Multi-page PDF documents (requires `pdftoppm`/`poppler-utils` or `mutool` installed)
 - **Output modes**
   - Insert at cursor
   - Copy to clipboard
@@ -135,7 +136,7 @@ flowchart LR
 
 ## Install
 
-1. Install `TejOCR-0.1.7.oxt` from extension manager.
+1. Install `TejOCR-0.1.8.oxt` from extension manager.
 2. Restart LibreOffice.
 3. Open **TejOCR → Settings** and verify dependency status.
 
@@ -169,12 +170,12 @@ If detection fails, set full Tesseract executable path in Settings.
 3. Choose language/output/preprocessing.
 4. Run and get result.
 
-### B) File image
+### B) File image or PDF (Batch processing)
 
 1. Open `TejOCR → OCR Image from File`.
-2. Select a file path.
-3. Choose language/output/preprocessing.
-4. Run and get result.
+2. Select one or more image files and/or PDF documents.
+3. Choose language/output/preprocessing, and toggle **Merge bulk/PDF into single output** if desired.
+4. Run and get result (merged with headers or processed sequentially).
 
 ---
 

@@ -33,6 +33,19 @@ def get_logger(name="TejOCR"):
         return _loggers[name]
     
     try:
+        configured_level_name = getattr(constants, "CURRENT_LOG_LEVEL", "ERROR")
+        configured_level = logging.ERROR
+        try:
+            configured_level = int(configured_level_name)
+        except Exception:
+            if isinstance(configured_level_name, str):
+                configured_level = getattr(
+                    logging,
+                    configured_level_name.strip().upper(),
+                    logging.ERROR,
+                )
+        enable_console_logging = bool(getattr(constants, "ENABLE_CONSOLE_LOGGING", False))
+
         # Standard library logging
         user_temp_dir = tempfile.gettempdir()
         # Create a separate logs directory under the temp directory
@@ -45,7 +58,11 @@ def get_logger(name="TejOCR"):
         
         # Create logger
         logger_instance = logging.getLogger(name)
-        logger_instance.setLevel(logging.DEBUG) # Set desired minimum level
+        logger_instance.setLevel(configured_level) # Set desired minimum level
+        # Keep existing handlers aligned with the current log level.
+        for existing_handler in logger_instance.handlers:
+            if isinstance(existing_handler, (logging.FileHandler, logging.StreamHandler)):
+                existing_handler.setLevel(configured_level)
         
         # Create file handler if not already present for this logger to avoid duplicates
         has_file_handler = False
@@ -59,56 +76,34 @@ def get_logger(name="TejOCR"):
         if not has_file_handler:
             # 'a' mode appends to the log file instead of overwriting
             fh = logging.FileHandler(log_file_path, encoding='utf-8', mode='a') 
-            fh.setLevel(logging.DEBUG) # Level for this handler
+            fh.setLevel(configured_level) # Level for this handler
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(module)s.%(funcName)s:%(lineno)d - %(message)s')
             fh.setFormatter(formatter)
             logger_instance.addHandler(fh)
-            print(f"INFO: Logger '{name}' FileHandler configured. Logging to: {log_file_path}")
         
-        # Add a console handler for debugging (visible in terminal output)
-        if not has_console_handler:
+        # Add a console handler only when explicit console logging is enabled.
+        if enable_console_logging and not has_console_handler:
             console = logging.StreamHandler()
-            console.setLevel(logging.DEBUG)
+            console.setLevel(configured_level)
             console_formatter = logging.Formatter('>>> %(name)s - %(levelname)s: %(message)s')
             console.setFormatter(console_formatter)
             logger_instance.addHandler(console)
-            print(f"INFO: Logger '{name}' ConsoleHandler added")
-        
-        # Log the initialization as confirmation
-        logger_instance.info(f"TejOCR Logger initialized. Log file: {log_file_path}")
         
         _loggers[name] = logger_instance
         return logger_instance
     
     except Exception as e_log_setup:
-        # Fallback to print if logger setup fails catastrophically
-        print(f"CRITICAL ERROR: Failed to setup logger '{name}'. Reason: {e_log_setup}")
-        # Return a dummy logger that does nothing or prints, to avoid NoneErrors
-        class PrintLogger:
-            def _log(self, level, msg, *args, **kwargs):
-                exc_info = kwargs.pop('exc_info', False)
-                message = f"{level}: {name} ({kwargs.get('module','unknown')}.{kwargs.get('funcName','unknown')}:{kwargs.get('lineno','unknown')}): {msg}"
-                if args:
-                    message = message % args
-                print(message)
-                if exc_info:
-                    import traceback
-                    traceback.print_exc()
-
-            def info(self, msg, *args, **kwargs): self._log("INFO", msg, *args, **kwargs)
-            def debug(self, msg, *args, **kwargs): self._log("DEBUG", msg, *args, **kwargs)
-            def warning(self, msg, *args, **kwargs): self._log("WARNING", msg, *args, **kwargs)
-            def error(self, msg, *args, **kwargs): self._log("ERROR", msg, *args, **kwargs)
-            def critical(self, msg, *args, **kwargs): self._log("CRITICAL", msg, *args, **kwargs)
-
-        # Ensure the dummy logger is also stored to prevent re-attempting setup on every call for this name
-        _loggers[name] = PrintLogger()
-        return _loggers[name]
+        noop_logger = logging.getLogger(f"{name}.noop")
+        noop_logger.setLevel(logging.CRITICAL + 10)
+        if not noop_logger.handlers:
+            noop_logger.addHandler(logging.NullHandler())
+        _loggers[name] = noop_logger
+        return noop_logger
 
 # Initialize the module-level logger *after* get_logger is defined.
 # This is the primary logger for this module's own operations.
 logger = get_logger("TejOCR.uno_utils") 
-logger.info("uno_utils.py: Module loaded and logger initialized.")
+logger.debug("uno_utils.py: Module loaded and logger initialized.")
 
 
 def get_log_file_path():
@@ -498,7 +493,6 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
             ctx = uno.getComponentContext()
         except Exception:
             logger.warning(f"show_message_box: {_('No ctx provided and uno.getComponentContext() failed. Cannot show:')} {title} - {message}")
-            print(f"MESSAGE BOX (CONSOLE FALLBACK - NO CONTEXT): {title} - {message}")
             return None # Or a specific error code like -1
 
     parent_peer = None
@@ -652,19 +646,19 @@ def show_message_box(title, message, type="infobox", parent_frame=None, ctx=None
         toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
         if not toolkit:
             logger.error(f"show_message_box: {_('Failed to create Toolkit (second attempt). Cannot show:')} {title} - {message}")
-            print(f"MESSAGE BOX (CONSOLE FALLBACK - TOOLKIT FAIL): {title} - {message}")
+            logger.debug(f"MESSAGE BOX (CONSOLE FALLBACK - TOOLKIT FAIL): {title} - {message}")
             return msg_result_cancel_enum
 
         box = toolkit.createMessageBox(parent_peer, msg_type_enum, buttons_enum, str(title), str(message))
         if not box:
             logger.error(f"show_message_box: toolkit.createMessageBox returned None for: {title} - {message}")
-            print(f"MESSAGE BOX (CONSOLE FALLBACK - CREATE FAIL): {title} - {message}")
+            logger.debug(f"MESSAGE BOX (CONSOLE FALLBACK - CREATE FAIL): {title} - {message}")
             return msg_result_cancel_enum
             
         return box.execute()
     except Exception as e:
         logger.error(f"show_message_box: Exception during create/execute: {e} for {title} - {message}", exc_info=True)
-        print(f"MESSAGE BOX (CONSOLE FALLBACK - EXECUTE ERROR): {title} - {message} - Exception: {e}")
+        logger.debug(f"MESSAGE BOX (CONSOLE FALLBACK - EXECUTE ERROR): {title} - {message} - Exception: {e}")
         return msg_result_cancel_enum
 
 def get_current_frame(ctx):
@@ -912,13 +906,42 @@ def show_multiline_input_box(title, message, default_text="", ctx=None, parent_f
             )
             return None
 
+    toolkit = None
+    try:
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+    except Exception:
+        toolkit = None
+
     if not supports_uno_dialog_model(ctx):
         logger.error("show_multiline_input_box: UnoControlDialogModel is unavailable; multiline edit dialog cannot be shown.")
         return None
 
-    safe_width = max(340, int(width))
-    safe_height = max(180, int(height))
-    label_height = int(max(24, min(72, safe_height * 0.22)))
+    safe_width = max(420, int(width))
+    safe_height = max(220, int(height))
+    try:
+        if toolkit:
+            screen_width = int(getattr(toolkit, "getScreenWidth", lambda: 1280)())
+            screen_height = int(getattr(toolkit, "getScreenHeight", lambda: 900)())
+            safe_width = max(420, min(920, screen_width - 180))
+            safe_height = max(220, min(560, screen_height - 180))
+    except Exception:
+        safe_width = max(420, int(width))
+        safe_height = max(220, int(height))
+
+    window_x = 120
+    window_y = 120
+    try:
+        if toolkit:
+            screen_width = int(getattr(toolkit, "getScreenWidth", lambda: safe_width + 200)())
+            screen_height = int(getattr(toolkit, "getScreenHeight", lambda: safe_height + 200)())
+            window_x = max(12, (screen_width - safe_width) // 2)
+            window_y = max(12, (screen_height - safe_height) // 2)
+    except Exception:
+        window_x = 120
+        window_y = 120
+
+    num_message_lines = len(str(message).split('\n'))
+    label_height = int(max(32, min(safe_height * 0.35, num_message_lines * 14 + 10)))
     input_y = label_height + 8
     input_height = max(100, safe_height - label_height - 46)
     button_y = safe_height - 36
@@ -929,8 +952,8 @@ def show_multiline_input_box(title, message, default_text="", ctx=None, parent_f
             logger.error("Failed to create multiline input dialog model")
             raise RuntimeError("Could not create dialog model")
 
-        _safe_set_property(dialog_model, "PositionX", 120, f"{title}.model")
-        _safe_set_property(dialog_model, "PositionY", 120, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionX", window_x, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionY", window_y, f"{title}.model")
         _safe_set_property(dialog_model, "Width", safe_width, f"{title}.model")
         _safe_set_property(dialog_model, "Height", safe_height, f"{title}.model")
         _safe_set_property(dialog_model, "Title", title, f"{title}.model")
@@ -953,11 +976,10 @@ def show_multiline_input_box(title, message, default_text="", ctx=None, parent_f
         _safe_set_property(text_model, "Height", input_height, f"{title}.text")
         _safe_set_property(text_model, "Text", default_text, f"{title}.text")
         _safe_set_property(text_model, "MultiLine", True, f"{title}.text")
-        try:
-            text_model.setPropertyValue("VScroll", True)
-            text_model.setPropertyValue("HScroll", True)
-        except Exception:
-            pass
+        _safe_set_property(text_model, "VScroll", True, f"{title}.text")
+        _safe_set_property(text_model, "HScroll", True, f"{title}.text")
+        # LineEndFormat 13 means standard line break parsing for text wrapping
+        _safe_set_property(text_model, "LineEndFormat", 13, f"{title}.text")
         dialog_model.insertByName("textfield", text_model)
 
         ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
@@ -978,7 +1000,6 @@ def show_multiline_input_box(title, message, default_text="", ctx=None, parent_f
         _safe_set_property(cancel_button_model, "PushButtonType", 2, f"{title}.cancel")
         dialog_model.insertByName("cancel_button", cancel_button_model)
 
-        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
         if not toolkit:
             logger.error("Failed to create toolkit for multiline input dialog")
             raise RuntimeError("Toolkit unavailable")
@@ -1020,7 +1041,182 @@ def show_multiline_input_box(title, message, default_text="", ctx=None, parent_f
         return None
 
 
-def show_ocr_preview_fallback(title, text, ctx=None, parent_frame=None, max_chars=2400):
+def _show_ocr_preview_scrollable_dialog(title, text, header_lines, ctx=None, parent_frame=None):
+    """Attempt a scrollable, fixed-size preview dialog for long OCR text."""
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            return None
+
+    try:
+        dialog_model = create_instance("com.sun.star.awt.UnoControlDialogModel", ctx)
+        if not dialog_model:
+            return None
+
+        toolkit = create_instance("com.sun.star.awt.Toolkit", ctx)
+        if not toolkit:
+            return None
+
+        preview_text = str(text) if text is not None else ""
+
+        # Make dialog dimensions generous but not screen-clipping.
+        safe_width = 760
+        safe_height = 460
+        try:
+            screen_width = getattr(toolkit, "getScreenWidth", lambda: 1280)()
+            screen_height = getattr(toolkit, "getScreenHeight", lambda: 920)()
+            if isinstance(screen_width, int) and screen_width > 160:
+                safe_width = max(420, min(920, screen_width - 160))
+            if isinstance(screen_height, int) and screen_height > 200:
+                safe_height = max(320, min(580, screen_height - 240))
+        except Exception:
+            safe_width = 760
+            safe_height = 460
+
+        window_x = 120
+        window_y = 120
+        try:
+            screen_width = int(getattr(toolkit, "getScreenWidth", lambda: safe_width + 200)())
+            screen_height = int(getattr(toolkit, "getScreenHeight", lambda: safe_height + 200)())
+            window_x = max(12, (screen_width - safe_width) // 2)
+            window_y = max(12, (screen_height - safe_height) // 2)
+        except Exception:
+            window_x = 120
+            window_y = 120
+
+        header_block = "\n".join(header_lines + ["", _("Click inside the OCR text area to scroll and review."), ""])
+        num_header_lines = len(header_block.split('\n'))
+        header_height = int(max(42, min(safe_height * 0.4, num_header_lines * 14 + 10)))
+        edit_y = header_height + 10
+        button_y = safe_height - 40
+        left_pad = 10
+        button_width = 80
+        button_gap = 10
+
+        _safe_set_property(dialog_model, "Width", safe_width, f"{title}.model")
+        _safe_set_property(dialog_model, "Height", safe_height, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionX", window_x, f"{title}.model")
+        _safe_set_property(dialog_model, "PositionY", window_y, f"{title}.model")
+        _safe_set_property(dialog_model, "Title", title, f"{title}.model")
+        _safe_set_property(dialog_model, "Closeable", True, f"{title}.model")
+        _safe_set_property(dialog_model, "Moveable", True, f"{title}.model")
+
+        label_model = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
+        _safe_set_property(label_model, "PositionX", left_pad, f"{title}.label")
+        _safe_set_property(label_model, "PositionY", 12, f"{title}.label")
+        _safe_set_property(label_model, "Width", safe_width - (left_pad * 2), f"{title}.label")
+        _safe_set_property(label_model, "Height", header_height, f"{title}.label")
+        _safe_set_property(label_model, "MultiLine", True, f"{title}.label")
+        _safe_set_property(label_model, "Label", header_block, f"{title}.label")
+        dialog_model.insertByName("label", label_model)
+
+        text_model = dialog_model.createInstance("com.sun.star.awt.UnoControlEditModel")
+        _safe_set_property(text_model, "PositionX", left_pad, f"{title}.textfield")
+        _safe_set_property(text_model, "PositionY", edit_y, f"{title}.textfield")
+        _safe_set_property(text_model, "Width", safe_width - 20, f"{title}.textfield")
+        _safe_set_property(text_model, "Height", button_y - (edit_y + 12), f"{title}.textfield")
+        _safe_set_property(text_model, "Text", preview_text, f"{title}.textfield")
+        _safe_set_property(text_model, "MultiLine", True, f"{title}.textfield")
+        _safe_set_property(text_model, "ReadOnly", False, f"{title}.textfield")
+        _safe_set_property(text_model, "VScroll", True, f"{title}.textfield")
+        _safe_set_property(text_model, "HScroll", True, f"{title}.textfield")
+        _safe_set_property(text_model, "LineEndFormat", 13, f"{title}.textfield")
+        dialog_model.insertByName("review_text", text_model)
+
+        ok_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        _safe_set_property(ok_button_model, "PositionX", safe_width - 2 * button_width - button_gap - left_pad, f"{title}.ok")
+        _safe_set_property(ok_button_model, "PositionY", button_y, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Width", button_width, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Height", 20, f"{title}.ok")
+        _safe_set_property(ok_button_model, "Label", _("OK"), f"{title}.ok")
+        _safe_set_property(ok_button_model, "PushButtonType", 1, f"{title}.ok")
+        dialog_model.insertByName("ok_button", ok_button_model)
+
+        cancel_button_model = dialog_model.createInstance("com.sun.star.awt.UnoControlButtonModel")
+        _safe_set_property(cancel_button_model, "PositionX", safe_width - button_width - left_pad, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PositionY", button_y, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Width", button_width, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Height", 20, f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "Label", _("Cancel"), f"{title}.cancel")
+        _safe_set_property(cancel_button_model, "PushButtonType", 2, f"{title}.cancel")
+        dialog_model.insertByName("cancel_button", cancel_button_model)
+
+        dialog = create_instance("com.sun.star.awt.UnoControlDialog", ctx)
+        if not dialog:
+            return None
+
+        dialog.setModel(dialog_model)
+
+        parent_peer = None
+        if parent_frame:
+            try:
+                container_window = parent_frame.getContainerWindow()
+                if container_window and hasattr(container_window, "getPeer"):
+                    parent_peer = container_window.getPeer()
+            except Exception:
+                parent_peer = None
+        if parent_peer is None:
+            try:
+                parent_peer = toolkit.getDesktopWindow()
+            except Exception:
+                parent_peer = None
+
+        dialog.createPeer(toolkit, parent_peer)
+        result = dialog.execute()
+        dialog.dispose()
+        return bool(result == 1)
+    except Exception as e:
+        logger.debug(f"show_ocr_preview_fallback: scrollable preview dialog failed: {e}")
+        return None
+
+
+def _summarize_source_lines(source_lines, max_lines=6):
+    """Create a compact source summary block for long fallback dialogs."""
+    if not source_lines:
+        return ""
+    compact_lines = [str(item).strip() for item in source_lines if str(item).strip()]
+    compact_lines = compact_lines[:max_lines]
+    if len(source_lines) > max_lines:
+        compact_lines.append(_("… and {count} more").format(count=len(source_lines) - max_lines))
+    return "\n" + _("Source files and extraction sizes:\n{items}").format(
+        items="\n".join(f"• {line}" for line in compact_lines)
+    )
+
+
+def _compact_text_with_tail(text, max_chars, max_lines=15):
+    """Return a bounded compact preview preserving head and tail context."""
+    if not text:
+        return ""
+    
+    # First cap the vertical size by clipping lines
+    lines = text.split('\n')
+    if len(lines) > max_lines:
+        head_lines = max(1, max_lines // 2 - 1)
+        tail_lines = max(1, max_lines - head_lines - 1)
+        text = "\n".join(lines[:head_lines]) + "\n\n... [content clipped for dialog size] ...\n\n" + "\n".join(lines[-tail_lines:])
+    if len(text) <= max_chars:
+        return text
+    max_chars = max(220, int(max_chars))
+    if max_chars < 220:
+        return text[:max_chars]
+
+    # Keep a readable head and tail; middle section is replaced with a clear marker.
+    head_chars = max(140, max_chars // 2 - 20)
+    tail_chars = max(80, max_chars - head_chars - len("\n\n... [content clipped for dialog size] ...\n\n"))
+    if tail_chars < 80:
+        tail_chars = 80
+    compact = (
+        text[:head_chars]
+        + "\n\n... [content clipped for dialog size] ...\n\n"
+        + text[-tail_chars:]
+    )
+    if len(compact) > max_chars:
+        compact = compact[:max_chars]
+    return compact
+
+
+def show_ocr_preview_fallback(title, text, ctx=None, parent_frame=None, max_chars=2400, source_lines=None):
     """Fallback preview dialog for runtimes where multiline dialogs are unavailable.
 
     Returns the original text if user confirms insertion, or None if user cancels.
@@ -1032,72 +1228,178 @@ def show_ocr_preview_fallback(title, text, ctx=None, parent_frame=None, max_char
     except Exception:
         preview = ""
 
+    if ctx is None:
+        try:
+            ctx = uno.getComponentContext()
+        except Exception:
+            ctx = None
+
+    if ctx is not None and not supports_uno_dialog_model(ctx):
+        normalized_source_lines = []
+        for item in source_lines or []:
+            if not item:
+                continue
+            try:
+                normalized_source_lines.append(str(item))
+            except Exception:
+                pass
+        compact_preview = _compact_text_with_tail(preview, 600, max_lines=12)
+        source_overview = _summarize_source_lines(normalized_source_lines)
+        lines_to_show = [
+            _("The multiline OCR review window is not supported in this LibreOffice session."),
+            _("Please confirm insertion from the preview below:"),
+            _("Output summary: {chars} chars, {lines} source lines.").format(
+                chars=len(preview),
+                lines=len(normalized_source_lines) if normalized_source_lines else len(preview.splitlines()),
+            ),
+        ]
+        if source_overview:
+            lines_to_show.append(source_overview.strip())
+        lines_to_show.extend([
+            "",
+            _("-" * 58),
+            compact_preview.strip(),
+            _("-" * 58),
+            _("Text is truncated for the in-session preview."),
+            _("Review source documents if you need full text."),
+            _("Click OK to insert this OCR result."),
+        ])
+        response = show_message_box(
+            title,
+            "\n".join(lines_to_show),
+            type="querybox",
+            parent_frame=parent_frame,
+            ctx=ctx,
+            buttons="ok_cancel",
+        )
+        if response in (None, 0, "0", "cancel", False):
+            logger.debug("OCR preview fallback canceled by user.")
+            return None
+        return preview
+
     total_chars = len(preview)
     total_lines = len(preview.splitlines()) if preview else 0
 
     max_chars = max(400, int(max_chars or 0))
-    if max_chars < 800:
-        # Keep a slightly larger display margin for safer confirmation text
-        # and readable snippet preview.
-        max_chars = 800
+    if max_chars < 900:
+        max_chars = 900
 
-    truncated_preview = preview
-    shown_chars = total_chars
-    if total_chars > max_chars:
-        truncated_preview = preview[: max_chars]
-        shown_chars = max_chars
-        truncated_preview = _(
-            "{preview}\n...\n[output truncated: showing first {shown} of {total} characters]"
-        ).format(preview=truncated_preview, shown=shown_chars, total=total_chars)
-    else:
-        truncated_preview = _("{preview}\n[full text]").format(preview=truncated_preview)
+    normalized_source_lines = []
+    for item in source_lines or []:
+        if not item:
+            continue
+        try:
+            line = str(item)
+        except Exception:
+            line = ""
+        if line:
+            normalized_source_lines.append(line)
 
-    if not truncated_preview.strip():
-        truncated_preview = _("[OCR returned empty text]")
+    source_overview = _summarize_source_lines(normalized_source_lines)
 
-    preview_width = min(80, 30 + max(0, max_chars // 45))
+    # Keep message-box fallback compact for very long text, but use one-pass
+    # display whenever possible.
+    lines = preview.splitlines() if preview else [""]
+    needs_scrollable = total_chars > max_chars or len(lines) > 20
+    compact_truncation_chars = min(max_chars, 600)
+    compact_mode = False
 
-    message_body = [
-        _("The multiline OCR review window is not supported in this LibreOffice session."),
-        _("Please confirm insertion from the preview below:"),
-        "",
-        _("Output summary: {chars} chars, {lines} source lines, preview chars shown: {shown_chars}").format(
-            chars=total_chars,
-            lines=total_lines,
-            shown_chars=min(shown_chars, total_chars),
-        ),
-        _("-" * preview_width),
-        truncated_preview.strip(),
-        _("-" * preview_width),
-        "",
-        _("Click OK to insert the text, or Cancel to stop."),
-    ]
+    if needs_scrollable and ctx is not None:
+        header_lines = [
+            _("The multiline OCR review window is not supported in this LibreOffice session."),
+            _("Please confirm insertion from the preview below:"),
+            _("Output summary: {chars} chars, {lines} source lines.").format(
+                chars=total_chars,
+                lines=total_lines,
+            ),
+        ]
+        result = _show_ocr_preview_scrollable_dialog(title, preview, header_lines, ctx=ctx, parent_frame=parent_frame)
+        if result is True:
+            return preview
+        if result is False:
+            logger.debug("OCR preview fallback canceled by user.")
+            return None
+        # Runtime cannot create a dialog model; keep going with message box fallback.
+        logger.debug("show_ocr_preview_fallback: scrollable dialog unavailable; using compact messagebox fallback.")
+        needs_scrollable = False
+        compact_mode = True
 
-    log_path = get_log_file_path()
-    if log_path:
-        message_body.extend([
-            "",
-            _("Debug logs: {path}").format(path=log_path),
-        ])
+    # Keep non-scrollable fallback as a single confirmation.
+    if not needs_scrollable and (total_chars > max_chars or compact_mode):
+        compact_preview = _compact_text_with_tail(preview, compact_truncation_chars, max_lines=12)
+        compact_preview = compact_preview.strip()
+        snippet_block = (
+            _("\n{sep}\n{snippet}\n{sep}\n").format(
+                sep="-" * min(72, 50 + max(0, total_chars // 150)),
+                snippet=compact_preview,
+            )
+            if compact_preview
+            else ""
+        )
+        message = _(
+            "{unsupported}\n\n{summary}{source_info}{snippet_block}"
+            "Output was truncated to keep the dialog within view (showing {shown} of {total} chars).\n"
+            "Review the source document for full text, then click OK to insert."
+        ).format(
+            unsupported=_("The multiline OCR review window is not supported in this LibreOffice session."),
+            summary=_("Output summary: {chars} chars, {lines} source lines.").format(
+                chars=total_chars,
+                lines=total_lines,
+            ),
+            source_info=source_overview,
+            snippet_block=snippet_block,
+            shown=len(compact_preview),
+            total=total_chars,
+        )
+        response = show_message_box(
+            title,
+            message,
+            type="querybox",
+            parent_frame=parent_frame,
+            ctx=ctx,
+            buttons="ok_cancel",
+        )
+        if response in (None, 0, "0"):
+            logger.debug("OCR preview fallback canceled by user.")
+            return None
+        return preview
 
-    message = _(
-        "{message}"
-    ).format(
-        message="\n".join(message_body)
-    )
-
-    response = show_message_box(
-        title,
-        message,
-        type="querybox",
-        parent_frame=parent_frame,
-        ctx=ctx,
-        buttons="ok_cancel",
-    )
-    if response in (None, 0, "0"):
-        logger.debug("OCR preview fallback canceled by user.")
-        return None
-
+    if not needs_scrollable:
+        # In non-scrollable fallback mode, avoid putting very large payloads into
+        # a message box that may render poorly in older LibreOffice sessions.
+        full_preview = preview.strip()
+        if len(full_preview) > max_chars:
+            full_preview = preview[:max_chars] + "\n\n" + _("… output truncated")
+            logger.debug(
+                "show_ocr_preview_fallback: final non-scrollable preview truncated to {max_chars} chars.".format(
+                    max_chars=max_chars,
+                )
+            )
+        response = show_message_box(
+            title,
+            _(
+                "{unsupported}\n\n{summary}\n{source_info}{sep}\n{full_text}\n{sep}\n"
+                "{action_hint}"
+            ).format(
+                unsupported=_("The multiline OCR review window is not supported in this LibreOffice session."),
+                summary=_("Output summary: {chars} chars, {lines} source lines.").format(
+                    chars=total_chars,
+                    lines=total_lines,
+                ),
+                source_info=source_overview + "\n" if source_overview else "",
+                sep="-" * min(72, 50 + max(0, total_chars // 150)),
+                full_text=full_preview,
+                action_hint=_("Click OK to insert the text, or Cancel to stop."),
+            ),
+            type="querybox",
+            parent_frame=parent_frame,
+            ctx=ctx,
+            buttons="ok_cancel",
+        )
+        if response in (None, 0, "0"):
+            logger.debug("OCR preview fallback canceled by user.")
+            return None
+        return preview
     return preview
 
 # Note: Interactive dialog functions have been moved to tejocr_interactive_dialogs.py
@@ -1817,14 +2119,14 @@ def create_temp_file(suffix=".tmp", prefix="tejocr_tmp_", dir=None):
         os.close(fd) # Close the file handle, we just need the path
         return path
     except Exception as e:
-        print(f"{_('Error creating temporary file:')} {e}")
+        logger.error(f"{_('Error creating temporary file:')} {e}")
         # Fallback if specific dir fails, try default temp location
         try:
             fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
             os.close(fd)
             return path
         except Exception as e_fallback:
-            print(f"{_('Fallback temporary file creation also failed:')} {e_fallback}")
+            logger.error(f"{_('Fallback temporary file creation also failed:')} {e_fallback}")
             return None
 
 def create_temp_file_from_graphic(graphic, ctx):
@@ -2216,6 +2518,3 @@ def get_graphic_from_selected_shape(shape):
     # This requires more complex handling to get an XGraphic object.
     # For now, focusing on direct .Graphic property.
     return None
-
-
-print("DEBUG: uno_utils.py: Module loaded, logger should be available.") # For load confirmation

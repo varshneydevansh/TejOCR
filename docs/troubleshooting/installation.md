@@ -66,7 +66,7 @@ flowchart TD
   A["License path error"] --> B["quit LibreOffice"]
   B --> C["clear uno_packages cache"]
   C --> D["uninstall old extension"]
-  D --> E["rebuild TejOCR-0.1.7.oxt"]
+  D --> E["rebuild TejOCR-*.oxt"]
   E --> F["reinstall from fresh package"]
   F --> G["restart and verify"]
 ```

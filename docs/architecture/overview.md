@@ -105,7 +105,7 @@ flowchart TD
   A["build_tejocr.py / build.py"] --> B["copy extension assets"]
   B --> C["description.xml"]
   C --> D["META-INF/manifest.xml"]
-  D --> E["TejOCR-0.1.7.oxt"]
+  D --> E["TejOCR-*.oxt"]
   E --> F["LibreOffice deploy"]
   F --> G["extension manager + runtime registration"]
 ```
@@ -129,4 +129,3 @@ flowchart LR
   B -->|selected| C["replace_image allowed"]
   B -->|file| D["insert path only"]
 ```
-

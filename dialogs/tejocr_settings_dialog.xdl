@@ -51,13 +51,14 @@
     <dlg:menulist dlg:id="DefaultOEMDropdown" dlg:tab-index="34" dlg:left="60" dlg:top="354" dlg:width="390" dlg:height="20" dlg:dropdown="true"/>
 
     <dlg:checkbox dlg:id="DefaultPreviewCheckbox" dlg:tab-index="35" dlg:left="20" dlg:top="378" dlg:width="390" dlg:height="12" dlg:value="Preview OCR text before insert"/>
+    <dlg:checkbox dlg:id="DefaultMergeBatchCheckbox" dlg:tab-index="36" dlg:left="20" dlg:top="394" dlg:width="390" dlg:height="12" dlg:value="Merge bulk/PDF into single output"/>
 
     <!-- === Footer === -->
-    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="36" dlg:left="10" dlg:top="404" dlg:width="450" dlg:height="10"/>
-    <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="37" dlg:left="10" dlg:top="420" dlg:width="450" dlg:height="10" dlg:value="Ready"/>
-    <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="38" dlg:left="10" dlg:top="424" dlg:width="55" dlg:height="22" dlg:value="Help..."/>
-    <dlg:button dlg:id="CancelButton" dlg:tab-index="39" dlg:left="345" dlg:top="440" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
-    <dlg:button dlg:id="SaveButton" dlg:tab-index="40" dlg:left="410" dlg:top="440" dlg:width="50" dlg:height="22" dlg:default="true" dlg:value="Save"/>
+    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="37" dlg:left="10" dlg:top="408" dlg:width="450" dlg:height="10"/>
+    <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="38" dlg:left="10" dlg:top="420" dlg:width="450" dlg:height="10" dlg:value="Ready"/>
+    <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="39" dlg:left="10" dlg:top="424" dlg:width="55" dlg:height="22" dlg:value="Help..."/>
+    <dlg:button dlg:id="CancelButton" dlg:tab-index="40" dlg:left="345" dlg:top="440" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
+    <dlg:button dlg:id="SaveButton" dlg:tab-index="41" dlg:left="410" dlg:top="440" dlg:width="50" dlg:height="22" dlg:default="true" dlg:value="Save"/>
 
   </dlg:bulletinboard>
 </dlg:window>

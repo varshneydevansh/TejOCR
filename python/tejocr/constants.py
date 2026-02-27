@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.1.7"
+EXTENSION_VERSION = "0.1.8"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 
@@ -29,6 +29,7 @@ CFG_KEY_LAST_SELECTED_LANG = "LastSelectedOcrLanguage" # For OCR Options Dialog
 CFG_KEY_LAST_OUTPUT_MODE = "LastOutputMode" # For OCR Options Dialog
 CFG_KEY_DEFAULT_SCALE = "DefaultScaleFactor"
 CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT = "ShowPreviewBeforeOutput" # For preview/edit before inserting OCR text
+CFG_KEY_MERGE_BATCH_RESULTS = "MergeBatchResults"
 
 # --- Default Values ---
 DEFAULT_OCR_LANGUAGE = "eng"  # Default to English
@@ -40,6 +41,7 @@ DEFAULT_PSM_MODE_UI = "3"
 DEFAULT_OEM_MODE_UI = "3"
 DEFAULT_SCALE_FACTOR = "1.0" # Default image upscale factor as string for UI persistence
 DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT = "true" # Show OCR preview/edit dialog before final output
+DEFAULT_MERGE_BATCH_RESULTS = "true"
 DEFAULT_TESSERACT_PATH = "" # Empty, to trigger auto-detection or user input
 
 # --- Tesseract PSM (Page Segmentation Modes) --- 
@@ -129,6 +131,8 @@ DEFAULT_OUTPUT_MODE = OUTPUT_MODE_CURSOR
 # --- Image Formats ---
 # Used for file dialog filters. Should be a semicolon-separated string of wildcards.
 IMAGE_FILE_DIALOG_FILTER = "*.png;*.jpg;*.jpeg;*.tiff;*.tif;*.bmp;*.gif;*.webp"
+PDF_FILE_DIALOG_FILTER = "*.pdf;*.PDF"
+IMAGE_OR_PDF_DIALOG_FILTER = f"{IMAGE_FILE_DIALOG_FILTER};{PDF_FILE_DIALOG_FILTER}"
 
 # List of wildcards for internal checks if needed, derived from the above string.
 IMAGE_WILDCARDS = [f.strip() for f in IMAGE_FILE_DIALOG_FILTER.split(';') if f.strip()]
@@ -167,7 +171,11 @@ DIALOG_MODAL_DEPENDENT = 1 # For com.sun.star.awt.MessageBoxType & Dialog behavi
 
 # Current Log Level (can be overridden by user config if implemented)
 # Possible values: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
-CURRENT_LOG_LEVEL = "DEBUG"
+# Keep this at ERROR in production mode to keep runtime logs minimal.
+CURRENT_LOG_LEVEL = "ERROR"
+
+# Set to True only when actively debugging issues.
+ENABLE_CONSOLE_LOGGING = False
 
 # --- Development Flags ---
 # When True, bypasses certain checks for placeholder UI testing

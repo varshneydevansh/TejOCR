@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.8] - 2026-02-27 - Batch OCR, PDF Support & UI/UX Polish
+
+### 🎉 **MAJOR FEATURES**
+- **Batch Image Processing**: "OCR Image from File" now supports selecting multiple images at once.
+- **PDF Document OCR**: Added support for multi-page PDF files, automatically rasterizing and OCR-ing each page.
+- **Merge Output**: New option to merge all batch/PDF results into a single consolidated output block with file/page headers.
+
+### 🎨 **UI & UX ENHANCEMENTS**
+- **Semantic Dialogs**: Redesigned Help and Setup dialog text with semantic prefixes (ℹ️, ✅, ⚠️, 💡) for improved readability and quicker scanning.
+- **Interactive Options Layout**: Shrunk the PSM and OEM combo boxes to make room for inline usage hints within the OCR Options dialog.
+- **Robustness**: Fixed an XDL namespace bug that caused the Setup & Diagnostics page to crash into a generic text box on some LibreOffice builds.
+
+---
+
 ## [0.1.4] - 2025-05-24 - **PHASE 1 COMPLETE**: Core Stability & OCR Functionality
 
 ### ✅ **MAJOR ACHIEVEMENTS**

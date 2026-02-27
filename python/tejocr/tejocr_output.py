@@ -12,12 +12,9 @@ import unohelper
 import time
 
 # Safe import of UNO interfaces with fallbacks
-print("DEBUG: tejocr_output.py: Attempting UNO interface imports...")
 try:
     from com.sun.star.text import XTextDocument, XText, XTextRange, XTextContent
-    print("DEBUG: tejocr_output.py: Successfully imported text interfaces")
 except ImportError as e:
-    print(f"DEBUG: tejocr_output.py: Warning - Could not import text interfaces: {e}")
     # Define dummy classes to prevent module loading failure
     class XTextDocument: pass
     class XText: pass
@@ -26,24 +23,18 @@ except ImportError as e:
 
 try:
     from com.sun.star.container import XNamed
-    print("DEBUG: tejocr_output.py: Successfully imported XNamed")
 except ImportError as e:
-    print(f"DEBUG: tejocr_output.py: Warning - Could not import XNamed: {e}")
     class XNamed: pass
 
 try:
     from com.sun.star.datatransfer import XTransferable, DataFlavor
-    print("DEBUG: tejocr_output.py: Successfully imported datatransfer interfaces")
 except ImportError as e:
-    print(f"DEBUG: tejocr_output.py: Warning - Could not import datatransfer interfaces: {e}")
     class XTransferable: pass
     class DataFlavor: pass
 
 try:
     from com.sun.star.datatransfer.clipboard import XClipboard
-    print("DEBUG: tejocr_output.py: Successfully imported XClipboard")
 except ImportError as e:
-    print(f"DEBUG: tejocr_output.py: Warning - Could not import XClipboard: {e}")
     class XClipboard: pass
 
 from tejocr import uno_utils
@@ -707,17 +698,17 @@ if __name__ == "__main__":
         def getText(self): return self
         def getViewCursor(self): return self
         def getStart(self): return self # Mocking XTextRange
-        def setString(self, s): print(f"MockInsertAtCursor: {s[:50]}...")
+        def setString(self, s): pass
         def collapseToEnd(self): pass
         def createInstance(self, s): 
             if s == "com.sun.star.text.TextFrame": return MockTextFrame()
             return None
-        def insertTextContent(self, c, tf, b): print(f"MockInsertTextBox: Content inserted.")
+        def insertTextContent(self, c, tf, b): pass
         def getSelection(self): return None # Needs more for replace
 
     class MockTextFrame:
         def getText(self): return self
-        def setString(self, s): print(f"MockTextBox: {s[:50]}...")
+        def setString(self, s): pass
         def getSize(self): return MockSize()
         def setSize(self, s): pass
 
@@ -728,11 +719,7 @@ if __name__ == "__main__":
     mock_ctx = MockCtx()
     mock_frame = MockFrame()
     test_text = "This is a long test string from OCR result, meant to test different output mechanisms."
-    
-    print("--- Testing Insert at Cursor ---")
     handle_ocr_output(mock_ctx, mock_frame, test_text, constants.OUTPUT_MODE_CURSOR)
-    print("--- Testing Insert into New Textbox ---")
     handle_ocr_output(mock_ctx, mock_frame, test_text, constants.OUTPUT_MODE_TEXTBOX)
     # Clipboard and Replace are harder to mock simply here.
-    print("--- Testing Copy to Clipboard (will likely fail without UNO services) ---")
     handle_ocr_output(mock_ctx, mock_frame, test_text, constants.OUTPUT_MODE_CLIPBOARD) 

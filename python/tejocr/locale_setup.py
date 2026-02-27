@@ -110,7 +110,3 @@ def get_translation_function():
 if __name__ == "__main__":
     # Test the dummy translator
     t = get_translator()
-    print(t.gettext("Hello"))
-    print(_("Test"))
-    print(t.ngettext("One item", "Multiple items", 1))
-    print(t.ngettext("One item", "Multiple items", 5)) 

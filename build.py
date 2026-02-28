@@ -60,6 +60,7 @@ def verify_required_files(temp_dir):
         "description.xml",
         "Addons.xcu",
         os.path.join("META-INF", "manifest.xml"),
+        "LICENSE",
         "description_en.txt",
         "description_hi.txt",
         # Add other essential files

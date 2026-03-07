@@ -69,6 +69,112 @@ class TextTransferable(unohelper.Base, XTransferable):
         return flavor.MimeType == self.flavor.MimeType
 
 
+def _apply_font_size_to_text_range(text_range, font_size_pt):
+    """Best-effort apply a character size to a UNO text range/cursor."""
+    if text_range is None or font_size_pt in (None, ""):
+        return False
+
+    try:
+        font_size = float(font_size_pt)
+    except Exception:
+        return False
+
+    applied = False
+    for property_name in ("CharHeight", "CharHeightAsian", "CharHeightComplex"):
+        try:
+            if hasattr(text_range, "setPropertyValue"):
+                text_range.setPropertyValue(property_name, font_size)
+            else:
+                setattr(text_range, property_name, font_size)
+            applied = True
+        except Exception:
+            continue
+    return applied
+
+
+def _default_output_font_size_pt():
+    return getattr(constants, "DEFAULT_OCR_OUTPUT_FONT_SIZE_PT", getattr(constants, "DEFAULT_TEXTBOX_FONT_SIZE_PT", 6.0))
+
+
+def _apply_font_size_to_recent_insertion(target_cursor, inserted_text, font_size_pt=None):
+    """Best-effort style the most recently inserted text for cursor/range output modes."""
+    if target_cursor is None or not inserted_text:
+        return False
+
+    try:
+        char_count = len(str(inserted_text))
+    except Exception:
+        return False
+
+    if char_count <= 0:
+        return False
+
+    target_size = font_size_pt if font_size_pt is not None else _default_output_font_size_pt()
+
+    candidates = []
+    if target_cursor is not None:
+        candidates.append(target_cursor)
+
+    try:
+        if hasattr(target_cursor, "getText"):
+            text_object = target_cursor.getText()
+            if text_object is not None and hasattr(text_object, "createTextCursorByRange"):
+                derived_cursor = text_object.createTextCursorByRange(target_cursor)
+                if derived_cursor is not None:
+                    candidates.append(derived_cursor)
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            if hasattr(candidate, "collapseToEnd"):
+                candidate.collapseToEnd()
+        except Exception:
+            pass
+
+        try:
+            if hasattr(candidate, "goLeft"):
+                candidate.goLeft(char_count, True)
+                applied = _apply_font_size_to_text_range(candidate, target_size)
+                try:
+                    if hasattr(candidate, "collapseToEnd"):
+                        candidate.collapseToEnd()
+                except Exception:
+                    pass
+                if applied:
+                    return True
+        except Exception:
+            continue
+
+    return False
+
+
+def _apply_textbox_font_size(frame_text, font_size_pt=None):
+    """Apply the configured text size across the full text box contents."""
+    if frame_text is None:
+        return False
+
+    target_size = font_size_pt if font_size_pt is not None else _default_output_font_size_pt()
+
+    try:
+        text_cursor = frame_text.createTextCursor()
+    except Exception:
+        text_cursor = None
+
+    if text_cursor is None:
+        return False
+
+    try:
+        if hasattr(text_cursor, "gotoStart"):
+            text_cursor.gotoStart(False)
+        if hasattr(text_cursor, "gotoEnd"):
+            text_cursor.gotoEnd(True)
+    except Exception:
+        pass
+
+    return _apply_font_size_to_text_range(text_cursor, target_size)
+
+
 def _resolve_insertion_cursor(text_doc, insertion_anchor):
     """Resolve a best-effort insertion cursor from a selected object anchor."""
     if not text_doc or not insertion_anchor:
@@ -181,6 +287,7 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert, insertion_anchor=None):
             try:
                 if hasattr(insertion_cursor, "setString"):
                     insertion_cursor.setString(text_to_insert)
+                    _apply_font_size_to_recent_insertion(insertion_cursor, text_to_insert, _default_output_font_size_pt())
                     if hasattr(insertion_cursor, "collapseToEnd"):
                         insertion_cursor.collapseToEnd()
                     logger.info(
@@ -201,6 +308,7 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert, insertion_anchor=None):
                 if view_cursor is not None and hasattr(view_cursor, "gotoRange"):
                     view_cursor.gotoRange(insertion_cursor or insertion_anchor, False)
                     view_cursor.setString(text_to_insert)
+                    _apply_font_size_to_recent_insertion(view_cursor, text_to_insert, _default_output_font_size_pt())
                     if hasattr(view_cursor, "collapseToEnd"):
                         view_cursor.collapseToEnd()
                     logger.info(
@@ -220,6 +328,7 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert, insertion_anchor=None):
             if view_cursor:
                 text_range = view_cursor.getStart() # Get XTextRange at cursor start
                 text_range.setString(text_to_insert)
+                _apply_font_size_to_recent_insertion(view_cursor, text_to_insert, _default_output_font_size_pt())
                 view_cursor.collapseToEnd()
                 logger.info(f"Strategy 2 SUCCESS: Inserted {len(text_to_insert)} characters at view cursor.")
                 return
@@ -232,7 +341,9 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert, insertion_anchor=None):
             if text_cursor:
                 # Move cursor to end of document as fallback position
                 text_cursor.gotoEnd(False)
-                text_cursor.setString("\n" + text_to_insert)
+                inserted_text = "\n" + text_to_insert
+                text_cursor.setString(inserted_text)
+                _apply_font_size_to_recent_insertion(text_cursor, inserted_text, _default_output_font_size_pt())
                 logger.info(f"Strategy 3 SUCCESS: Inserted {len(text_to_insert)} characters using text cursor at document end.")
                 return
         except Exception as text_cursor_error:
@@ -244,7 +355,9 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert, insertion_anchor=None):
                 # Get end position and insert there
                 end_cursor = text_doc.createTextCursor()
                 end_cursor.gotoEnd(False)
-                text_doc.insertString(end_cursor, "\n" + text_to_insert, False)
+                inserted_text = "\n" + text_to_insert
+                text_doc.insertString(end_cursor, inserted_text, False)
+                _apply_font_size_to_recent_insertion(end_cursor, inserted_text, _default_output_font_size_pt())
                 logger.info(
                     f"Strategy 4 SUCCESS: Inserted {len(text_to_insert)} characters at document end via insertString."
                 )
@@ -266,7 +379,9 @@ def _insert_text_at_cursor(ctx, frame, text_to_insert, insertion_anchor=None):
             if view_cursor:
                 # Try to position cursor at end of document first
                 view_cursor.gotoEnd(False)
-                view_cursor.setString("\n" + text_to_insert)
+                inserted_text = "\n" + text_to_insert
+                view_cursor.setString(inserted_text)
+                _apply_font_size_to_recent_insertion(view_cursor, inserted_text, _default_output_font_size_pt())
                 logger.info(f"Strategy 5 SUCCESS: Inserted {len(text_to_insert)} characters after focusing window.")
                 return
         except Exception as focus_error:
@@ -356,6 +471,12 @@ def _insert_text_into_new_textbox(ctx, frame, text_to_insert, insertion_anchor=N
         # Add text to the text frame
         frame_text = text_frame.getText()
         frame_text.setString(text_to_insert)
+        if _apply_textbox_font_size(frame_text, _default_output_font_size_pt()):
+            logger.info(
+                "Applied OCR text box font size: {size}pt".format(
+                    size=_default_output_font_size_pt()
+                )
+            )
 
         logger.info(f"Successfully inserted new text box with {len(text_to_insert)} characters.")
         
@@ -411,6 +532,7 @@ def _replace_image_with_text(ctx, frame, text_to_insert, replacement_target=None
                 try:
                     if hasattr(resolved_anchor, "setString"):
                         resolved_anchor.setString(text_to_insert)
+                        _apply_font_size_to_recent_insertion(resolved_anchor, text_to_insert, _default_output_font_size_pt())
                         logger.info("Replaced selected target using resolved anchor.setString() fallback.")
                         return True
                 except Exception as anchor_set_error:
@@ -421,6 +543,7 @@ def _replace_image_with_text(ctx, frame, text_to_insert, replacement_target=None
                 if view_cursor is not None:
                     view_cursor.gotoRange(resolved_anchor or anchor, False)
                     view_cursor.setString(text_to_insert)
+                    _apply_font_size_to_recent_insertion(view_cursor, text_to_insert, _default_output_font_size_pt())
                     view_cursor.collapseToEnd()
                     logger.info("Replaced selected target using view-cursor anchor fallback.")
                     return True

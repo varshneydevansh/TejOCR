@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.1.9"
+EXTENSION_VERSION = "0.2.0"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 
@@ -44,6 +44,8 @@ DEFAULT_SCALE_FACTOR = "1.0" # Default image upscale factor as string for UI per
 DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT = "true" # Show OCR preview/edit dialog before final output
 DEFAULT_MERGE_BATCH_RESULTS = "true"
 DEFAULT_TESSERACT_PATH = "" # Empty, to trigger auto-detection or user input
+DEFAULT_OCR_OUTPUT_FONT_SIZE_PT = 6.0
+DEFAULT_TEXTBOX_FONT_SIZE_PT = DEFAULT_OCR_OUTPUT_FONT_SIZE_PT
 
 # --- Tesseract PSM (Page Segmentation Modes) --- 
 # (Value: Description for UI)

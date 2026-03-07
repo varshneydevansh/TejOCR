@@ -1334,12 +1334,17 @@ def get_runtime_psm_modes(ctx=None, session=None):
         if description:
             description = _clean_mode_description(description)
             if mode == "0":
-                description = "{description} Diagnostic mode; no OCR text output.".format(
-                    description=description.rstrip(".")
-                )
+                if "diagnostic mode" not in description.lower():
+                    description = "{description} Diagnostic mode; no OCR text output.".format(
+                        description=description.rstrip(".")
+                    )
             elif mode == "2" and "diagnostic mode" not in description.lower():
-                description = "{description} Diagnostic mode; not implemented for text output.".format(
-                    description=description.rstrip(".")
+                suffix = "Diagnostic mode; no OCR text output."
+                if "not implemented" not in description.lower():
+                    suffix = "Diagnostic mode; not implemented for text output."
+                description = "{description} {suffix}".format(
+                    description=description.rstrip("."),
+                    suffix=suffix,
                 )
             runtime_map[mode] = "{mode}: {description}".format(mode=mode, description=description)
         else:

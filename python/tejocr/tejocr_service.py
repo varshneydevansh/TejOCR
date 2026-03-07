@@ -360,6 +360,66 @@ def _format_preset_for_summary(preset):
     return preset_profile.get("label", normalized_preset.title())
 
 
+def _format_language_for_dialog(language_value):
+    """Return a more legible language string for structured dialogs."""
+    return ocr_runtime.format_language_codes_for_display(
+        language_value,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+    )
+
+
+def _truncate_middle(text, max_chars=64):
+    """Return a middle-truncated label that preserves both ends."""
+    value = str(text or "").strip()
+    if len(value) <= max_chars:
+        return value
+    if max_chars <= 7:
+        return value[:max_chars]
+    keep_left = max_chars // 2 - 2
+    keep_right = max_chars - keep_left - 3
+    return "{left}...{right}".format(left=value[:keep_left].rstrip(), right=value[-keep_right:].lstrip())
+
+
+def _format_source_label_for_dialog(source_label, max_chars=64):
+    """Shorten long source labels so each source stays readable on one line."""
+    return _truncate_middle(source_label, max_chars=max_chars)
+
+
+def _format_failed_reason_for_dialog(reason, max_chars=140):
+    """Return a compact failed-source reason for the OCR Complete dialog."""
+    clean = str(reason or "").replace("\r\n", "\n").strip()
+    if not clean:
+        return _("Unknown failure.")
+
+    if "Install one of:" in clean:
+        clean = clean.split("Install one of:", 1)[0].strip()
+        if clean.endswith(":"):
+            clean = clean[:-1].rstrip()
+        if not clean:
+            clean = _("PDF rendering failed.")
+        clean = "{reason} {hint}".format(
+            reason=clean,
+            hint=_("Open Setup & Diagnostics for install commands."),
+        )
+    else:
+        clean = " ".join(part.strip() for part in clean.splitlines() if part.strip())
+
+    return _truncate_middle(clean, max_chars=max_chars)
+
+
+def _merge_pdf_runtime_hint(status, pdf2image_install_cmd):
+    """Attach the runtime install hint only when PDF rendering is actually unavailable."""
+    merged = dict(status or {})
+    if not pdf2image_install_cmd or merged.get("available"):
+        return merged
+
+    hints = list(merged.get("hints") or [])
+    cleaned_hints = [line for line in hints if "pip install pdf2image" not in str(line).lower()]
+    cleaned_hints.append("Install PDF conversion runtime in this Python: {cmd}".format(cmd=pdf2image_install_cmd))
+    merged["hints"] = cleaned_hints
+    return merged
+
+
 def _build_preprocessing_summary(ocr_options):
     """Build a short preprocessing summary from OCR option flags."""
     def _bool_text(value):
@@ -378,6 +438,123 @@ def _build_preprocessing_summary(ocr_options):
             f"preview={'on' if _coerce_bool(ocr_options.get('show_preview', constants.DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT)) else 'off'}",
         ]
     )
+
+
+def _format_ocr_complete_block(text, fallback, max_lines=8):
+    """Format compact multiline sections for the structured OCR Complete dialog."""
+    normalized = str(text or "").replace("\r\n", "\n").replace(" | ", "\n").strip()
+    if not normalized:
+        normalized = fallback
+    lines = normalized.splitlines()
+    if max_lines is not None and len(lines) > max_lines:
+        normalized = "\n".join(lines[:max_lines] + ["..."])
+    return normalized
+
+
+def _build_processing_details_for_dialog(ocr_options):
+    """Return a readable processing block for the styled OCR Complete dialog."""
+    def _bool_text(value):
+        return "on" if bool(value) else "off"
+
+    return "\n".join(
+        [
+            _("Processing:"),
+            _("• Improve image: {value}").format(value=_bool_text(ocr_options.get("improve_image", False))),
+            _("• Grayscale: {value}").format(value=_bool_text(ocr_options.get("grayscale", False))),
+            _("• Binarize: {value}").format(value=_bool_text(ocr_options.get("binarize", False))),
+            _("• Invert: {value}").format(value=_bool_text(ocr_options.get("invert", False))),
+            _("Recognition:"),
+            _("• Scale: {value}x").format(value=ocr_options.get("scale", constants.DEFAULT_SCALE_FACTOR)),
+            _("• PSM: {value}").format(value=ocr_options.get("psm", constants.DEFAULT_PSM_MODE)),
+            _("• OEM: {value}").format(value=ocr_options.get("oem", constants.DEFAULT_OEM_MODE)),
+            _("• Preview: {value}").format(
+                value="on" if _coerce_bool(ocr_options.get("show_preview", constants.DEFAULT_SHOW_PREVIEW_BEFORE_OUTPUT)) else "off"
+            ),
+        ]
+    )
+
+
+def _format_runtime_diag_item(item):
+    clean = str(item or "").strip()
+    lower = clean.lower()
+    if lower.startswith("psm "):
+        return "PSM: {value}".format(value=clean[4:].strip())
+    if lower.startswith("oem "):
+        return "OEM: {value}".format(value=clean[4:].strip())
+    if lower.startswith("preset "):
+        return "Preset: {value}".format(value=clean[7:].strip())
+    if lower.startswith("lang "):
+        return "Language: {value}".format(value=_format_language_for_dialog(clean[5:].strip()))
+    return clean
+
+
+def _build_runtime_diag_lines(item):
+    formatted = _format_runtime_diag_item(item)
+    if formatted.startswith("Language: "):
+        language_value = formatted[len("Language: "):].strip()
+        return ["• Language:", "  {value}".format(value=language_value)]
+    return ["• {value}".format(value=formatted)]
+
+
+def _build_runtime_diagnostics_for_dialog(diagnostics_text):
+    """Expand runtime diagnostics into a readable multiline block."""
+    normalized = str(diagnostics_text or "").replace("\r\n", "\n").strip()
+    if not normalized:
+        return _("No runtime diagnostics recorded for this run.")
+
+    sections = [part.strip() for part in normalized.split("|") if part.strip()]
+    summary_lines = []
+    requested_lines = []
+    effective_lines = []
+
+    for section in sections:
+        if ":" not in section:
+            summary_lines.append("• {value}".format(value=section))
+            continue
+        title, payload = section.split(":", 1)
+        title = title.strip()
+        payload = payload.strip()
+        if title in {"Requested", "Effective"}:
+            items = [item.strip() for item in payload.split(",") if item.strip()]
+            for item in items:
+                target_lines = requested_lines if title == "Requested" else effective_lines
+                target_lines.extend(_build_runtime_diag_lines(item))
+        else:
+            summary_lines.append("• {title}: {payload}".format(title=title, payload=payload))
+
+    lines = []
+    if summary_lines:
+        lines.extend(summary_lines)
+    if requested_lines:
+        if lines:
+            lines.append("")
+        lines.append("Requested:")
+        lines.extend(requested_lines)
+    if effective_lines:
+        if lines:
+            lines.append("")
+        lines.append("Effective:")
+        lines.extend(effective_lines)
+    return "\n".join(lines)
+
+
+def _show_structured_ocr_complete_dialog(ctx, parent_frame, summary_text, sources_text, profile_text, runtime_text):
+    """Show the styled OCR Complete dialog and return True if displayed."""
+    try:
+        from tejocr import tejocr_dialogs
+
+        return bool(
+            tejocr_dialogs.show_ocr_complete_dialog(
+                ctx,
+                parent_frame,
+                _format_ocr_complete_block(summary_text, _("OCR finished successfully."), max_lines=4),
+                _format_ocr_complete_block(sources_text, _("No source details available."), max_lines=None),
+                _format_ocr_complete_block(profile_text, _("No OCR profile details available."), max_lines=16),
+                _format_ocr_complete_block(runtime_text, _("No runtime diagnostics recorded for this run."), max_lines=16),
+            )
+        )
+    except Exception:
+        return False
 
 
 def _is_pdf_path(path):
@@ -2296,15 +2473,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 pdf_renderer_status = pdf_module.get_pdf_renderer_status()
                 try:
                     pdf2image_install_cmd = pdf_module.get_pdf2image_install_command()
-                    if pdf2image_install_cmd:
-                        hints = list(pdf_renderer_status.get("hints") or [])
-                        cleaned_hints = [
-                            line for line in hints if "pip install pdf2image" not in str(line).lower()
-                        ]
-                        cleaned_hints.append(
-                            f"Install PDF conversion runtime in this Python: {pdf2image_install_cmd}"
-                        )
-                        pdf_renderer_status["hints"] = cleaned_hints
+                    pdf_renderer_status = _merge_pdf_runtime_hint(pdf_renderer_status, pdf2image_install_cmd)
                 except Exception:
                     pass
             except Exception as pdf_init_error:
@@ -2336,14 +2505,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                     }
                 try:
                     status = pdf_module.get_pdf_renderer_status()
-                    if pdf2image_install_cmd:
-                        existing_hints = list(status.get("hints") or [])
-                        status_hints = [
-                            entry for entry in existing_hints if "pip install pdf2image" not in str(entry).lower()
-                        ]
-                        status_hints.append(f"Install PDF conversion runtime in this Python: {pdf2image_install_cmd}")
-                        status["hints"] = status_hints
-                    return status
+                    return _merge_pdf_runtime_hint(status, pdf2image_install_cmd)
                 except Exception as status_error:
                     logger.debug(
                         "Batch OCR: failed to refresh PDF renderer status during processing: {error}".format(
@@ -2792,7 +2954,8 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
             combined_text = _build_output_text_for_batch(batch_results, tr=tr)
             total_chars = len(combined_text or "")
-            source_summary = _build_preprocessing_summary(options)
+            processing_summary = _build_preprocessing_summary(options)
+            source_summary = processing_summary
             preview_text = combined_text
             batch_diagnostics = ocr_runtime.build_run_diagnostics_text(
                 ocr_runtime.OcrRunStats(
@@ -2973,52 +3136,82 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             }.get(output_mode, tr("processed"))
 
             source_digest_lines = [
-                tr("• {source} ({length} chars)").format(source=src, length=length)
-                for src, length in source_overview[:40]
+                tr("• {source} ({length} chars)").format(
+                    source=_format_source_label_for_dialog(src, max_chars=68),
+                    length=length,
+                )
+                for src, length in source_overview[:15]
             ]
-            if len(source_overview) > 40:
+            if len(source_overview) > 15:
                 source_digest_lines.append(
-                    tr("• ... and {count} more source(s).").format(count=len(source_overview) - 40)
+                    tr("... and {count} more source(s).").format(count=len(source_overview) - 15)
                 )
             source_digest = "\n".join(source_digest_lines) if source_digest_lines else tr("No source details available.")
 
             extraction_summary = (
-                tr("Language: {language}\nPreset: {preset}\nOptions:\n{processing}").format(
-                    language=options["lang"],
+                tr("Output: {output}\nLanguage:\n{language}\nPreset: {preset}\n\n{processing}").format(
+                    output=_format_output_mode_for_summary(output_mode),
+                    language=_format_language_for_dialog(options["lang"]),
                     preset=_format_preset_for_summary(options["preset"]),
-                    processing=source_summary,
+                    processing=_build_processing_details_for_dialog(options),
                 )
             )
-            if batch_diagnostics:
-                extraction_summary = "{summary}\nRuntime: {diagnostics}".format(
-                    summary=extraction_summary,
-                    diagnostics=batch_diagnostics,
-                )
             failure_summary = (
-                tr("\n\nSome sources failed:\n{failures}").format(
-                    failures="\n".join([f"• {item}: {reason}" for item, reason in failed_sources[:5]])
+                tr("\n\nFailed sources:\n{failures}").format(
+                    failures="\n".join(
+                        [
+                            "• {item}: {reason}".format(
+                                item=_format_source_label_for_dialog(item, max_chars=52),
+                                reason=_format_failed_reason_for_dialog(reason, max_chars=120),
+                            )
+                            for item, reason in failed_sources[:5]
+                        ]
+                    )
                 )
                 if failed_sources
                 else ""
             )
+            completion_summary = tr(
+                "Extracted {char_count} characters and {mode_description}."
+            ).format(
+                char_count=total_chars,
+                mode_description=mode_description,
+            )
+            sources_block = tr("Sources ({file_count} total):\n{source_breakdown}{failures}").format(
+                file_count=processed_sources,
+                source_breakdown=source_digest,
+                failures=failure_summary,
+            )
+            diagnostics_block = _build_runtime_diagnostics_for_dialog(batch_diagnostics)
 
-            uno_utils.show_message_box(
-                tr("OCR Complete"),
-                tr(
-                    "Successfully extracted {char_count} characters from {file_count} source(s) and {mode_description}.\n\n"
-                    "Source breakdown:\n{source_breakdown}\n\n{summary}{failures}"
+            if not _show_structured_ocr_complete_dialog(
+                self.ctx,
+                self.frame,
+                completion_summary,
+                sources_block,
+                extraction_summary,
+                diagnostics_block,
+            ):
+                fallback_message = tr(
+                    "✅ Extracted {char_count} characters and {mode_description}.\n\n"
+                    "Sources ({file_count} total):\n{source_breakdown}\n\n{summary}"
                 ).format(
                     char_count=total_chars,
                     file_count=processed_sources,
-                    source_breakdown=source_digest,
+                    source_breakdown=source_digest + failure_summary,
                     mode_description=mode_description,
-                    summary=extraction_summary,
-                    failures=failure_summary,
-                ),
-                "infobox",
-                parent_frame=self.frame,
-                ctx=self.ctx,
-            )
+                    summary=extraction_summary if not batch_diagnostics else "{summary}\n\nRuntime:\n{diagnostics}".format(
+                        summary=extraction_summary,
+                        diagnostics=diagnostics_block,
+                    ),
+                )
+                uno_utils.show_message_box(
+                    tr("OCR Complete"),
+                    fallback_message,
+                    "infobox",
+                    parent_frame=self.frame,
+                    ctx=self.ctx,
+                )
         except Exception as e:
             self.logger.error(f"Batch OCR failed: {e}", exc_info=True)
             uno_utils.show_message_box(
@@ -3275,30 +3468,47 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                     constants.OUTPUT_MODE_REPLACE: _("replaced the selected image"),
                 }.get(output_mode, _("processed"))
 
-                extraction_summary = (
-                    _("Language: {language}\nPreset: {preset}\nOptions: {processing}").format(
-                        language=options["lang"],
-                        preset=_format_preset_for_summary(options["preset"]),
-                        processing=_build_preprocessing_summary(options),
-                    )
+                extraction_summary = _(
+                    "Output: {output}\nLanguage:\n{language}\nPreset: {preset}\n\n{processing}"
+                ).format(
+                    output=_format_output_mode_for_summary(output_mode),
+                    language=_format_language_for_dialog(options["lang"]),
+                    preset=_format_preset_for_summary(options["preset"]),
+                    processing=_build_processing_details_for_dialog(options),
                 )
-                if diagnostics_text:
-                    extraction_summary = "{summary}\nRuntime: {diagnostics}".format(
-                        summary=extraction_summary,
-                        diagnostics=diagnostics_text,
-                    )
-                uno_utils.show_message_box(
-                    _("OCR Complete"), 
-                    _("Successfully extracted {char_count} characters from {source_description} and {mode_description}.\n\n{summary}").format(
-                        char_count=char_count, 
-                        source_description=source_description, 
-                        mode_description=mode_description,
-                        summary=extraction_summary,
-                    ), 
-                    "infobox", 
-                    parent_frame=self.frame, 
-                    ctx=self.ctx
+                completion_summary = _("Extracted {char_count} characters and {mode_description}.").format(
+                    char_count=char_count,
+                    mode_description=mode_description,
                 )
+                sources_block = _("Source:\n• {source_description}").format(
+                    source_description=source_description,
+                )
+                diagnostics_block = _build_runtime_diagnostics_for_dialog(diagnostics_text)
+
+                if not _show_structured_ocr_complete_dialog(
+                    self.ctx,
+                    self.frame,
+                    completion_summary,
+                    sources_block,
+                    extraction_summary,
+                    diagnostics_block,
+                ):
+                    fallback_summary = extraction_summary if not diagnostics_text else "{summary}\n\nRuntime:\n{diagnostics}".format(
+                        summary=extraction_summary,
+                        diagnostics=diagnostics_block.replace(" | ", "\n"),
+                    )
+                    uno_utils.show_message_box(
+                        _("OCR Complete"), 
+                        _("✅ Extracted {char_count} characters\n\nOutput: {mode_description}\nSource: {source_description}\n\n{summary}").format(
+                            char_count=char_count, 
+                            source_description=source_description, 
+                            mode_description=mode_description,
+                            summary=fallback_summary,
+                        ), 
+                        "infobox", 
+                        parent_frame=self.frame, 
+                        ctx=self.ctx
+                    )
             elif text == "": # OCR completed but nothing recognized
                 self.logger.warning(f"OCR engine returned empty text for {source_description}.")
                 no_text_recommendations = [

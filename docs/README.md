@@ -6,8 +6,10 @@ This folder contains all deep documentation for the extension.
 
 - [README (project entry)](../README.md)
 - [CHANGELOG](../CHANGELOG.md)
+- [0.2.0 release delta](releases/0.2.0.md)
 - [Architecture overview](architecture/overview.md)
 - [Dispatch and runtime flow](architecture/dispatch-flow.md)
+- [Dialog surface flow](flow/dialog-surfaces.md)
 - [Method call map](reference/method-map.md)
 - [UNO APIs used](reference/uno-apis.md)
 - [Output modes](reference/output-modes.md)
@@ -23,6 +25,7 @@ This folder contains all deep documentation for the extension.
 ## ASCII Diagrams Index
 
 - [Architecture flow](architecture/overview.md#ascii-flow)
+- [Dialog surface flow](flow/dialog-surfaces.md#ascii-flow)
 - [Selected image OCR flow](flow/selected-image-ocr.md)
 - [File OCR flow](flow/file-image-ocr.md)
 - [Output routing matrix](reference/output-modes.md#ascii-output-routing)
@@ -32,6 +35,7 @@ This folder contains all deep documentation for the extension.
 
 - [Architecture and dispatch flow](architecture/overview.md)
 - [Dispatch breakdown](architecture/dispatch-flow.md)
+- [Dialog surface flow](flow/dialog-surfaces.md)
 - [Selected/file OCR state](flow/)
 - [Method map](reference/method-map.md)
 - [UNO API maps](reference/uno-apis.md)

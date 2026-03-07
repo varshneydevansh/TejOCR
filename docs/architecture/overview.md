@@ -2,6 +2,8 @@
 
 ## What runs where
 
+## ASCII flow
+
 ```text
 User action (Writer UI)
      |
@@ -12,7 +14,18 @@ UI XML registration (Addons.xcu / ProtocolHandler.xcu)
 Python dispatch service in process:
 TejOCRService (te jocr_service.py)
      |
-     +-- settings + option path
+     +-- settings surface
+     |     -> Settings
+     |     -> Advanced Engine Parameters
+     |     -> Setup & Diagnostics
+     |     -> Help
+     |     -> A Message
+     |
+     +-- OCR run surface
+     |     -> OCR options dialog/fallback
+     |     -> preview/review
+     |     -> OCR Complete
+     |
      +-- OCR orchestration
      +-- engine/output handoff
 ```
@@ -21,9 +34,12 @@ TejOCRService (te jocr_service.py)
 flowchart TD
   A["Writer menu/toolbar"] --> B["Addons.xcu / ProtocolHandler.xcu"]
   B --> C["TejOCRService (Python)"]
-  C --> D["Settings/Dialogs"]
-  C --> E["OCR Engine"]
-  C --> F["Output Engine"]
+  C --> D["Settings surface"]
+  D --> D1["Settings / Advanced Params / Setup / Help / A Message"]
+  C --> E["OCR run surface"]
+  E --> E1["Options / Preview / OCR Complete"]
+  C --> F["OCR Engine"]
+  C --> G["Output Engine"]
 ```
 
 ## Core runtime clusters
@@ -32,7 +48,9 @@ flowchart TD
 UI cluster:
   xcu / dispatch URLs / status handlers
   -> tejocr_service.py
-  -> dialogs + interactive fallback helpers
+  -> settings/help/setup/message/result dialogs
+  -> advanced engine parameter dialog for Custom preset tuning
+  -> interactive fallback helpers
 
 OCR cluster:
   -> tejocr_engine.py
@@ -41,6 +59,7 @@ OCR cluster:
 Output cluster:
   -> tejocr_output.py
   -> cursor/textbox/replace/clipboard insertion
+  -> 6 pt default OCR Writer text styling
 
 Persistence cluster:
   -> settings store and configuration helpers
@@ -68,7 +87,9 @@ queryDispatch(url)
      +-- OCRImageFromFile -> _handle_ocr_image_from_file
   -> _perform_ocr_with_options
   -> engine.perform_ocr
+  -> preview/review (if enabled)
   -> output.handle_ocr_output
+  -> OCR Complete dialog
   -> status messages/logs
 ```
 
@@ -84,8 +105,10 @@ flowchart TD
   F --> I["_perform_ocr_with_options file"]
   H --> J["engine.perform_ocr"]
   I --> J
-  J --> K["output.handle_ocr_output"]
-  K --> L["status/logging"]
+  J --> K["preview/review if enabled"]
+  K --> L["output.handle_ocr_output"]
+  L --> M["OCR Complete dialog"]
+  M --> N["status/logging"]
 ```
 
 ## Deployment and install contract

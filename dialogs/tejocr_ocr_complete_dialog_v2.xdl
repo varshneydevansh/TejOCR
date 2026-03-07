@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCROcrCompleteDialog" dlg:left="100" dlg:top="50" dlg:width="430" dlg:height="620" dlg:closeable="true" dlg:moveable="true" dlg:title="OCR Complete">
+  <dlg:bulletinboard>
+
+    <dlg:fixedline dlg:id="HeaderSummary" dlg:tab-index="0" dlg:left="10" dlg:top="10" dlg:width="410" dlg:height="10" dlg:value="Result Summary"/>
+    <dlg:text dlg:id="SummaryText" dlg:tab-index="1" dlg:left="20" dlg:top="24" dlg:width="390" dlg:height="34" dlg:multiline="true" dlg:value="OCR finished successfully."/>
+
+    <dlg:fixedline dlg:id="HeaderSources" dlg:tab-index="2" dlg:left="10" dlg:top="68" dlg:width="410" dlg:height="10" dlg:value="Source Breakdown"/>
+    <dlg:text dlg:id="SourcesSummaryText" dlg:tab-index="3" dlg:left="20" dlg:top="82" dlg:width="390" dlg:height="20" dlg:multiline="true" dlg:value="Source summary will appear here."/>
+    <dlg:menulist dlg:id="SourcesListBox" dlg:tab-index="4" dlg:left="20" dlg:top="106" dlg:width="390" dlg:height="84" dlg:dropdown="false"/>
+
+    <dlg:fixedline dlg:id="HeaderProfile" dlg:tab-index="5" dlg:left="10" dlg:top="180" dlg:width="410" dlg:height="10" dlg:value="OCR Profile"/>
+    <dlg:text dlg:id="ProfileMainText" dlg:tab-index="6" dlg:left="20" dlg:top="194" dlg:width="390" dlg:height="46" dlg:multiline="true" dlg:value="Language, preset, and output details will appear here."/>
+    <dlg:text dlg:id="ProfileProcessingText" dlg:tab-index="7" dlg:left="20" dlg:top="244" dlg:width="390" dlg:height="54" dlg:multiline="true" dlg:value="Processing details will appear here."/>
+    <dlg:text dlg:id="ProfileRecognitionText" dlg:tab-index="8" dlg:left="20" dlg:top="302" dlg:width="390" dlg:height="54" dlg:multiline="true" dlg:value="Recognition details will appear here."/>
+
+    <dlg:fixedline dlg:id="HeaderRuntime" dlg:tab-index="9" dlg:left="10" dlg:top="362" dlg:width="410" dlg:height="10" dlg:value="Runtime Diagnostics"/>
+    <dlg:text dlg:id="RuntimeSummaryText" dlg:tab-index="10" dlg:left="20" dlg:top="376" dlg:width="390" dlg:height="38" dlg:multiline="true" dlg:value="Runtime summary will appear here."/>
+    <dlg:text dlg:id="RuntimeRequestedText" dlg:tab-index="11" dlg:left="20" dlg:top="418" dlg:width="390" dlg:height="46" dlg:multiline="true" dlg:value="Requested settings will appear here."/>
+    <dlg:text dlg:id="RuntimeEffectiveText" dlg:tab-index="12" dlg:left="20" dlg:top="468" dlg:width="390" dlg:height="54" dlg:multiline="true" dlg:value="Effective settings will appear here."/>
+
+    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="13" dlg:left="10" dlg:top="548" dlg:width="410" dlg:height="10"/>
+    <dlg:button dlg:id="CloseResultButton" dlg:tab-index="14" dlg:left="170" dlg:top="564" dlg:width="90" dlg:height="24" dlg:default="true" dlg:value="Close"/>
+
+  </dlg:bulletinboard>
+</dlg:window>

@@ -48,6 +48,8 @@ In this repository it must resolve to:
   - `manifest:full-path="LICENSE"` with text/plain media type.
 - `description.xml` includes:
   - `<registration><simple-license ...><license-text xlink:href="LICENSE" .../></simple-license></registration>`
+- If `simple-license` uses `default-license-id`, one `license-text` entry must have a matching `license-id`.
+  If there is only one license file, do not set `default-license-id` at all.
 
 ### Recovery workflow
 
@@ -83,6 +85,7 @@ instead of the parsed name/metadata.
 Most commonly caused by:
 - malformed `description.xml`,
 - wrong resource paths in `description.xml`,
+- invalid `simple-license` metadata such as `default-license-id` without a matching `license-id`,
 - manifest/resource mismatch,
 - stale cached metadata after a broken install.
 

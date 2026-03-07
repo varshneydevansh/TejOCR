@@ -149,6 +149,14 @@ def split_language_codes(language_input, default_language=None):
     return [token for token in normalized.split("+") if token]
 
 
+def format_language_codes_for_display(language_input, default_language=None, separator="  +  "):
+    """Return a UI-friendly language string with chip-like code markers."""
+    codes = split_language_codes(language_input, default_language=default_language)
+    if not codes:
+        codes = [default_language or constants.DEFAULT_OCR_LANGUAGE]
+    return separator.join("[{code}]".format(code=code) for code in codes)
+
+
 def coerce_bool(value, default=False):
     if isinstance(value, bool):
         return value

@@ -83,12 +83,17 @@ def _get_runtime_psm_map(ctx=None):
         if description:
             description = _clean_mode_description(description)
             if mode == "0":
-                description = "{description} Diagnostic mode; no OCR text output.".format(
-                    description=description.rstrip(".")
-                )
+                if "diagnostic mode" not in description.lower():
+                    description = "{description} Diagnostic mode; no OCR text output.".format(
+                        description=description.rstrip(".")
+                    )
             elif mode == "2" and "diagnostic mode" not in description.lower():
-                description = "{description} Diagnostic mode; not implemented for text output.".format(
-                    description=description.rstrip(".")
+                suffix = "Diagnostic mode; no OCR text output."
+                if "not implemented" not in description.lower():
+                    suffix = "Diagnostic mode; not implemented for text output."
+                description = "{description} {suffix}".format(
+                    description=description.rstrip("."),
+                    suffix=suffix,
                 )
             runtime_map[mode] = "{mode}: {description}".format(mode=mode, description=description)
         else:
@@ -295,6 +300,11 @@ class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
         if isinstance(value, str):
             return 1 if value.lower() in ('true', '1', 'yes') else 0
         return 1 if value else 0
+
+    @staticmethod
+    def _state_to_setting_string(value):
+        """Serialize a checkbox/radio state into the persisted true/false string form."""
+        return "true" if BaseDialogHandler._bool_to_state(value) else "false"
 
     @staticmethod
     def _select_dropdown_item(dropdown, pos):
@@ -726,7 +736,6 @@ class OptionsDialogHandler(BaseDialogHandler):
         selected_control = self.get_control(selected_control_id)
         if selected_control:
             selected_control.setState(True)
-
     def actionPerformed(self, event):
         source_control = self._get_event_source_control(event)
         command = self._get_action_command(event)
@@ -1098,6 +1107,7 @@ class SettingsDialogHandler(BaseDialogHandler):
         self._add_listener_to_control("SaveButton", "save_settings") 
         self._add_listener_to_control("CancelButton", "cancel")
         self._add_listener_to_control("HelpButtonSettings", "help")
+        self._add_listener_to_control("MessageButtonSettings", "message")
         self._add_listener_to_control("BrowseButton", "browse_tesseract_path")
         self._add_listener_to_control("TestTesseractButton", "test_tesseract")
         self._add_listener_to_control("RefreshLanguagesButtonSettings", "refresh_languages_settings")
@@ -1112,10 +1122,15 @@ class SettingsDialogHandler(BaseDialogHandler):
         # Search button for language filtering
         self._add_listener_to_control("SearchLanguagesButton", "search_languages")
 
+        # Dynamic interactions for dropdowns and checkboxes
+        self._add_item_listener_to_control("DefaultPresetDropdown")
+        self._add_item_listener_to_control("DefaultMergeBatchCheckbox")
+        self._add_item_listener_to_control("LanguagesListbox")
+
         # Force dropdown controls into compact mode across LO builds
         self._ensure_dropdown_mode("DefaultPresetDropdown")
-        self._ensure_dropdown_mode("DefaultPSMDropdown")
-        self._ensure_dropdown_mode("DefaultOEMDropdown")
+
+        self._add_listener_to_control("AdvancedParamsButton", "advanced_params")
 
         # Load current settings — wrapped so a failure doesn't prevent dialog display
         try:
@@ -1161,9 +1176,37 @@ class SettingsDialogHandler(BaseDialogHandler):
                 model.BackgroundColor = 0x22C55E # Crisp UI Green
                 model.TextColor = 0xFFFFFF # White text
                 model.FontWeight = 150 # Bold
-                
-            # Removed the listbox background override to preserve native dark mode contrast.
-                
+
+            # 4. Keep Setup & Help visually distinct in their resting state too
+            setup_btn = self.get_control("SetupButton")
+            if setup_btn:
+                model = setup_btn.getModel()
+                model.BackgroundColor = self.COLOR_BTN_PRIMARY
+                model.TextColor = self.COLOR_TEXT_ON_DARK
+                model.FontWeight = 150
+
+            help_btn = self.get_control("HelpButtonSettings")
+            if help_btn:
+                model = help_btn.getModel()
+                model.BackgroundColor = self.COLOR_BTN_WARNING
+                model.TextColor = 0xFFFFFF
+                model.FontWeight = 150
+
+            # 5. Style the Advanced params button
+            adv_btn = self.get_control("AdvancedParamsButton")
+            if adv_btn:
+                model = adv_btn.getModel()
+                model.BackgroundColor = 0x4B5563 # Slate grey
+                model.TextColor = 0xFFFFFF # White text
+
+            # 6. Distinct community-message button
+            message_btn = self.get_control("MessageButtonSettings")
+            if message_btn:
+                model = message_btn.getModel()
+                model.BackgroundColor = 0x7C3AED # Violet accent
+                model.TextColor = 0xFFFFFF
+                model.FontWeight = 150
+
         except Exception as e:
             logger.debug(f"Could not apply all modern stylings (UI may appear default): {e}")
 
@@ -1323,17 +1366,21 @@ class SettingsDialogHandler(BaseDialogHandler):
             constants.CFG_KEY_DEFAULT_PRESET,
             constants.DEFAULT_OCR_PRESET,
         )
-        self._populate_dropdown_settings(
-            "DefaultPSMDropdown",
-            _get_runtime_psm_map(self.ctx),
-            constants.CFG_KEY_DEFAULT_PSM,
+
+        self.current_psm = self._coerce_mode_value(
+            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PSM, constants.DEFAULT_PSM_MODE, self.ctx),
+            constants.TESSERACT_PSM_MODES,
             constants.DEFAULT_PSM_MODE,
         )
-        self._populate_dropdown_settings(
-            "DefaultOEMDropdown",
-            _get_runtime_oem_map(self.ctx),
-            constants.CFG_KEY_DEFAULT_OEM,
+        self.current_oem = self._coerce_mode_value(
+            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, self.ctx),
+            constants.TESSERACT_OEM_MODES,
             constants.DEFAULT_OEM_MODE,
+        )
+        self.current_oem, _oem_warning = _coerce_supported_oem_value(
+            self.current_oem,
+            ctx=self.ctx,
+            fallback=constants.DEFAULT_OEM_MODE,
         )
 
         preview = uno_utils.get_setting(
@@ -1358,27 +1405,18 @@ class SettingsDialogHandler(BaseDialogHandler):
             uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PRESET, constants.DEFAULT_OCR_PRESET, self.ctx),
             constants.DEFAULT_OCR_PRESET,
         )
-        self.initial_settings[constants.CFG_KEY_DEFAULT_PSM] = self._coerce_mode_value(
-            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PSM, constants.DEFAULT_PSM_MODE, self.ctx),
-            constants.TESSERACT_PSM_MODES,
-            constants.DEFAULT_PSM_MODE,
-        )
-        self.initial_settings[constants.CFG_KEY_DEFAULT_OEM] = self._coerce_mode_value(
-            uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, self.ctx),
-            constants.TESSERACT_OEM_MODES,
-            constants.DEFAULT_OEM_MODE,
-        )
-        self.initial_settings[constants.CFG_KEY_DEFAULT_OEM], _oem_warning = _coerce_supported_oem_value(
-            self.initial_settings[constants.CFG_KEY_DEFAULT_OEM],
-            ctx=self.ctx,
-            fallback=constants.DEFAULT_OEM_MODE,
-        )
+        self.initial_settings[constants.CFG_KEY_DEFAULT_PSM] = self.current_psm
+        self.initial_settings[constants.CFG_KEY_DEFAULT_OEM] = self.current_oem
         self.initial_settings[constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT] = self._bool_to_state(preview)
         self.initial_settings[constants.CFG_KEY_MERGE_BATCH_RESULTS] = self._bool_to_state(merge_batch)
         
         status_label = self.get_control("SettingsStatusLabel")
         if status_label:
             status_label.setText("Settings loaded successfully")
+        
+        # Initialize dynamic hint labels
+        self._update_preset_hint()
+        self._update_merge_hint()
 
     @staticmethod
     def _coerce_preset_value(value, fallback):
@@ -1565,12 +1603,19 @@ class SettingsDialogHandler(BaseDialogHandler):
         return '+'.join(codes)
 
     def _update_selected_langs_label(self):
-        """Update the 'Selected: eng+hin+spa' label."""
+        """Update the selected-languages label with clearer visual separators."""
         label = self.get_control("SelectedLangsLabel")
         if not label:
             return
         codes = sorted(self._selected_codes) if self._selected_codes else [constants.DEFAULT_OCR_LANGUAGE]
-        label.setText(f"Selected: {'+'.join(codes)}")
+        label.setText(
+            "Selected: {languages}".format(
+                languages=ocr_runtime.format_language_codes_for_display(
+                    "+".join(codes),
+                    default_language=constants.DEFAULT_OCR_LANGUAGE,
+                )
+            )
+        )
 
     def _get_selected_output_mode(self):
         """Read output mode from radio buttons (4 options)."""
@@ -1689,6 +1734,18 @@ class SettingsDialogHandler(BaseDialogHandler):
             )
             return
 
+        if command == "message":
+            _execute_with_feedback(
+                source_control,
+                "Opening message...",
+                "Opening message...",
+                self._handle_message_action,
+                "Message opened.",
+                bg_color=0x7C3AED,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            return
+
         if command == "browse_tesseract_path":
             _execute_with_feedback(
                 source_control,
@@ -1766,8 +1823,98 @@ class SettingsDialogHandler(BaseDialogHandler):
                 fg_color=self.COLOR_TEXT_ON_DARK,
             )
             return
+        elif command == "advanced_params":
+            self._show_advanced_params_dialog()
+            return
 
         super().actionPerformed(event)
+
+    def _show_advanced_params_dialog(self):
+        try:
+            handler = TejOCRAdvancedParamsDialogHandler(self.ctx, self.parent_frame, getattr(self, "current_psm", 3), getattr(self, "current_oem", 3))
+            if handler.show():
+                self.current_psm = handler.selected_psm
+                self.current_oem = handler.selected_oem
+                status_label = self.get_control("SettingsStatusLabel")
+                if status_label:
+                    status_label.setText("Advanced parameters updated.")
+        except Exception as e:
+            logger.error(f"Failed to open advanced params dialog: {e}", exc_info=True)
+
+    def itemStateChanged(self, event):
+        """Handle changes in listboxes and checkboxes (XItemListener)."""
+        source_control = self._get_event_source_control(event)
+        if not source_control:
+            return
+
+        try:
+            # We identify the control by its model name if possible
+            model = source_control.getModel()
+            name = model.Name
+            
+            if name == "DefaultPresetDropdown":
+                self._update_preset_hint()
+            elif name == "DefaultMergeBatchCheckbox":
+                self._update_merge_hint()
+            elif name == "LanguagesListbox":
+                self._sync_selected_codes_from_listbox()
+                
+        except Exception as e:
+            logger.debug(f"itemStateChanged exception: {e}")
+
+    def _update_preset_hint(self):
+        """Update the UI hint based on the selected Preset."""
+        preset_control = self.get_control("DefaultPresetDropdown")
+        if not preset_control:
+            return
+            
+        preset_key = self._coerce_preset_value(
+            self._extract_dropdown_key(
+                preset_control,
+                {
+                    constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
+                    constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
+                    constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
+                    constants.OCR_PRESET_CUSTOM: "Custom",
+                },
+                constants.DEFAULT_OCR_PRESET,
+            ),
+            constants.DEFAULT_OCR_PRESET,
+        )
+
+        hint_label = self.get_control("PresetStatusLabel")
+        # Advanced controls
+        adv_button = self.get_control("AdvancedParamsButton")
+
+        if preset_key == constants.OCR_PRESET_FAST:
+            if hint_label: hint_label.setText("Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)")
+            if adv_button: adv_button.setEnable(False)
+        elif preset_key == constants.OCR_PRESET_BALANCED:
+            if hint_label: hint_label.setText("Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)")
+            if adv_button: adv_button.setEnable(False)
+        elif preset_key == constants.OCR_PRESET_ACCURATE:
+            if hint_label: hint_label.setText("Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)")
+            if adv_button: adv_button.setEnable(False)
+        elif preset_key == constants.OCR_PRESET_CUSTOM:
+            if hint_label: hint_label.setText("Custom: Uses your exact PSM/OEM and scaling overrides below.")
+            if adv_button: adv_button.setEnable(True)
+
+    def _update_merge_hint(self):
+        """Update the UI hint based on the Merge Batch Checkbox."""
+        merge_cb = self.get_control("DefaultMergeBatchCheckbox")
+        if not merge_cb:
+            return
+            
+        hint_label = self.get_control("MergeStatusLabel")
+        if not hint_label:
+            return
+
+        if merge_cb.getState():
+            hint_label.setText("Outputs multi-page PDFs as a single consolidated block.")
+            hint_label.getModel().TextColor = 0x666666  # Subtle grey
+        else:
+            hint_label.setText("Outputs each file and PDF page as a separate insertion.")
+            hint_label.getModel().TextColor = self.COLOR_BTN_WARNING
 
     def _filter_languages(self):
         """Filter the language listbox based on search field text."""
@@ -1843,8 +1990,14 @@ class SettingsDialogHandler(BaseDialogHandler):
             )
 
     def _handle_help_action(self):
-        """Show help information for the Settings dialog."""
-        help_text = f"""ℹ️ {constants.EXTENSION_FULL_NAME} - Settings Help
+        """Show the rich Help dialog."""
+        try:
+            help_handler = TejOCRHelpDialogHandler(self.ctx, self.parent_frame)
+            help_handler.show()
+        except Exception as e:
+            logger.error(f"Fallback to message box help: {e}")
+            help_text = f"""ℹ️ TejOCR - Settings Help
+(Failed to open advanced help dialog)
 
 ✅ DEPENDENCY STATUS:
 • Current status of required components
@@ -1852,47 +2005,37 @@ class SettingsDialogHandler(BaseDialogHandler):
 
 ✅ TESSERACT CONFIGURATION:
 • Set path to Tesseract executable manually
-• Use 'Browse' to find installation folder
-• Use 'Test' to verify the path works
 
 ✅ DEFAULT OPTIONS:
-• Set preferences for OCR operations:
-  - Language: Default language or multi-language list (ex: eng+spa)
-  - Output: Default destination for OCR text insertion
-  - Preprocessing: Image enhancement options like Grayscale or Binarize
+• Set preferences for OCR operations
 
 ⚠️ ADVANCED PARAMETERS (PRESET, PSM, OEM):
 • Preset: Chooses a default quality profile for future OCR runs.
-  - Fast: one exact attempt, no enhanced pass, PDF default 200 DPI
-  - Balanced: one exact attempt plus one recovery attempt when output is weak
-  - Accuracy: one exact attempt plus one enhanced-preprocessing recovery, PDF default 300 DPI
-  - Custom: exact manual PSM/OEM/scale/preprocessing with no silent override
-
-• PSM (Page Segmentation Mode): Layout behavior (0-13)
-  - 0: OSD only (diagnostic; no OCR text output)
-  - 3: Auto layout (Recommended default)
-  - 6: Assume a single uniform text block
-
-• OEM (OCR Engine Mode): Extraction behavior (0-3)
-  - 0: Legacy engine only
-  - 1: LSTM engine only
-  - 2: Legacy + LSTM engines combined
-  - 3: Auto (Recommended default)
-  - Unsupported OEM modes are marked in the UI and fall back to a supported mode when saved as defaults.
-
-💡 HOW IT IS USED:
-• These settings are saved and applied automatically as defaults for new OCR runs.
-• For single-run temporary changes, use the OCR Options dialog before text extraction.
 
 ✅ BATCH & PDF:
-• You can select multiple image files or one/more PDFs in the "OCR Image/PDF from File" run.
-• Check 'Merge bulk/PDF into single output' to combine all recognized text at once with page headers.
-• Requires `pdftoppm` (poppler) or `mutool` installed for PDF support.
-• PDFs are processed page-by-page, starting at 200 DPI for Fast/Balanced and 300 DPI for Accuracy.
-• When merge is disabled, each image or each PDF page is treated as a separate OCR result and inserted
-  using the selected output mode."""
-        
-        uno_utils.show_message_box("Settings Help", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+• You can select multiple image files or one/more PDFs in the bulk run.
+• Check 'Merge bulk/PDF into single output' to combine all recognized text at once."""
+            uno_utils.show_message_box("Settings Help (Fallback)", help_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
+
+    def _handle_message_action(self):
+        """Show the message dialog about native OCR demand in LibreOffice."""
+        try:
+            message_handler = TejOCRMessageDialogHandler(self.ctx, self.parent_frame)
+            message_handler.show()
+        except Exception as e:
+            logger.error(f"Fallback to message box advocacy dialog: {e}")
+            message_text = (
+                "A Message\n\n"
+                "TejOCR is useful, but it is still a workaround rather than native LibreOffice OCR.\n\n"
+                "Current extension limits:\n"
+                "• OCR accuracy still depends on Tesseract and file quality.\n"
+                "• Structure and layout retention are limited.\n"
+                "• There is no native offline translation, chart understanding, or document insight layer.\n\n"
+                "If this matters to you, please ask for native offline OCR and smart document understanding in "
+                "LibreOffice core on forums, mailing lists, and enhancement discussions.\n\n"
+                "Longer-term direction: https://github.com/varshneydevansh/aKriti"
+            )
+            uno_utils.show_message_box("A Message", message_text, "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
 
     def _browse_tesseract_path(self):
         """Opens a file picker to browse for Tesseract executable."""
@@ -1986,6 +2129,17 @@ Details: {message}""",
         
         try:
             changes_made = False
+            grayscale_control = self.get_control("DefaultGrayscaleCheckbox")
+            binarize_control = self.get_control("DefaultBinarizeCheckbox")
+            preset_control = self.get_control("DefaultPresetDropdown")
+            preview_control = self.get_control("DefaultPreviewCheckbox")
+            merge_batch_control = self.get_control("DefaultMergeBatchCheckbox")
+            preset_items = {
+                constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
+                constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
+                constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
+                constants.OCR_PRESET_CUSTOM: "Custom",
+            }
             
             # Tesseract Path
             new_tesseract_path = self.get_control("TesseractPathTextField").getText().strip()
@@ -2019,80 +2173,64 @@ Details: {message}""",
                 changes_made = True
 
             # Default Preprocessing, Preset, PSM, OEM, and preview settings
-            grayscale_control = self.get_control("DefaultGrayscaleCheckbox")
-            binarize_control = self.get_control("DefaultBinarizeCheckbox")
-            preset_control = self.get_control("DefaultPresetDropdown")
-            psm_control = self.get_control("DefaultPSMDropdown")
-            oem_control = self.get_control("DefaultOEMDropdown")
-            preview_control = self.get_control("DefaultPreviewCheckbox")
-            merge_batch_control = self.get_control("DefaultMergeBatchCheckbox")
+            selected_preset = self._coerce_preset_value(
+                self._extract_dropdown_key(
+                    preset_control,
+                    preset_items,
+                    self.initial_settings.get(constants.CFG_KEY_DEFAULT_PRESET, constants.DEFAULT_OCR_PRESET),
+                ),
+                constants.DEFAULT_OCR_PRESET,
+            )
+            if selected_preset != self.initial_settings.get(constants.CFG_KEY_DEFAULT_PRESET):
+                uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PRESET, selected_preset, self.ctx)
+                changes_made = True
 
             if grayscale_control:
                 new_grayscale = grayscale_control.getState()
-                if new_grayscale != self.initial_settings.get(constants.CFG_KEY_DEFAULT_GRAYSCALE):
-                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_GRAYSCALE, new_grayscale, self.ctx)
+                if new_grayscale != self._bool_to_state(self.initial_settings.get(constants.CFG_KEY_DEFAULT_GRAYSCALE)):
+                    uno_utils.set_setting(
+                        constants.CFG_KEY_DEFAULT_GRAYSCALE,
+                        self._state_to_setting_string(new_grayscale),
+                        self.ctx,
+                    )
                     changes_made = True
 
             if binarize_control:
                 new_binarize = binarize_control.getState()
-                if new_binarize != self.initial_settings.get(constants.CFG_KEY_DEFAULT_BINARIZE):
-                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_BINARIZE, new_binarize, self.ctx)
+                if new_binarize != self._bool_to_state(self.initial_settings.get(constants.CFG_KEY_DEFAULT_BINARIZE)):
+                    uno_utils.set_setting(
+                        constants.CFG_KEY_DEFAULT_BINARIZE,
+                        self._state_to_setting_string(new_binarize),
+                        self.ctx,
+                    )
                     changes_made = True
 
-            if preset_control:
-                new_preset = self._coerce_preset_value(
-                    self._extract_dropdown_key(
-                        preset_control,
-                        {
-                            constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
-                            constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
-                            constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
-                            constants.OCR_PRESET_CUSTOM: "Custom",
-                        },
-                        constants.DEFAULT_OCR_PRESET,
-                    ),
-                    constants.DEFAULT_OCR_PRESET,
-                )
-                if new_preset != self.initial_settings.get(constants.CFG_KEY_DEFAULT_PRESET):
-                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PRESET, new_preset, self.ctx)
-                    changes_made = True
+            if hasattr(self, "current_psm") and str(self.current_psm) != str(self.initial_settings.get(constants.CFG_KEY_DEFAULT_PSM)):
+                uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PSM, str(self.current_psm), self.ctx)
+                changes_made = True
 
-            if psm_control:
-                new_psm = self._coerce_mode_value(
-                    self._extract_dropdown_key(psm_control, constants.TESSERACT_PSM_MODES, constants.DEFAULT_PSM_MODE),
-                    constants.TESSERACT_PSM_MODES,
-                    constants.DEFAULT_PSM_MODE,
-                )
-                if new_psm != self.initial_settings.get(constants.CFG_KEY_DEFAULT_PSM):
-                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PSM, new_psm, self.ctx)
-                    changes_made = True
-
-            if oem_control:
-                runtime_oem_map = _get_runtime_oem_map(self.ctx)
-                new_oem = self._coerce_mode_value(
-                    self._extract_dropdown_key(oem_control, runtime_oem_map, constants.DEFAULT_OEM_MODE),
-                    constants.TESSERACT_OEM_MODES,
-                    constants.DEFAULT_OEM_MODE,
-                )
-                new_oem, _oem_warning = _coerce_supported_oem_value(
-                    new_oem,
-                    ctx=self.ctx,
-                    fallback=constants.DEFAULT_OEM_MODE,
-                )
-                if new_oem != self.initial_settings.get(constants.CFG_KEY_DEFAULT_OEM):
-                    uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OEM, new_oem, self.ctx)
-                    changes_made = True
+            if hasattr(self, "current_oem") and str(self.current_oem) != str(self.initial_settings.get(constants.CFG_KEY_DEFAULT_OEM)):
+                uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OEM, str(self.current_oem), self.ctx)
+                changes_made = True
 
             if preview_control:
                 new_preview = preview_control.getState()
                 if new_preview != self.initial_settings.get(constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT):
-                    uno_utils.set_setting(constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT, new_preview, self.ctx)
+                    uno_utils.set_setting(
+                        constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT,
+                        self._state_to_setting_string(new_preview),
+                        self.ctx,
+                    )
                     changes_made = True
 
             if merge_batch_control:
                 new_merge_batch = merge_batch_control.getState()
                 if new_merge_batch != self.initial_settings.get(constants.CFG_KEY_MERGE_BATCH_RESULTS):
-                    uno_utils.set_setting(constants.CFG_KEY_MERGE_BATCH_RESULTS, new_merge_batch, self.ctx)
+                    uno_utils.set_setting(
+                        constants.CFG_KEY_MERGE_BATCH_RESULTS,
+                        self._state_to_setting_string(new_merge_batch),
+                        self.ctx,
+                    )
                     changes_made = True
             
             # Update status
@@ -2170,6 +2308,584 @@ def _build_settings_unavailable_message(reason=None):
         "If this is happening after a fresh install, restart LibreOffice once and try again."
         + reason_text
     )
+
+# --- Advanced Params Dialog Handler ---
+
+class TejOCRAdvancedParamsDialogHandler(BaseDialogHandler):
+    """Handler for the dedicated Advanced Engine Parameters dialog."""
+    
+    def __init__(self, ctx, parent_frame=None, current_psm=3, current_oem=3):
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_advanced_params_dialog.xdl"
+        super().__init__(ctx, dialog_url)
+        self.parent_frame = parent_frame
+        self.selected_psm = str(current_psm)
+        self.selected_oem = str(current_oem)
+        self._is_saved = False
+        
+        self.psm_map = _get_runtime_psm_map(ctx)
+        self.oem_map = _get_runtime_oem_map(ctx)
+
+    def show(self):
+        smgr = self.ctx.ServiceManager
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_advanced_params_dialog.xdl"
+        try:
+            dprov = smgr.createInstanceWithContext("com.sun.star.awt.DialogProvider2", self.ctx)
+            self.dialog = dprov.createDialog(dialog_url)
+            
+            # Attach listeners
+            ctrl_cancel = self.dialog.getControl("CancelButtonParams")
+            if ctrl_cancel:
+                ctrl_cancel.setActionCommand("cancel")
+                ctrl_cancel.addActionListener(self)
+                
+            ctrl_save = self.dialog.getControl("SaveButtonParams")
+            if ctrl_save:
+                ctrl_save.setActionCommand("save")
+                ctrl_save.addActionListener(self)
+                
+            # Populate dropdowns manually
+            self._populate_dropdown("PSMDropdown", self.psm_map, self.selected_psm)
+            self._populate_dropdown("OEMDropdown", self.oem_map, self.selected_oem)
+            
+            self._apply_modern_styling()
+            
+            self.dialog.execute()
+            return self._is_saved
+        except Exception as e:
+            logger.error(f"Failed to show Advanced Params Dialog: {e}", exc_info=True)
+            return False
+
+    def _apply_modern_styling(self):
+        try:
+            # Save button (primary)
+            save_btn = self.dialog.getControl("SaveButtonParams")
+            if save_btn:
+                model = save_btn.getModel()
+                model.BackgroundColor = 0x22C55E # Crisp UI Green
+                model.TextColor = 0xFFFFFF # White text
+                model.FontWeight = 150 # Bold
+                
+            # Warning label
+            warning_label = self.dialog.getControl("ParamsWarningLabel")
+            if warning_label:
+                model = warning_label.getModel()
+                model.TextColor = 0xCC8800 # Warning amber
+
+        except Exception as e:
+            logger.debug(f"Could not apply modern styling to params dialog: {e}")
+
+    def _populate_dropdown(self, control_name, items_map, selected_val):
+        dropdown = self.dialog.getControl(control_name)
+        if not dropdown: return
+
+        model = dropdown.getModel()
+        model.StringItemList = ()
+        
+        selected_pos = 0
+        texts = []
+        for i, key in enumerate(items_map.keys()):
+            texts.append(str(items_map[key]))
+            if str(key) == str(selected_val):
+                selected_pos = i
+
+        model.StringItemList = tuple(texts)
+        if len(texts) > 0:
+            model.SelectedItems = (selected_pos,)
+            try:
+                dropdown.selectItemPos(selected_pos, True)
+            except Exception:
+                pass
+
+    def _extract_dropdown_key(self, control_name, valid_map, fallback):
+        dropdown = self.dialog.getControl(control_name)
+        if not dropdown: return fallback
+        try:
+            selected_pos_tuple = dropdown.getSelectedItemPos()
+            # If nothing selected, or empty tuple returned, use fallback
+            if not selected_pos_tuple and not isinstance(selected_pos_tuple, int):
+                return fallback
+                
+            selected_pos = selected_pos_tuple[0] if isinstance(selected_pos_tuple, tuple) else int(selected_pos_tuple)
+            
+            if 0 <= selected_pos < len(valid_map):
+                keys = list(valid_map.keys())
+                return str(keys[selected_pos])
+        except Exception as e:
+            logger.debug(f"Error extracting dropdown key for {control_name}: {e}")
+        return fallback
+
+    def actionPerformed(self, event):
+        command = event.ActionCommand
+        logger.info(f"Advanced Params action: {command}")
+        
+        if command == "cancel":
+            self.dialog.endExecute()
+        elif command == "save":
+            self.selected_psm = self._extract_dropdown_key("PSMDropdown", self.psm_map, self.selected_psm)
+            self.selected_oem = self._extract_dropdown_key("OEMDropdown", self.oem_map, self.selected_oem)
+            self._is_saved = True
+            self.dialog.endExecute()
+
+
+# --- Help Dialog Handler ---
+
+class TejOCRHelpDialogHandler(BaseDialogHandler):
+    """Handler for the dedicated formatted Help dialog."""
+    def __init__(self, ctx, parent_frame=None):
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_help_dialog.xdl"
+        super().__init__(ctx, dialog_url)
+        self.parent_frame = parent_frame
+
+    def show(self):
+        smgr = self.ctx.ServiceManager
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_help_dialog.xdl"
+        try:
+            dprov = smgr.createInstanceWithContext("com.sun.star.awt.DialogProvider2", self.ctx)
+            self.dialog = dprov.createDialog(dialog_url)
+            
+            ctrl_close = self.dialog.getControl("CloseHelpButton")
+            if ctrl_close:
+                ctrl_close.setActionCommand("close")
+                ctrl_close.addActionListener(self)
+                
+            self._apply_modern_styling()
+            self.dialog.execute()
+        except Exception as e:
+            logger.error(f"Failed to show Help Dialog: {e}", exc_info=True)
+            raise e
+
+    def _apply_modern_styling(self):
+        try:
+            # Color constants matching our theme
+            COLOR_GREEN = 0x22C55E   # Operations/Dependencies
+            COLOR_BLUE = 0x3B82F6    # Config/Tesseract
+            COLOR_PURPLE = 0x8B5CF6  # Default Options
+            COLOR_AMBER = 0xF59E0B   # Advanced/Warnings
+            
+            headers = [
+                ("Header1", COLOR_GREEN),
+                ("Header2", COLOR_BLUE),
+                ("Header3", COLOR_PURPLE),
+                ("Header4", COLOR_AMBER),
+                ("Header5", COLOR_GREEN),
+            ]
+            for head_id, color in headers:
+                ctrl = self.dialog.getControl(head_id)
+                if ctrl:
+                    model = ctrl.getModel()
+                    model.TextColor = color
+                    model.FontWeight = 150 # Bold
+            
+            close_btn = self.dialog.getControl("CloseHelpButton")
+            if close_btn:
+                model = close_btn.getModel()
+                model.BackgroundColor = 0x4B5563 # Slate grey
+                model.TextColor = 0xFFFFFF # White
+                model.FontWeight = 150
+        except Exception as e:
+            logger.debug(f"Could not apply modern styling to help dialog: {e}")
+
+    def actionPerformed(self, event):
+        command = event.ActionCommand
+        if command == "close":
+            self.dialog.endExecute()
+
+
+class TejOCRMessageDialogHandler(BaseDialogHandler):
+    """Handler for the dedicated message dialog shown from Settings."""
+
+    def __init__(self, ctx, parent_frame=None):
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_message_dialog.xdl"
+        super().__init__(ctx, dialog_url)
+        self.parent_frame = parent_frame
+
+    def show(self):
+        smgr = self.ctx.ServiceManager
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_message_dialog.xdl"
+        try:
+            dprov = smgr.createInstanceWithContext("com.sun.star.awt.DialogProvider2", self.ctx)
+            self.dialog = dprov.createDialog(dialog_url)
+
+            ctrl_open_akriti = self.dialog.getControl("OpenAKritiButton")
+            if ctrl_open_akriti:
+                ctrl_open_akriti.setActionCommand("open_akriti")
+                ctrl_open_akriti.addActionListener(self)
+
+            ctrl_close = self.dialog.getControl("CloseMessageButton")
+            if ctrl_close:
+                ctrl_close.setActionCommand("close")
+                ctrl_close.addActionListener(self)
+
+            self._apply_modern_styling()
+            self.dialog.execute()
+        except Exception as e:
+            logger.error(f"Failed to show Message Dialog: {e}", exc_info=True)
+            raise e
+
+    def _apply_modern_styling(self):
+        try:
+            headers = [
+                ("MessageHeader1", 0x22C55E),
+                ("MessageHeader2", 0xEF4444),
+                ("MessageHeader3", 0x3B82F6),
+                ("MessageHeader4", 0xF59E0B),
+                ("MessageHeader5", 0x8B5CF6),
+            ]
+            for control_id, color in headers:
+                ctrl = self.dialog.getControl(control_id)
+                if ctrl:
+                    model = ctrl.getModel()
+                    model.TextColor = color
+                    model.FontWeight = 150
+
+            close_btn = self.dialog.getControl("CloseMessageButton")
+            if close_btn:
+                model = close_btn.getModel()
+                model.BackgroundColor = 0x4B5563
+                model.TextColor = 0xFFFFFF
+                model.FontWeight = 150
+
+            open_btn = self.dialog.getControl("OpenAKritiButton")
+            if open_btn:
+                model = open_btn.getModel()
+                model.BackgroundColor = 0x7C3AED
+                model.TextColor = 0xFFFFFF
+                model.FontWeight = 150
+        except Exception as e:
+            logger.debug(f"Could not apply modern styling to message dialog: {e}")
+
+    def actionPerformed(self, event):
+        command = event.ActionCommand
+        if command == "open_akriti":
+            import webbrowser
+
+            url = "https://github.com/varshneydevansh/aKriti"
+            try:
+                webbrowser.open(url)
+            except Exception as e:
+                logger.error(f"Failed to open aKriti URL: {e}")
+                uno_utils.show_message_box(
+                    "Open aKriti",
+                    f"Could not open browser.\nVisit: {url}",
+                    "infobox",
+                    parent_frame=self.parent_frame,
+                    ctx=self.ctx,
+                )
+        elif command == "close":
+            self.dialog.endExecute()
+
+
+class TejOCRCompleteDialogHandler(BaseDialogHandler):
+    """Structured OCR completion dialog with grouped sections similar to Settings Help."""
+
+    def __init__(self, ctx, parent_frame=None, summary_text="", sources_text="", profile_text="", runtime_text=""):
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_ocr_complete_dialog_v2.xdl"
+        super().__init__(ctx, dialog_url)
+        self.parent_frame = parent_frame
+        self.summary_text = summary_text or _("OCR finished successfully.")
+        self.sources_text = sources_text or _("No source details available.")
+        self.profile_text = profile_text or _("No OCR profile details available.")
+        self.runtime_text = runtime_text or _("No runtime diagnostics recorded for this run.")
+
+    @staticmethod
+    def _normalize_block_text(text, fallback, max_chars=1800, max_lines=18):
+        normalized = str(text or "").replace("\r\n", "\n").replace(" | ", "\n").strip()
+        if not normalized:
+            normalized = fallback
+
+        lines = normalized.splitlines()
+        if len(lines) > max_lines:
+            normalized = "\n".join(lines[:max_lines] + ["..."])
+
+        if len(normalized) > max_chars:
+            normalized = normalized[: max_chars - 3].rstrip() + "..."
+        return normalized
+
+    @staticmethod
+    def _split_profile_blocks(text):
+        normalized = str(text or "").replace("\r\n", "\n").strip()
+        if not normalized:
+            return "", "", ""
+
+        main_block, processing_block, recognition_block = normalized, "", ""
+        if "\nProcessing:\n" in normalized:
+            main_block, remainder = normalized.split("\nProcessing:\n", 1)
+            processing_block = "Processing:\n"
+            if "\nRecognition:\n" in remainder:
+                processing_items, recognition_items = remainder.split("\nRecognition:\n", 1)
+                processing_block += processing_items.strip()
+                recognition_block = "Recognition:\n" + recognition_items.strip()
+            else:
+                processing_block += remainder.strip()
+        return main_block.strip(), processing_block.strip(), recognition_block.strip()
+
+    @staticmethod
+    def _split_source_blocks(text):
+        normalized = str(text or "").replace("\r\n", "\n").strip()
+        if not normalized:
+            return "", ""
+        if "\n" not in normalized:
+            return normalized, ""
+        first_line, remainder = normalized.split("\n", 1)
+        return first_line.strip(), remainder.strip()
+
+    @staticmethod
+    def _normalize_list_items(text, max_chars=120):
+        normalized = str(text or "").replace("\r\n", "\n").strip()
+        if not normalized:
+            return ()
+
+        items = []
+        for raw_line in normalized.splitlines():
+            line = str(raw_line or "").strip()
+            if not line:
+                continue
+            if len(line) > max_chars:
+                line = line[: max_chars - 3].rstrip() + "..."
+            items.append(line)
+        return tuple(items)
+
+    @staticmethod
+    def _split_runtime_blocks(text):
+        normalized = str(text or "").replace("\r\n", "\n").strip()
+        if not normalized:
+            return "", "", ""
+
+        summary_block, requested_block, effective_block = normalized, "", ""
+        if "\n\nRequested:\n" in normalized:
+            summary_block, remainder = normalized.split("\n\nRequested:\n", 1)
+            requested_block = "Requested:\n"
+            if "\n\nEffective:\n" in remainder:
+                requested_items, effective_items = remainder.split("\n\nEffective:\n", 1)
+                requested_block += requested_items.strip()
+                effective_block = "Effective:\n" + effective_items.strip()
+            else:
+                requested_block += remainder.strip()
+        return summary_block.strip(), requested_block.strip(), effective_block.strip()
+
+    @staticmethod
+    def _estimate_visual_lines(text, wrap_chars):
+        total = 0
+        for line in str(text or "").splitlines() or [""]:
+            line_len = max(1, len(line))
+            total += max(1, (line_len + max(1, wrap_chars) - 1) // max(1, wrap_chars))
+        return total
+
+    @staticmethod
+    def _safe_get_bounds(control):
+        try:
+            bounds = control.getPosSize()
+            return (
+                int(getattr(bounds, "X", 0)),
+                int(getattr(bounds, "Y", 0)),
+                int(getattr(bounds, "Width", 0)),
+                int(getattr(bounds, "Height", 0)),
+            )
+        except Exception:
+            return (0, 0, 0, 0)
+
+    @staticmethod
+    def _safe_set_bounds(control, x, y, width, height):
+        if not control:
+            return
+        try:
+            control.setPosSize(int(x), int(y), int(width), int(height), 15)
+            return
+        except Exception:
+            pass
+        try:
+            model = control.getModel()
+            if hasattr(model, "PositionX"):
+                model.PositionX = int(x)
+            if hasattr(model, "PositionY"):
+                model.PositionY = int(y)
+            if hasattr(model, "Width"):
+                model.Width = int(width)
+            if hasattr(model, "Height"):
+                model.Height = int(height)
+        except Exception:
+            pass
+
+    def _apply_dynamic_layout(self, block_texts):
+        section_specs = (
+            (
+                "HeaderSummary",
+                (("SummaryText", 2, 26, 64, 44),),
+            ),
+            (
+                "HeaderSources",
+                (
+                    ("SourcesSummaryText", 1, 18, 32, 50),
+                    ("SourcesListBox", 4, 58, 100, 0),
+                ),
+            ),
+            (
+                "HeaderProfile",
+                (
+                    ("ProfileMainText", 4, 34, 92, 46),
+                    ("ProfileProcessingText", 5, 42, 110, 46),
+                    ("ProfileRecognitionText", 5, 42, 110, 46),
+                ),
+            ),
+            (
+                "HeaderRuntime",
+                (
+                    ("RuntimeSummaryText", 3, 28, 82, 46),
+                    ("RuntimeRequestedText", 4, 34, 96, 46),
+                    ("RuntimeEffectiveText", 5, 42, 120, 46),
+                ),
+            ),
+        )
+
+        line_height = 10
+        wrap_chars = 52
+        current_y = 10
+        section_gap = 12
+        header_to_text = 20
+        text_padding = 8
+        block_gap = 6
+
+        for header_id, text_specs in section_specs:
+            header = self.dialog.getControl(header_id)
+            if not header:
+                continue
+
+            header_x, _header_y, header_w, header_h = self._safe_get_bounds(header)
+            self._safe_set_bounds(header, header_x, current_y, header_w or 410, header_h or 10)
+
+            block_top = current_y + header_to_text
+            last_bottom = block_top
+            for text_id, min_lines, min_height, max_height, wrap_adjust in text_specs:
+                text_control = self.dialog.getControl(text_id)
+                if not text_control:
+                    continue
+
+                text_x, _text_y, text_w, _text_h = self._safe_get_bounds(text_control)
+                block_text = block_texts.get(text_id, "")
+                if not block_text:
+                    self._safe_set_bounds(text_control, text_x or 20, last_bottom, text_w or 390, 1)
+                    continue
+
+                if isinstance(block_text, (list, tuple)):
+                    item_count = len(block_text)
+                    visible_rows = min(6, max(min_lines, item_count))
+                    desired_height = min(max_height, max(min_height, visible_rows * 12 + 10))
+                    self._safe_set_bounds(text_control, text_x or 20, last_bottom, text_w or 390, desired_height)
+                    last_bottom = last_bottom + desired_height + block_gap
+                    continue
+
+                estimated_lines = self._estimate_visual_lines(block_text, max(28, wrap_chars + wrap_adjust))
+                estimated_lines = max(min_lines, estimated_lines)
+                desired_height = min(max_height, max(min_height, estimated_lines * line_height + text_padding))
+                self._safe_set_bounds(text_control, text_x or 20, last_bottom, text_w or 390, desired_height)
+                last_bottom = last_bottom + desired_height + block_gap
+
+            current_y = last_bottom + section_gap - block_gap
+
+        footer = self.dialog.getControl("SectionFooter")
+        close_btn = self.dialog.getControl("CloseResultButton")
+        footer_x, _footer_y, footer_w, footer_h = self._safe_get_bounds(footer) if footer else (10, 0, 410, 10)
+        close_x, _close_y, close_w, close_h = self._safe_get_bounds(close_btn) if close_btn else (170, 0, 90, 22)
+
+        footer_y = current_y + 10
+        close_y = footer_y + 16
+        dialog_x, dialog_y, dialog_w, _dialog_h = self._safe_get_bounds(self.dialog)
+        effective_close_h = max(close_h or 24, 24)
+        dialog_h = max(440, min(720, close_y + effective_close_h + 34))
+
+        if footer:
+            self._safe_set_bounds(footer, footer_x or 10, footer_y, footer_w or 410, footer_h or 10)
+        if close_btn:
+            centered_x = max(20, ((dialog_w or 430) - (close_w or 90)) // 2)
+            self._safe_set_bounds(close_btn, centered_x, close_y, close_w or 90, effective_close_h)
+        self._safe_set_bounds(self.dialog, dialog_x, dialog_y, dialog_w or 430, dialog_h)
+
+    def show(self):
+        smgr = self.ctx.ServiceManager
+        dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_ocr_complete_dialog_v2.xdl"
+        try:
+            dprov = smgr.createInstanceWithContext("com.sun.star.awt.DialogProvider2", self.ctx)
+            self.dialog = dprov.createDialog(dialog_url)
+
+            close_btn = self.dialog.getControl("CloseResultButton")
+            if close_btn:
+                close_btn.setActionCommand("close")
+                close_btn.addActionListener(self)
+
+            normalized_blocks = {}
+            sources_summary, sources_list = self._split_source_blocks(self.sources_text)
+            source_items = self._normalize_list_items(sources_list, max_chars=112)
+            profile_main, profile_processing, profile_recognition = self._split_profile_blocks(self.profile_text)
+            runtime_summary, runtime_requested, runtime_effective = self._split_runtime_blocks(self.runtime_text)
+
+            for control_name, text, fallback, max_chars, max_lines in (
+                ("SummaryText", self.summary_text, _("OCR finished successfully."), 320, 4),
+                ("SourcesSummaryText", sources_summary, _("No source details available."), 320, 3),
+                ("ProfileMainText", profile_main, _("No OCR profile details available."), 900, 8),
+                ("ProfileProcessingText", profile_processing, "", 900, 10),
+                ("ProfileRecognitionText", profile_recognition, "", 900, 10),
+                ("RuntimeSummaryText", runtime_summary, _("No runtime diagnostics recorded for this run."), 900, 8),
+                ("RuntimeRequestedText", runtime_requested, "", 900, 10),
+                ("RuntimeEffectiveText", runtime_effective, "", 900, 12),
+            ):
+                control = self.dialog.getControl(control_name)
+                if control:
+                    normalized_text = self._normalize_block_text(text, fallback, max_chars=max_chars, max_lines=max_lines)
+                    normalized_blocks[control_name] = normalized_text
+                    control.setText(normalized_text)
+
+            source_list_control = self.dialog.getControl("SourcesListBox")
+            if source_list_control:
+                normalized_blocks["SourcesListBox"] = source_items
+                try:
+                    source_list_control.getModel().StringItemList = tuple(source_items)
+                except Exception:
+                    pass
+
+            self._apply_dynamic_layout(normalized_blocks)
+
+            self._apply_modern_styling()
+            self.dialog.execute()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to show OCR Complete dialog: {e}", exc_info=True)
+            return False
+
+    def _apply_modern_styling(self):
+        try:
+            header_colors = (
+                ("HeaderSummary", 0x22C55E),
+                ("HeaderSources", 0x3B82F6),
+                ("HeaderProfile", 0x8B5CF6),
+                ("HeaderRuntime", 0xF59E0B),
+            )
+            for control_id, color in header_colors:
+                control = self.dialog.getControl(control_id)
+                if control:
+                    model = control.getModel()
+                    model.TextColor = color
+                    model.FontWeight = 150
+
+            summary_text = self.dialog.getControl("SummaryText")
+            if summary_text:
+                model = summary_text.getModel()
+                model.FontHeight = 11
+                model.FontWeight = 150
+
+            close_btn = self.dialog.getControl("CloseResultButton")
+            if close_btn:
+                model = close_btn.getModel()
+                model.BackgroundColor = 0x22C55E
+                model.TextColor = 0xFFFFFF
+                model.FontWeight = 150
+        except Exception as e:
+            logger.debug(f"Could not apply OCR Complete dialog styling: {e}")
+
+    def actionPerformed(self, event):
+        command = event.ActionCommand
+        if command == "close":
+            self.dialog.endExecute()
+
 
 # --- Setup Dialog Handler ---
 
@@ -2291,8 +3007,40 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         # Run initial check
         self._run_check()
         
+        # Apply modern UI styling to buttons
+        self._apply_modern_styling()
+        
         # Show modal
         self.dialog.execute()
+
+    def _apply_modern_styling(self):
+        """Apply bold dynamic UNO styling to Setup dialog buttons."""
+        try:
+            from com.sun.star.awt import FontDescriptor
+            from com.sun.star.awt.FontWeight import BOLD
+            
+            # ReCheck / Validate Button (Primary Action)
+            recheck = self.dialog.getControl("ReCheckButton")
+            if recheck:
+                recheck_model = recheck.getModel()
+                recheck_model.BackgroundColor = getattr(self, "COLOR_BTN_PRIMARY", 0x0066CC)
+                recheck_model.TextColor = getattr(self, "COLOR_TEXT_ON_DARK", 0xFFFFFF)
+                fd = recheck_model.FontDescriptor
+                fd.Weight = BOLD
+                recheck_model.FontDescriptor = fd
+
+            # Copy Command Button (Emphasis Action)
+            copy_cmd = self.dialog.getControl("CopyCommandButton")
+            if copy_cmd:
+                copy_model = copy_cmd.getModel()
+                copy_model.BackgroundColor = getattr(self, "COLOR_BTN_DARK", 0x333333)
+                copy_model.TextColor = getattr(self, "COLOR_TEXT_ON_DARK", 0xFFFFFF)
+                fd = copy_model.FontDescriptor
+                fd.Weight = BOLD
+                copy_model.FontDescriptor = fd
+                
+        except Exception as e:
+            logger.debug(f"Setup dialog modern styling failed: {e}")
 
     def _run_check(self):
         """Run dependency checks and populate the dialog."""
@@ -2493,10 +3241,17 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         try:
             cmd_field = self.dialog.getControl("InstallCommandField")
             helper_field = self.dialog.getControl("InstallInstructionsField")
+            cmd_label = self.dialog.getControl("InstallCommandLabel")
+            helper_label = self.dialog.getControl("InstallInstructionsLabel")
+            
+            if cmd_label:
+                cmd_label.setText("Recommended terminal command:")
+            if helper_label:
+                helper_label.setText("Platform Reference Guide:")
 
             if not command_candidates:
                 if cmd_field:
-                    cmd_field.setText("No install command required.")
+                    cmd_field.setText("No install command required. Check complete.")
             else:
                 if cmd_field:
                     if self._copy_payload:
@@ -2505,8 +3260,13 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                         cmd_field.setText("Install command not available.")
 
             if helper_field:
-                if details_text:
-                    helper_field.setText(details_text)
+                ref_text = ds.get("installation_guide", "")
+                if details_text and ref_text:
+                     helper_field.setText(f"{ref_text}\n\n---\nSystem Details:\n{details_text}")
+                elif ref_text:
+                     helper_field.setText(ref_text)
+                elif details_text:
+                    helper_field.setText(f"System Details:\n{details_text}")
                 elif next_steps:
                     helper_field.setText(next_steps)
                 else:
@@ -2533,13 +3293,13 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                 if can_copy_command:
                     cmd_count = max(len(self._copy_payload_commands), 1)
                     copy_btn.setText(
-                        "Copy Command(s)" + (f" ({cmd_count})" if cmd_count > 1 else "")
+                        "Copy Command to Clipboard" + (f" ({cmd_count})" if cmd_count > 1 else "")
                     )
                 else:
-                    copy_btn.setText("Copy Command")
+                    copy_btn.setText("Copy Command to Clipboard")
             recheck_btn = self.dialog.getControl("ReCheckButton")
             if recheck_btn:
-                recheck_btn.setText("Validate")
+                recheck_btn.setText("Validate / Refresh")
                 recheck_btn.setEnable(True)
         except Exception:
             pass
@@ -2674,7 +3434,7 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
             else:
                 self._set_copy_status("Copy failed. Use fallback text shown below.", "error")
                 if copy_btn:
-                    copy_btn.setText("Copy Command")
+                    copy_btn.setText("Copy Command to Clipboard")
                     self._restore_control_feedback_state(copy_btn, baseline)
             return
 
@@ -2691,10 +3451,10 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                 self._run_check()
             finally:
                 if recheck_btn:
-                    recheck_btn.setText("Validate")
+                    recheck_btn.setText("Validate / Refresh")
                     self._set_control_feedback(
                         recheck_btn,
-                        text="Validate",
+                        text="Validate / Refresh",
                         enabled=True,
                         bg_color=self.COLOR_BTN_PRIMARY,
                         fg_color=self.COLOR_TEXT_ON_DARK,
@@ -3522,9 +4282,16 @@ def _check_dependencies():
         python_missing.append("pillow")
 
     python_install_command = ""
+    # For macOS LibreOffice production installations, `python3 -m pip install` is safest.
+    # We clean the environment for copy commands to detach from LO's virtual env if needed.
+    osx_pip_prefix = "env -i PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin\" " if platform.system().lower() == "darwin" else ""
+    
     if python_missing:
+        # Use simple 'python3 -m pip install ...' which relies on the OS user's PATH
+        # rather than the deeply nested and potentially sandboxed LO executable.
+        clean_pip_cmd = f"{osx_pip_prefix}python3 -m pip install --user"
         python_install_command = "{cmd} {packages}".format(
-            cmd=pip_cmd,
+            cmd=clean_pip_cmd,
             packages=" ".join(python_missing),
         )
 
@@ -3557,47 +4324,49 @@ def _check_dependencies():
     # Use the more accurate variables from above
     if core_ready and pdf_renderer_ready:
         status['summary'] = "All dependencies ready. OCR functionality available."
-        status['next_steps'] = """All dependencies installed and ready.
-You can now use all OCR features."""
+        status['next_steps'] = """✅ System Ready. All dependencies installed.
+You can use all basic and advanced (PDF) OCR features.
+
+Close this dialog to return to settings."""
     elif core_ready and not pdf_renderer_ready:
-        status['summary'] = "Core OCR dependencies installed; PDF renderer is missing."
-        status['next_steps'] = """Core OCR dependencies are installed.
-PDF OCR (PDF files) requires a PDF renderer."""
+        status['summary'] = "Core OCR ready; Optional PDF renderer missing."
+        status['next_steps'] = """✅ Core OCR Ready. You can OCR images.
+ℹ️ Note: PDF processing requires an additional renderer.
+
+To enable PDF support, install a renderer (poppler) and pdf2image using the command below."""
         
     elif tesseract_ok and (pytesseract_available or pillow_available or numpy_available):
-        status['summary'] = "Partially ready -- some Python packages missing"
-        status['next_steps'] = f"""Install missing packages: {', '.join(python_missing)}
+        status['summary'] = "Partially ready; Python bridge packages missing."
+        status['next_steps'] = f"""⚠️ Action Required: Missing Python Integration Packages ({', '.join(python_missing)}).
 
-Run in Terminal:
-{python_install_command}
-
-Restart LibreOffice after installation."""
+Run the command provided below in your system Terminal.
+After installation completes, restart LibreOffice to apply changes."""
         
     elif tesseract_ok:
-        status['summary'] = "Tesseract ready -- Python packages needed"
-        status['next_steps'] = f"""Install Python packages for LibreOffice:
+        status['summary'] = "Tesseract engine ready; Python bridge packages missing."
+        status['next_steps'] = f"""⚠️ Action Required: Missing Python Integration Packages.
 
-Run in Terminal:
-{python_install_command or f"{pip_cmd} numpy pytesseract pillow"}
-
-Restart LibreOffice after installation."""
+Tesseract is installed, but LibreOffice cannot communicate with it.
+Run the command provided below in your system Terminal.
+After installation completes, restart LibreOffice."""
         
     else:
-        status['summary'] = "Setup needed -- dependencies not installed"
-        quick_steps = ["Quick Setup:"]
+        status['summary'] = "Setup Required: Core dependencies missing."
+        quick_steps = ["⚠️ Action Required: OCR Engine not found."]
+        quick_steps.append("\nRun the commands below in your system Terminal:")
         if tesseract_install_commands:
-            quick_steps.append("1. Install Tesseract OCR:")
+            quick_steps.append("1. Install Tesseract OCR Database:")
             quick_steps.extend("   {cmd}".format(cmd=cmd) for cmd in tesseract_install_commands)
         if python_install_command:
-            quick_steps.append("2. Install Python packages:")
+            quick_steps.append("\n2. Install Python Integration Packages:")
             quick_steps.append("   {cmd}".format(cmd=python_install_command))
-        quick_steps.append("3. Restart LibreOffice if the packages still do not appear in this session.")
-        quick_steps.append("")
-        quick_steps.append("See the Install Guide for your platform.")
+        quick_steps.append("\nℹ️ Standard Users: The second command installs packages for your account only.")
+        quick_steps.append("ℹ️ Admins: If the first command fails, you may need to prefix it with 'sudo'.")
+        quick_steps.append("\nRestart LibreOffice after the installations complete.")
         status['next_steps'] = "\n".join(quick_steps)
 
     if not pdf_status["available"]:
-        missing_pdf_message = "PDF OCR (PDF files) also needs a PDF renderer:"
+        missing_pdf_message = "Optional: To enable PDF processing, install a renderer:"
         pdf_renderer_commands = _collect_system_renderer_commands(
             pdf_status.get("hints") or _default_pdf_hints(pip_cmd)
         )
@@ -3608,24 +4377,23 @@ Restart LibreOffice after installation."""
         pdf_hints_formatted = "\n".join(
             "  - {cmd}".format(cmd=entry) for entry in pdf_renderer_commands
         )
-        existing_steps = (status['next_steps'] or "No setup steps currently available.").strip()
-        if "Core OCR dependencies are installed" in existing_steps:
-            pass
-        elif "All dependencies installed" in existing_steps:
-            existing_steps = "Core OCR dependencies are installed."
-        if existing_steps:
-            status['next_steps'] = "{existing}\n\n{missing}\n{hints}".format(
+        existing_steps = (status['next_steps'] or "").strip()
+        
+        # Adjust messaging flow so it's clean and doesn't conflict
+        if existing_steps and "Optional PDF renderer missing" not in existing_steps and "All dependencies installed" not in existing_steps:
+             status['next_steps'] = "{existing}\n\n{missing}\n{hints}".format(
                 existing=existing_steps,
                 missing=missing_pdf_message,
                 hints=pdf_hints_formatted,
             )
-        else:
-            status['next_steps'] = "{missing}\n{hints}".format(
-                missing=missing_pdf_message,
+        elif "All dependencies installed" not in existing_steps:
+             status['next_steps'] = "{existing}\n{hints}".format(
+                existing=existing_steps,
                 hints=pdf_hints_formatted,
             )
+            
         if pdf_status.get("error"):
-            status['next_steps'] += "\n\nCurrent check: {error}".format(error=pdf_status["error"])
+            status['next_steps'] += "\n\nCurrent check data: {error}".format(error=pdf_status["error"])
         for command in pdf_renderer_commands:
             _add_setup_command(command)
 
@@ -3634,77 +4402,33 @@ Restart LibreOffice after installation."""
     status['tesseract_install_commands'] = list(tesseract_install_commands)
     status['setup_commands'] = list(setup_commands)
     
-    # Platform-specific installation guide
+    # Platform-specific installation guide - Make it concise as it goes in instructions box or copy text
     system = platform.system().lower()
     
+    clean_pip = osx_pip_prefix + "python3 -m pip install --user" if system == "darwin" else "python3 -m pip install"
+    
     if system == "darwin":  # macOS
-        status['installation_guide'] = f"""macOS Installation:
-
-1. TESSERACT:
-   brew install tesseract
-
-2. EXTRA LANGUAGES (optional):
-   brew install tesseract-lang
-
-3. PYTHON PACKAGES:
-   {pip_cmd} numpy pytesseract pillow
-
-4. PDF RENDERING (for PDFs):
-   brew install poppler
-   brew install mupdf
-   {pip_cmd} pdf2image
-
-4. VERIFY:
-   tesseract --version"""
+        status['installation_guide'] = f"""macOS Reference:
+1. Core OCR: brew install tesseract tesseract-lang
+2. Bridge: {clean_pip} numpy pytesseract pillow
+3. PDFs (Opt): brew install poppler && {clean_pip} pdf2image"""
    
     elif system == "linux":
-        status['installation_guide'] = f"""Linux Installation:
-
-1. TESSERACT:
-   sudo apt install tesseract-ocr   # Ubuntu/Debian
-   sudo dnf install tesseract       # Fedora
-   sudo pacman -S tesseract         # Arch
-
-2. EXTRA LANGUAGES (optional):
-   sudo apt install tesseract-ocr-all   # Ubuntu/Debian (all languages)
-   sudo apt install tesseract-ocr-hin   # or individual: hin, fra, deu, etc.
-
-3. PYTHON PACKAGES:
-   {pip_cmd} numpy pytesseract pillow
-
-4. PDF RENDERING (for PDFs):
-   apt-get install poppler-utils
-   apt-get install mupdf-tools
-   {pip_cmd} pdf2image
-
-4. VERIFY:
-   tesseract --version"""
+        status['installation_guide'] = f"""Linux Reference:
+1. Core OCR: sudo apt install tesseract-ocr tesseract-ocr-all
+2. Bridge: {clean_pip} numpy pytesseract pillow
+3. PDFs (Opt): sudo apt install poppler-utils && {clean_pip} pdf2image"""
    
     elif system == "windows":
-        status['installation_guide'] = f"""Windows Installation:
-
-1. TESSERACT:
-   Download from: https://github.com/UB-Mannheim/tesseract/wiki
-   Run installer and add to PATH
-   (Select additional languages during installation)
-
-2. PYTHON PACKAGES:
-   {pip_cmd} numpy pytesseract pillow
-
-3. PDF RENDERING (for PDFs):
-   choco install poppler
-   {pip_cmd} pdf2image
-
-3. VERIFY:
-   tesseract --version"""
+        status['installation_guide'] = f"""Windows Reference:
+1. Core OCR: Download installer from UB-Mannheim github
+2. Bridge: {clean_pip} numpy pytesseract pillow
+3. PDFs (Opt): choco install poppler && {clean_pip} pdf2image"""
    
     else:
-        status['installation_guide'] = f"""Installation:
-
-1. TESSERACT: Install from https://tesseract-ocr.github.io/
-2. EXTRA LANGUAGES: Install language data for your platform
-3. PYTHON PACKAGES: {pip_cmd} numpy pytesseract pillow
-4. VERIFY: tesseract --version"""
+        status['installation_guide'] = f"""Reference:
+1. Core OCR: Install from tesseract-ocr.github.io
+2. Bridge: {clean_pip} numpy pytesseract pillow"""
     
     return status
 
@@ -3794,6 +4518,27 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
     except Exception as e:
         logger.error(f"Error in show_ocr_options_dialog: {e}")
         return None, None
+
+
+def show_ocr_complete_dialog(ctx, parent_frame, summary_text, sources_text, profile_text, runtime_text):
+    """Show the structured OCR completion dialog. Returns True when displayed."""
+    dialog_handler = None
+    try:
+        dialog_handler = TejOCRCompleteDialogHandler(
+            ctx,
+            parent_frame=parent_frame,
+            summary_text=summary_text,
+            sources_text=sources_text,
+            profile_text=profile_text,
+            runtime_text=runtime_text,
+        )
+        return dialog_handler.show()
+    except Exception as e:
+        logger.error(f"show_ocr_complete_dialog failed: {e}", exc_info=True)
+        return False
+    finally:
+        if dialog_handler is not None:
+            dialog_handler.dispose()
 
 
 def show_settings_dialog(ctx, parent_frame):

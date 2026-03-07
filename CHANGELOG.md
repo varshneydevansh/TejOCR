@@ -12,6 +12,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-03-07 - UI Consolidation, Packaging Fixes & Writer Output Polish
+
+### Added
+- Added a dedicated `OCR Complete` dialog with:
+  - grouped colored sections,
+  - a scrollable source list for larger batches,
+  - separated profile/runtime blocks,
+  - cleaner requested-vs-effective diagnostics,
+  - better language presentation for multi-language OCR runs.
+- Added an `A Message` button directly in the main Settings UI and a dedicated advocacy dialog explaining:
+- Added regression coverage for:
+  - OCR output font-size handling,
+  - package metadata validation,
+  - dialog formatting and structured output presentation.
+
+### Changed
+- cleaner dialogs,
+- clearer runtime summaries,
+- more stable package/install behavior,
+- and better Writer output defaults.
+- `OCR Complete` moved away from a dense message-box/log-dump feel toward a structured, readable result surface.
+- Batch success summaries now separate successful source listing from failed-source reporting instead of mixing long install hints into the same block.
+- OCR-inserted text now defaults to `6 pt` in Writer for:
+  - insert at cursor,
+  - new text box,
+  - replace image.
+- The message/help/settings family now follows a more consistent visual language.
+
+### Fixed
+- Fixed Settings save regressions in the newer UI path, including:
+  - `preview_control` not defined,
+  - incomplete persistence for preset/grayscale/binarize values,
+  - parameter value normalization issues in advanced PSM/OEM handling.
+- Fixed multiple `OCR Complete` layout issues:
+  - collapsed multiline profile/runtime sections,
+  - long source lists wrapping into clipped text,
+  - footer/button clipping,
+  - requested/effective details merging into a single unreadable line.
+- Fixed success-dialog source breakdown behavior for mixed batch runs so long file names and failed-source notes no longer corrupt the visible source list.
+- Fixed Windows extension installation failures caused by invalid `simple-license` metadata in `description.xml`, which surfaced as:
+  - `Could not obtain path to license. Possible error in description.xml`
+- Fixed package metadata validation gaps by keeping `description.xml`, `META-INF/manifest.xml`, and shipped resources in sync.
+
+
 ## [0.1.9] - 2026-03-07 - OCR Hardening, Safer Runtime Detection & Release Documentation
 
 ### Added

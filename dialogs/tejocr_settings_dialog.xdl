@@ -10,7 +10,7 @@
     <dlg:button dlg:id="SetupButton" dlg:tab-index="3" dlg:left="20" dlg:top="34" dlg:width="140" dlg:height="16" dlg:value="Setup &amp; Diagnostics..."/>
     <dlg:button dlg:id="WikiButton" dlg:tab-index="4" dlg:left="170" dlg:top="34" dlg:width="120" dlg:height="16" dlg:value="Open TejOCR Wiki"/>
     <dlg:button dlg:id="FilterTubeButton" dlg:tab-index="5" dlg:left="300" dlg:top="34" dlg:width="120" dlg:height="16" dlg:value="FilterTube.in"/>
-    <dlg:text dlg:id="FilterTubeTagline2" dlg:tab-index="6" dlg:left="300" dlg:top="52" dlg:width="145" dlg:height="20" dlg:value=" Block Anything on YouTube (FOSS)"/>
+    <dlg:text dlg:id="FilterTubeTagline2" dlg:tab-index="6" dlg:left="300" dlg:top="52" dlg:width="145" dlg:height="20" dlg:value=" Block/ WHITELIST Anything on YouTube (FOSS)"/>
 
     <!-- === Tesseract Configuration === -->
     <dlg:fixedline dlg:id="SectionPath" dlg:tab-index="8" dlg:left="10" dlg:top="58" dlg:width="450" dlg:height="10" dlg:value="Tesseract Configuration"/>
@@ -57,8 +57,9 @@
     <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="37" dlg:left="10" dlg:top="408" dlg:width="450" dlg:height="10"/>
     <dlg:text dlg:id="SettingsStatusLabel" dlg:tab-index="38" dlg:left="10" dlg:top="420" dlg:width="450" dlg:height="10" dlg:value="Ready"/>
     <dlg:button dlg:id="HelpButtonSettings" dlg:tab-index="39" dlg:left="10" dlg:top="424" dlg:width="55" dlg:height="22" dlg:value="Help..."/>
-    <dlg:button dlg:id="CancelButton" dlg:tab-index="40" dlg:left="345" dlg:top="440" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
-    <dlg:button dlg:id="SaveButton" dlg:tab-index="41" dlg:left="410" dlg:top="440" dlg:width="50" dlg:height="22" dlg:default="true" dlg:value="Save"/>
+    <dlg:button dlg:id="MessageButtonSettings" dlg:tab-index="40" dlg:left="72" dlg:top="424" dlg:width="82" dlg:height="22" dlg:value="A Message"/>
+    <dlg:button dlg:id="CancelButton" dlg:tab-index="41" dlg:left="345" dlg:top="440" dlg:width="60" dlg:height="22" dlg:value="Cancel"/>
+    <dlg:button dlg:id="SaveButton" dlg:tab-index="42" dlg:left="410" dlg:top="440" dlg:width="50" dlg:height="22" dlg:default="true" dlg:value="Save"/>
 
   </dlg:bulletinboard>
 </dlg:window>

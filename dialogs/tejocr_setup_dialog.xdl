@@ -1,28 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
-<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSetupDialog" dlg:left="120" dlg:top="80" dlg:width="620" dlg:height="700" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR — Setup &amp; Diagnostics">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSetupDialog" dlg:left="120" dlg:top="80" dlg:width="620" dlg:height="430" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR — Setup &amp; Diagnostics">
   <dlg:bulletinboard>
 
     <!-- === Component Status Section === -->
-    <dlg:fixedline dlg:id="SectionStatus" dlg:tab-index="0" dlg:left="10" dlg:top="6" dlg:width="600" dlg:height="10" dlg:value="Component Status"/>
-    <dlg:text dlg:id="TesseractRow" dlg:tab-index="1" dlg:left="20" dlg:top="22" dlg:width="590" dlg:height="12" dlg:value="Checking..."/>
-    <dlg:text dlg:id="NumpyRow" dlg:tab-index="2" dlg:left="20" dlg:top="36" dlg:width="590" dlg:height="12" dlg:value="Checking..."/>
-    <dlg:text dlg:id="PytesseractRow" dlg:tab-index="3" dlg:left="20" dlg:top="50" dlg:width="590" dlg:height="12" dlg:value="Checking..."/>
-    <dlg:text dlg:id="PillowRow" dlg:tab-index="4" dlg:left="20" dlg:top="64" dlg:width="590" dlg:height="12" dlg:value="Checking..."/>
-    <dlg:text dlg:id="PdfRendererRow" dlg:tab-index="5" dlg:left="20" dlg:top="78" dlg:width="590" dlg:height="12" dlg:value="Checking..."/>
-    <dlg:text dlg:id="UnoRow" dlg:tab-index="6" dlg:left="20" dlg:top="92" dlg:width="590" dlg:height="12" dlg:value="Checking..."/>
+    <dlg:fixedline dlg:id="SectionStatus" dlg:tab-index="0" dlg:left="10" dlg:top="6" dlg:width="600" dlg:height="10" dlg:value="System Checklist"/>
+    <!-- We use larger gaps for a checklist feel -->
+    <dlg:text dlg:id="TesseractRow" dlg:tab-index="1" dlg:left="20" dlg:top="24" dlg:width="590" dlg:height="12" dlg:value="Checking Tesseract..."/>
+    <dlg:text dlg:id="NumpyRow" dlg:tab-index="2" dlg:left="20" dlg:top="40" dlg:width="590" dlg:height="12" dlg:value="Checking Numpy..."/>
+    <dlg:text dlg:id="PytesseractRow" dlg:tab-index="3" dlg:left="20" dlg:top="56" dlg:width="590" dlg:height="12" dlg:value="Checking Pytesseract..."/>
+    <dlg:text dlg:id="PillowRow" dlg:tab-index="4" dlg:left="20" dlg:top="72" dlg:width="590" dlg:height="12" dlg:value="Checking Pillow (PIL)..."/>
+    <dlg:text dlg:id="PdfRendererRow" dlg:tab-index="5" dlg:left="20" dlg:top="88" dlg:width="590" dlg:height="12" dlg:value="Checking PDF Renderer (poppler/mupdf)..."/>
+    <dlg:text dlg:id="UnoRow" dlg:tab-index="6" dlg:left="20" dlg:top="104" dlg:width="590" dlg:height="12" dlg:value="Checking UNO Bridge..."/>
 
     <!-- === Install Instructions Section === -->
-    <dlg:fixedline dlg:id="SectionInstall" dlg:tab-index="7" dlg:left="10" dlg:top="224" dlg:width="600" dlg:value="Install Instructions"/>
-    <dlg:textfield dlg:id="InstallCommandField" dlg:tab-index="8" dlg:left="20" dlg:top="240" dlg:width="590" dlg:height="104" dlg:multiline="true" dlg:readonly="true" dlg:vscroll="true"/>
-    <dlg:textfield dlg:id="InstallInstructionsField" dlg:tab-index="9" dlg:left="20" dlg:top="352" dlg:width="590" dlg:height="226" dlg:multiline="true" dlg:readonly="true" dlg:vscroll="true"/>
+    <dlg:fixedline dlg:id="SectionInstall" dlg:tab-index="7" dlg:left="10" dlg:top="128" dlg:width="600" dlg:height="10" dlg:value="Remediation Plan"/>
+    
+    <!-- Primary remediation command (e.g. pip install) -->
+    <dlg:text dlg:id="InstallCommandLabel" dlg:tab-index="8" dlg:left="20" dlg:top="144" dlg:width="590" dlg:height="10" dlg:value="Recommended terminal command:"/>
+    <dlg:textfield dlg:id="InstallCommandField" dlg:tab-index="9" dlg:left="20" dlg:top="156" dlg:width="580" dlg:height="60" dlg:multiline="true" dlg:readonly="true" dlg:vscroll="true"/>
+    
+    <!-- Reference guide for other platforms / admin needs -->
+    <dlg:text dlg:id="InstallInstructionsLabel" dlg:tab-index="10" dlg:left="20" dlg:top="226" dlg:width="590" dlg:height="10" dlg:value="Platform Reference Guide:"/>
+    <dlg:textfield dlg:id="InstallInstructionsField" dlg:tab-index="11" dlg:left="20" dlg:top="238" dlg:width="580" dlg:height="100" dlg:multiline="true" dlg:readonly="true" dlg:vscroll="true"/>
 
     <!-- === Action Buttons === -->
-    <dlg:fixedline dlg:id="SectionActions" dlg:tab-index="10" dlg:left="10" dlg:top="588" dlg:width="600" dlg:height="10"/>
-    <dlg:textfield dlg:id="CopyStatusLabel" dlg:tab-index="11" dlg:left="20" dlg:top="598" dlg:width="590" dlg:height="78" dlg:readonly="true" dlg:multiline="true" dlg:vscroll="true"/>
-    <dlg:button dlg:id="CopyCommandButton" dlg:tab-index="12" dlg:left="20" dlg:top="686" dlg:width="185" dlg:height="20" dlg:value="Copy Command"/>
-    <dlg:button dlg:id="ReCheckButton" dlg:tab-index="13" dlg:left="215" dlg:top="686" dlg:width="165" dlg:height="20" dlg:value="Re-Check"/>
-    <dlg:button dlg:id="CloseSetupButton" dlg:tab-index="14" dlg:left="400" dlg:top="686" dlg:width="210" dlg:height="20" dlg:button-type="cancel" dlg:value="Close"/>
+    <dlg:fixedline dlg:id="SectionActions" dlg:tab-index="12" dlg:left="10" dlg:top="348" dlg:width="600" dlg:height="10" />
+    <dlg:text dlg:id="CopyStatusLabel" dlg:tab-index="13" dlg:left="20" dlg:top="360" dlg:width="580" dlg:height="14" dlg:value=""/>
+    
+    <dlg:button dlg:id="CopyCommandButton" dlg:tab-index="14" dlg:left="20" dlg:top="380" dlg:width="180" dlg:height="20" dlg:value="Copy Command to Clipboard"/>
+    <dlg:button dlg:id="ReCheckButton" dlg:tab-index="15" dlg:left="210" dlg:top="380" dlg:width="150" dlg:height="20" dlg:value="Validate / Refresh"/>
+    <dlg:button dlg:id="CloseSetupButton" dlg:tab-index="16" dlg:left="450" dlg:top="380" dlg:width="150" dlg:height="20" dlg:button-type="cancel" dlg:value="Close"/>
 
   </dlg:bulletinboard>
 </dlg:window>

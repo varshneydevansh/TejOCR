@@ -6,7 +6,7 @@
   <p>OCR inside Writer, with predictable output behavior</p>
 
   [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/varshneydevansh/TejOCR)
-  [![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
+  [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
   [![License](https://img.shields.io/badge/license-MPL%202.0-green.svg)](LICENSE)
   [![LibreOffice](https://img.shields.io/badge/libreoffice-4.0+-7f52ff.svg)](https://www.libreoffice.org/)
   [![Repository Size](https://img.shields.io/github/repo-size/varshneydevansh/TejOCR?color=orange)](https://github.com/varshneydevansh/TejOCR)
@@ -19,20 +19,47 @@ TejOCR is a **LibreOffice Writer extension** that performs OCR from:
 
 The extension inserts recognized text based on the selected output mode with fallbacks for UI or session capability differences.
 
-## What's New In 0.1.9
+## What's New In 0.2.0
 
-- Bounded OCR presets now map to explicit runtime behavior instead of loose fallback chains.
-- General PDF OCR is hardened with:
-  - page-by-page streaming,
-  - adaptive DPI,
-  - better multi-page and mixed-batch throughput.
-- Requested-vs-effective OCR diagnostics are now part of the runtime model and release docs.
-- macOS LibreOffice helper-launcher crashes were addressed by rejecting wrapper/helper Python launchers when generating install guidance.
+- `OCR Complete` is now a structured dialog instead of a dense result dump:
+  - grouped sections,
+  - better requested/effective diagnostics,
+  - cleaner language display,
+  - scrollable source lists for larger batches.
+- OCR-inserted Writer text now defaults to `6 pt` for cursor insertion, text-box output, and replace-image flows.
+- Package/install metadata is corrected for stricter LibreOffice environments, including the Windows license-path failure class.
 - Release docs now include:
   - [CHANGELOG](CHANGELOG.md)
   - [OCR hardening checklist](docs/dev/ocr-hardening-checklist.md)
   - [UI alignment plan](docs/dev/tejocr-ui-alignment-plan.md)
   - [Security and risk review](docs/dev/security-review.md)
+
+## UI snapshots
+
+### Settings Main UI
+
+<p align="center">
+  <a href="images/Settings_Main_UI.png">
+    <img src="images/Settings_Main_UI.png" alt="TejOCR Settings main UI" width="88%" />
+  </a>
+</p>
+
+### Help UI
+
+<p align="center">
+  <a href="images/Help_UI.png">
+    <img src="images/Help_UI.png" alt="TejOCR Help UI" width="88%" />
+  </a>
+</p>
+
+### Setup & Diagnostics UI
+
+<p align="center">
+  <a href="images/Setup_Diagnostics_UI.png">
+    <img src="images/Setup_Diagnostics_UI.png" alt="TejOCR Setup and Diagnostics UI" width="88%" />
+  </a>
+</p>
+
 
 ---
 
@@ -51,24 +78,32 @@ The extension inserts recognized text based on the selected output mode with fal
                v
       ┌──────────────────────┐
       │ TejOCRService        │
-      │ (te jocr_service.py) │
-      └─────┬───────┬────────┘
-            │       │
-            │       v
-            │  Settings + Options
-            │  (XDL first, fallback input if unavailable)
+      │ (tejocr_service.py) │
+      └─────┬────────┬───────┘
+            │        │
+            │        ├─ Settings surface
+            │        │    -> Settings
+            │        │    -> Advanced Engine Parameters
+            │        │    -> Setup & Diagnostics
+            │        │    -> Help
+            │        │    -> A Message
+            │        │
+            │        └─ OCR run surface
+            │             -> OCR options dialog/fallback
+            │             -> Preview / Review fallback
+            │             -> OCR Complete
             │
             v
       OCR source
-   selected image | file
+   selected image | file | PDF
             v
       ┌──────────────────────────┐
       │ OCR Engine               │
       │ (tejocr_engine.py)       │
-      │ - image export           │
       │ - bounded OCR plan       │
       │ - CLI tesseract runtime  │
       │ - PDF page streaming     │
+      │ - requested/effective    │
       └─────────┬────────────────┘
                 v
       ┌──────────────────────────┐
@@ -76,6 +111,7 @@ The extension inserts recognized text based on the selected output mode with fal
       │ (tejocr_output.py)       │
       │ at_cursor | clipboard    │
       │ new_text_box | replace   │
+      │ inserted text -> 6 pt    │
       └──────────────────────────┘
 ```
 
@@ -84,12 +120,16 @@ The extension inserts recognized text based on the selected output mode with fal
 flowchart TD
   A["Writer UI/Toolbar"] --> B["Protocol URL via ProtocolHandler.xcu"]
   B --> C["TejOCRService (tejocr_service.py)"]
-  C --> D["_perform_ocr_with_options()"]
-  D --> E["Option dialog/fallback + OCR settings"]
-  E --> F["engine.perform_ocr()"]
-  F --> G["resolve plan + preprocess + Tesseract"]
-  F --> H["handle_ocr_output()"]
-  H --> I["at_cursor / clipboard / new_text_box / replace_image"]
+  C --> D["Settings surface"]
+  D --> D1["Settings / Advanced Params / Setup / Help / A Message"]
+  C --> E["_perform_ocr_with_options() / _perform_batch_ocr()"]
+  E --> F["Option dialog or fallback defaults"]
+  F --> G["engine.perform_ocr()"]
+  G --> H["resolve plan + preprocess + Tesseract"]
+  H --> I["preview/review if enabled"]
+  I --> J["handle_ocr_output()"]
+  J --> K["at_cursor / clipboard / new_text_box / replace_image"]
+  J --> L["OCR Complete dialog"]
   classDef ui fill:#93c5fd,color:#0f172a,stroke:#1d4ed8,stroke-width:2px;
   classDef service fill:#22c55e,color:#052e16,stroke:#15803d,stroke-width:2px;
   classDef engine fill:#f59e0b,color:#0f172a,stroke:#b45309,stroke-width:2px;
@@ -98,11 +138,15 @@ flowchart TD
   class B service;
   class C service;
   class D service;
+  class D1 service;
   class E service;
-  class F engine;
+  class F service;
   class G engine;
-  class H output;
+  class H engine;
   class I output;
+  class J output;
+  class K output;
+  class L output;
 ```
 
 > `replace_image` is only valid for Writer-selected-image flow.
@@ -152,7 +196,7 @@ flowchart LR
 
 ## Install
 
-1. Install `TejOCR-0.1.9.oxt` from extension manager.
+1. Install `TejOCR-0.2.0.oxt` from extension manager.
 2. Restart LibreOffice.
 3. Open **TejOCR → Settings** and verify dependency status.
 

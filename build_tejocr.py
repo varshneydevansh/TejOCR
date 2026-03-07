@@ -36,7 +36,7 @@ class TejOCRBuilder:
         self.workspace_dir = Path(workspace_dir or os.getcwd())
         self.build_dir = self.workspace_dir / "build"
         self.dist_dir = self.workspace_dir / "dist"
-        self.version = "0.1.9"  # Will be read from constants.py
+        self.version = "0.2.0"  # Will be read from constants.py
         
         # Create build directories
         self.build_dir.mkdir(exist_ok=True)
@@ -118,7 +118,7 @@ class TejOCRBuilder:
                 with open(constants_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         if line.strip().startswith('EXTENSION_VERSION'):
-                            # Extract version from line like: EXTENSION_VERSION = "0.1.9"
+                            # Extract version from line like: EXTENSION_VERSION = "0.2.0"
                             version = line.split('=')[1].strip().strip('"\'')
                             self.version = version
                             print(f"Found version in constants.py: {self.version}")
@@ -182,6 +182,8 @@ class TejOCRBuilder:
             "dialogs/tejocr_options_dialog_full.xdl",
             "dialogs/tejocr_options_dialog.xdl",
             "dialogs/tejocr_setup_dialog.xdl",
+            "dialogs/tejocr_ocr_complete_dialog_v2.xdl",
+            "dialogs/tejocr_message_dialog.xdl",
             "META-INF/manifest.xml",
             "description.xml",
             "CHANGELOG.md",

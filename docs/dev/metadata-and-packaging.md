@@ -73,10 +73,12 @@ Observed as: `DeploymentException` or deployment/license path error.
 Likely causes:
 1. `LICENSE` missing from package root.
 2. Manifest missing `LICENSE` resource entry.
-3. Stale cache serving an older `.oxt` metadata set.
+3. `description.xml` uses `default-license-id` without a matching `license-text license-id`.
+4. Stale cache serving an older `.oxt` metadata set.
 
 Fix:
 - ensure `LICENSE` exists in source and manifest entry exists for it
+- if `simple-license` has only one `license-text`, omit `default-license-id`
 - clean rebuild
 - uninstall + restart LibreOffice and reinstall
 
@@ -84,8 +86,9 @@ Fix:
 flowchart TD
     A["Could not obtain path to license"] --> B["ensure LICENSE exists in package root"]
     B --> C["ensure LICENSE in manifest"]
-    C --> D["clean rebuild"]
-    D --> E["uninstall + restart + reinstall"]
+    C --> D["validate simple-license metadata"]
+    D --> E["clean rebuild"]
+    E --> F["uninstall + restart + reinstall"]
 ```
 
 ## Extension Manager showing raw XML text

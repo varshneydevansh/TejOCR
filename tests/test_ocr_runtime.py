@@ -134,6 +134,11 @@ class TestOcrRuntime(unittest.TestCase):
         self.assertIn("Installed languages: eng, hin", preview)
         self.assertIn("Script packs: script/Latin, script/Devanagari", preview)
 
+    def test_language_display_format_uses_bracketed_codes_and_spaced_separator(self):
+        display = ocr_runtime.format_language_codes_for_display("eng+enm+hin")
+
+        self.assertEqual(display, "[eng]  +  [enm]  +  [hin]")
+
     def test_coerce_supported_oem_keeps_supported_selection(self):
         oem_value, warning = ocr_runtime.coerce_supported_oem(
             "3",

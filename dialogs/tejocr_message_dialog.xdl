@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRMessageDialog" dlg:left="110" dlg:top="55" dlg:width="430" dlg:height="492" dlg:closeable="true" dlg:moveable="true" dlg:title="A Message">
+  <dlg:bulletinboard>
+
+    <dlg:fixedline dlg:id="MessageHeader1" dlg:tab-index="0" dlg:left="10" dlg:top="10" dlg:width="410" dlg:height="10" dlg:value="Why This Exists"/>
+    <dlg:text dlg:id="MessageText1" dlg:tab-index="1" dlg:left="20" dlg:top="26" dlg:width="390" dlg:height="44" dlg:multiline="true" dlg:value="• TejOCR exists because Writer still needs a privacy-respecting OCR workflow today.&#x0A;&#x0A;• This extension is useful, but it is still a workaround rather than a native LibreOffice capability."/>
+
+    <dlg:fixedline dlg:id="MessageHeader2" dlg:tab-index="2" dlg:left="10" dlg:top="74" dlg:width="410" dlg:height="10" dlg:value="Where The Extension Falls Short"/>
+    <dlg:text dlg:id="MessageText2" dlg:tab-index="3" dlg:left="20" dlg:top="88" dlg:width="390" dlg:height="70" dlg:multiline="true" dlg:value="• OCR accuracy still depends on Tesseract, scan quality, and manual tuning.&#x0A;&#x0A;• Document structure and layout retention are limited.&#x0A;&#x0A;• There is no native offline translation, chart understanding, or deeper document insight layer in Writer."/>
+
+    <dlg:fixedline dlg:id="MessageHeader3" dlg:tab-index="4" dlg:left="10" dlg:top="164" dlg:width="410" dlg:height="10" dlg:value="Why Native LibreOffice Support Matters"/>
+    <dlg:text dlg:id="MessageText3" dlg:tab-index="5" dlg:left="20" dlg:top="178" dlg:width="390" dlg:height="82" dlg:multiline="true" dlg:value="• A built-in solution could be available by default across LibreOffice, not installed separately as an extension.&#x0A;&#x0A;• It could integrate more deeply with selections, document structure, formatting, tables, charts, and accessibility flows.&#x0A;&#x0A;• It would also make stronger offline OCR and future document-VLM workflows much easier to ship."/>
+
+    <dlg:fixedline dlg:id="MessageHeader4" dlg:tab-index="6" dlg:left="10" dlg:top="266" dlg:width="410" dlg:height="10" dlg:value="What To Ask For"/>
+    <dlg:text dlg:id="MessageText4" dlg:tab-index="7" dlg:left="20" dlg:top="280" dlg:width="390" dlg:height="82" dlg:multiline="true" dlg:value="• If this matters to you, please ask for native offline OCR and smart document understanding in LibreOffice core.&#x0A;&#x0A;• Mention it on LibreOffice forums, community discussions, mailing lists, and enhancement requests.&#x0A;&#x0A;• Clear user demand makes upstream adoption much easier."/>
+
+    <dlg:fixedline dlg:id="MessageHeader5" dlg:tab-index="8" dlg:left="10" dlg:top="368" dlg:width="410" dlg:height="10" dlg:value="Longer-Term Direction"/>
+    <dlg:text dlg:id="MessageText5" dlg:tab-index="9" dlg:left="20" dlg:top="382" dlg:width="390" dlg:height="54" dlg:multiline="true" dlg:value="• One direction behind this work is aKriti, a local document-and-chart VLM effort:  https://github.com/varshneydevansh/aKriti&#x0A;&#x0A;• TejOCR is a bridge. The long-term goal is native capability inside LibreOffice itself."/>
+
+    <dlg:fixedline dlg:id="MessageFooter" dlg:tab-index="10" dlg:left="10" dlg:top="450" dlg:width="410" dlg:height="10"/>
+    <dlg:button dlg:id="OpenAKritiButton" dlg:tab-index="11" dlg:left="122" dlg:top="462" dlg:width="108" dlg:height="22" dlg:value="Open aKriti"/>
+    <dlg:button dlg:id="CloseMessageButton" dlg:tab-index="12" dlg:left="240" dlg:top="462" dlg:width="90" dlg:height="22" dlg:default="true" dlg:value="Close"/>
+
+  </dlg:bulletinboard>
+</dlg:window>

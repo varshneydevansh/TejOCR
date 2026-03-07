@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRHelpDialog" dlg:left="100" dlg:top="50" dlg:width="420" dlg:height="430" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR Settings Help">
+  <dlg:bulletinboard>
+    
+    <dlg:fixedline dlg:id="Header1" dlg:tab-index="0" dlg:left="10" dlg:top="10" dlg:width="400" dlg:height="10" dlg:value="Dependency Status"/>
+    <dlg:text dlg:id="HelpText1" dlg:tab-index="1" dlg:left="20" dlg:top="24" dlg:width="380" dlg:height="24" dlg:multiline="true" dlg:value="• Current status of required components.&#x0A;• Open Setup &amp; Diagnostics to test dependencies and view install commands."/>
+
+    <dlg:fixedline dlg:id="Header2" dlg:tab-index="2" dlg:left="10" dlg:top="54" dlg:width="400" dlg:height="10" dlg:value="Tesseract Configuration"/>
+    <dlg:text dlg:id="HelpText2" dlg:tab-index="3" dlg:left="20" dlg:top="68" dlg:width="380" dlg:height="36" dlg:multiline="true" dlg:value="• Set path to Tesseract executable manually.&#x0A;• Use 'Browse' to find the installation folder.&#x0A;• Use 'Test' to verify the path works."/>
+
+    <dlg:fixedline dlg:id="Header3" dlg:tab-index="4" dlg:left="10" dlg:top="110" dlg:width="400" dlg:height="10" dlg:value="Default Options"/>
+    <dlg:text dlg:id="HelpText3" dlg:tab-index="5" dlg:left="20" dlg:top="124" dlg:width="380" dlg:height="36" dlg:multiline="true" dlg:value="• Language: Default language or multi-language list (ex: eng+spa).&#x0A;• Output: Default destination for OCR text insertion.&#x0A;• Preprocessing: Image enhancement options like Grayscale or Binarize."/>
+
+    <dlg:fixedline dlg:id="Header4" dlg:tab-index="6" dlg:left="10" dlg:top="166" dlg:width="400" dlg:height="10" dlg:value="Advanced Parameters (Preset, PSM, OEM)"/>
+    <dlg:text dlg:id="HelpText4" dlg:tab-index="7" dlg:left="20" dlg:top="180" dlg:width="380" dlg:height="100" dlg:multiline="true" dlg:value="• Preset: Chooses a default quality profile for future runs.&#x0A;  - Fast: one exact attempt, no enhanced pass (PDF 200 DPI).&#x0A;  - Balanced: one exact attempt plus one recovery attempt when output is weak.&#x0A;  - Accurate: one exact plus one enhanced-preprocessing recovery (PDF 300 DPI).&#x0A;  - Custom: exact manual PSM/OEM/scale/preprocessing checks.&#x0A;&#x0A;• PSM: Layout behavior. 3=Auto layout, 6=Assume single uniform text block.&#x0A;• OEM: Extraction behavior. 1=LSTM engine only, 3=Auto."/>
+
+    <dlg:fixedline dlg:id="Header5" dlg:tab-index="8" dlg:left="10" dlg:top="286" dlg:width="400" dlg:height="10" dlg:value="Batch &amp; PDF"/>
+    <dlg:text dlg:id="HelpText5" dlg:tab-index="9" dlg:left="20" dlg:top="300" dlg:width="380" dlg:height="60" dlg:multiline="true" dlg:value="• You can select multiple image files or one/more PDFs in the bulk run.&#x0A;• Check 'Merge bulk/PDF into single output' to combine all recognized text at once.&#x0A;• Requires pdftoppm (poppler) or mutool installed for PDF support.&#x0A;• When disabled, each image or each PDF page is inserted separately."/>
+
+    <dlg:fixedline dlg:id="SectionFooter" dlg:tab-index="10" dlg:left="10" dlg:top="385" dlg:width="400" dlg:height="10"/>
+    <dlg:button dlg:id="CloseHelpButton" dlg:tab-index="11" dlg:left="170" dlg:top="398" dlg:width="80" dlg:height="22" dlg:default="true" dlg:value="Close Help"/>
+  </dlg:bulletinboard>
+</dlg:window>

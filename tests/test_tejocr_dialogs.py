@@ -55,6 +55,54 @@ _install_uno_stubs()
 from tejocr import tejocr_dialogs, tejocr_pdf
 
 
+class _FakeModel:
+    def __init__(self):
+        self.StringItemList = ()
+        self.SelectedItems = ()
+
+
+class _FakeControl:
+    def __init__(self, text="", state=0, selected_positions=None):
+        self._text = text
+        self._state = state
+        self._selected_positions = tuple(selected_positions or ())
+        self._model = _FakeModel()
+
+    def getText(self):
+        return self._text
+
+    def setText(self, value):
+        self._text = value
+
+    def getState(self):
+        return self._state
+
+    def setState(self, value):
+        self._state = value
+
+    def getModel(self):
+        return self._model
+
+    def getSelectedItemsPos(self):
+        return self._selected_positions
+
+    def getSelectedItemPos(self):
+        if len(self._selected_positions) == 1:
+            return self._selected_positions[0]
+        return self._selected_positions
+
+    def selectItemPos(self, pos, _select):
+        self._selected_positions = (pos,)
+
+
+class _FakeDialog:
+    def __init__(self, controls):
+        self._controls = controls
+
+    def getControl(self, name):
+        return self._controls.get(name)
+
+
 class TestTejocrDialogs(unittest.TestCase):
     def test_resolve_tesseract_path_uses_single_argument_probe(self):
         with patch.object(tejocr_dialogs.uno_utils, "get_setting", return_value="/custom/tesseract"), \
@@ -71,6 +119,64 @@ class TestTejocrDialogs(unittest.TestCase):
         self.assertEqual(handler._all_lang_keys, [])
         self.assertEqual(handler._all_lang_map, {})
         self.assertEqual(handler._visible_lang_keys, [])
+
+    def test_selected_languages_label_uses_visual_language_tags(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        label = _FakeControl()
+        handler.get_control = lambda name: label if name == "SelectedLangsLabel" else None
+        handler._selected_codes = {"eng", "enm", "hin"}
+
+        handler._update_selected_langs_label()
+
+        self.assertEqual(label.getText(), "Selected: [eng]  +  [enm]  +  [hin]")
+
+    def test_ocr_complete_dialog_splits_profile_blocks(self):
+        main, processing, recognition = tejocr_dialogs.TejOCRCompleteDialogHandler._split_profile_blocks(
+            "Output: Create a new text box\nLanguage:\n[eng]  +  [enm]  +  [hin]\nPreset: Custom\n\n"
+            "Processing:\n• Improve image: off\n• Grayscale: off\n• Binarize: off\n• Invert: off\n"
+            "Recognition:\n• Scale: 1.0x\n• PSM: 3\n• OEM: 3\n• Preview: off"
+        )
+
+        self.assertIn("Output: Create a new text box", main)
+        self.assertEqual(
+            processing,
+            "Processing:\n• Improve image: off\n• Grayscale: off\n• Binarize: off\n• Invert: off",
+        )
+        self.assertEqual(
+            recognition,
+            "Recognition:\n• Scale: 1.0x\n• PSM: 3\n• OEM: 3\n• Preview: off",
+        )
+
+    def test_ocr_complete_dialog_splits_source_blocks(self):
+        summary, details = tejocr_dialogs.TejOCRCompleteDialogHandler._split_source_blocks(
+            "Sources (6 total):\n• aadhaar.jpg (1826 chars)\n• Corvin...pdf (2117 chars)"
+        )
+
+        self.assertEqual(summary, "Sources (6 total):")
+        self.assertEqual(details, "• aadhaar.jpg (1826 chars)\n• Corvin...pdf (2117 chars)")
+
+    def test_ocr_complete_dialog_normalizes_source_items_for_listbox(self):
+        items = tejocr_dialogs.TejOCRCompleteDialogHandler._normalize_list_items(
+            "• aadhaar.jpg (1826 chars)\n\n• {long_name}".format(long_name="x" * 140)
+        )
+
+        self.assertEqual(items[0], "• aadhaar.jpg (1826 chars)")
+        self.assertEqual(len(items), 2)
+        self.assertTrue(items[1].endswith("..."))
+
+    def test_ocr_complete_dialog_splits_runtime_blocks(self):
+        summary, requested, effective = tejocr_dialogs.TejOCRCompleteDialogHandler._split_runtime_blocks(
+            "• Executor: modern\n• Attempts: 1\n• PDF DPI: 200\n\n"
+            "Requested:\n• PSM: 3\n• OEM: 3\n• Preset: custom\n\n"
+            "Effective:\n• PSM: 3\n• OEM: 3\n• Preset: custom\n• Language:\n  [eng]  +  [enm]  +  [hin]"
+        )
+
+        self.assertEqual(summary, "• Executor: modern\n• Attempts: 1\n• PDF DPI: 200")
+        self.assertEqual(requested, "Requested:\n• PSM: 3\n• OEM: 3\n• Preset: custom")
+        self.assertEqual(
+            effective,
+            "Effective:\n• PSM: 3\n• OEM: 3\n• Preset: custom\n• Language:\n  [eng]  +  [enm]  +  [hin]",
+        )
 
     def test_package_status_uses_metadata_without_importing_package(self):
         with patch.object(tejocr_dialogs.importlib_util, "find_spec", return_value=object()) as find_spec, \
@@ -106,6 +212,18 @@ class TestTejocrDialogs(unittest.TestCase):
         self.assertNotIn("osd_only", runtime_map["0"])
         self.assertNotIn("auto Fully", runtime_map["3"])
 
+    def test_runtime_psm_map_keeps_mode_2_readable_without_duplicate_not_implemented(self):
+        help_output = "2|auto_only Automatic page segmentation, but no OSD, or OCR. (not implemented)\n"
+        completed = types.SimpleNamespace(stdout=help_output, stderr="")
+
+        with patch.object(tejocr_dialogs, "_resolve_tesseract_path", return_value="/usr/bin/tesseract"), \
+             patch.object(tejocr_dialogs.subprocess, "run", return_value=completed):
+            runtime_map = tejocr_dialogs._get_runtime_psm_map()
+
+        self.assertIn("Diagnostic mode", runtime_map["2"])
+        self.assertEqual(runtime_map["2"].lower().count("not implemented"), 1)
+        self.assertNotIn("auto_only", runtime_map["2"])
+
     def test_runtime_oem_map_strips_internal_mode_aliases(self):
         help_output = (
             "0|tesseract_only Legacy engine only.\n"
@@ -139,6 +257,96 @@ class TestTejocrDialogs(unittest.TestCase):
         self.assertEqual(languages["eng"], "English")
         self.assertEqual(languages["hin"], "Hindi")
         self.assertEqual(languages["script/Latin"], "script/Latin")
+
+    def test_settings_handler_save_uses_defined_preview_control_and_persists_changed_fields(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        handler.current_psm = "6"
+        handler.current_oem = "1"
+        handler._selected_codes = {"eng", "hin"}
+        handler.initial_settings = {
+            tejocr_dialogs.constants.CFG_KEY_TESSERACT_PATH: "",
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_LANG: "eng",
+            tejocr_dialogs.constants.CFG_KEY_LAST_SELECTED_LANG: "eng",
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_OUTPUT_MODE: tejocr_dialogs.constants.OUTPUT_MODE_CURSOR,
+            tejocr_dialogs.constants.CFG_KEY_LAST_OUTPUT_MODE: tejocr_dialogs.constants.OUTPUT_MODE_CURSOR,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_GRAYSCALE: False,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_BINARIZE: False,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_PRESET: tejocr_dialogs.constants.OCR_PRESET_BALANCED,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_PSM: "3",
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_OEM: "3",
+            tejocr_dialogs.constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT: 0,
+            tejocr_dialogs.constants.CFG_KEY_MERGE_BATCH_RESULTS: 0,
+        }
+
+        controls = {
+            "TesseractPathTextField": _FakeControl(text=""),
+            "DefaultGrayscaleCheckbox": _FakeControl(state=1),
+            "DefaultBinarizeCheckbox": _FakeControl(state=0),
+            "DefaultPresetDropdown": _FakeControl(selected_positions=(2,)),
+            "DefaultPreviewCheckbox": _FakeControl(state=1),
+            "DefaultMergeBatchCheckbox": _FakeControl(state=1),
+            "SettingsStatusLabel": _FakeControl(text="Ready"),
+        }
+        handler.get_control = controls.get
+        handler._get_selected_output_mode = lambda: tejocr_dialogs.constants.OUTPUT_MODE_TEXTBOX
+
+        saved = {}
+
+        def _capture_setting(key, value, _ctx):
+            saved[key] = value
+            return True
+
+        with patch.object(tejocr_dialogs.uno_utils, "set_setting", side_effect=_capture_setting):
+            result = handler._handle_ok_action()
+
+        self.assertTrue(result)
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_DEFAULT_LANG], "eng+hin")
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_LAST_SELECTED_LANG], "eng+hin")
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_DEFAULT_OUTPUT_MODE], tejocr_dialogs.constants.OUTPUT_MODE_TEXTBOX)
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_DEFAULT_PRESET], tejocr_dialogs.constants.OCR_PRESET_ACCURATE)
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_DEFAULT_GRAYSCALE], "true")
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_DEFAULT_PSM], "6")
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_DEFAULT_OEM], "1")
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT], "true")
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_MERGE_BATCH_RESULTS], "true")
+        self.assertEqual(controls["SettingsStatusLabel"].getText(), "Settings saved successfully")
+
+    def test_advanced_params_dropdown_uses_clean_runtime_labels(self):
+        handler = tejocr_dialogs.TejOCRAdvancedParamsDialogHandler(ctx=None, current_psm="3", current_oem="3")
+        psm_control = _FakeControl()
+        handler.dialog = _FakeDialog({"PSMDropdown": psm_control})
+
+        handler._populate_dropdown(
+            "PSMDropdown",
+            {"3": "3: Fully automatic page segmentation, but no OSD. (Default)"},
+            "3",
+        )
+
+        self.assertEqual(
+            psm_control.getModel().StringItemList,
+            ("3: Fully automatic page segmentation, but no OSD. (Default)",),
+        )
+
+    def test_settings_modern_styling_applies_resting_colors_to_setup_and_help(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        controls = {
+            "FilterTubeTagline2": _FakeControl(),
+            "FilterTubeButton": _FakeControl(),
+            "SaveButton": _FakeControl(),
+            "SetupButton": _FakeControl(),
+            "HelpButtonSettings": _FakeControl(),
+            "AdvancedParamsButton": _FakeControl(),
+            "MessageButtonSettings": _FakeControl(),
+        }
+        handler.dialog = _FakeDialog(controls)
+        handler.get_control = controls.get
+
+        handler._apply_modern_styling()
+
+        self.assertEqual(controls["SetupButton"].getModel().BackgroundColor, handler.COLOR_BTN_PRIMARY)
+        self.assertEqual(controls["SetupButton"].getModel().TextColor, handler.COLOR_TEXT_ON_DARK)
+        self.assertEqual(controls["HelpButtonSettings"].getModel().BackgroundColor, handler.COLOR_BTN_WARNING)
+        self.assertEqual(controls["HelpButtonSettings"].getModel().TextColor, 0xFFFFFF)
 
 
 if __name__ == "__main__":

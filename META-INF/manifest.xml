@@ -41,6 +41,10 @@
                          manifest:full-path="dialogs/tejocr_options_dialog_full.xdl"/>
     <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
                          manifest:full-path="dialogs/tejocr_setup_dialog.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
+                         manifest:full-path="dialogs/tejocr_ocr_complete_dialog_v2.xdl"/>
+    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
+                         manifest:full-path="dialogs/tejocr_message_dialog.xdl"/>
 
     <!-- Icons -->
     <manifest:file-entry manifest:media-type="image/png"

@@ -12,6 +12,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.9] - 2026-03-07 - OCR Hardening, Safer Runtime Detection & Release Documentation
+
+### Added
+- Added a pure runtime planning layer in `ocr_runtime.py` for:
+  - preset resolution,
+  - bounded retry planning,
+  - requested-vs-effective option tracking,
+  - language normalization and install hints,
+  - PDF DPI selection and diagnostics formatting.
+- Added structured OCR stats objects and benchmark coverage under `tests/`.
+- Added a committed benchmark corpus and benchmark comparison workflow for modern vs legacy executor checks.
+- Added dedicated documentation for:
+  - OCR option semantics,
+  - hardening rollout checks,
+  - UI alignment planning,
+  - current security/risk review.
+
+### Changed
+- `Fast`, `Balanced`, `Accuracy`, and `Custom` presets now map to bounded, predictable OCR behavior.
+- PDF handling is now page-streamed and adaptive instead of treating PDFs as a single up-front rasterization problem.
+- Requested-vs-effective OCR diagnostics are now captured consistently across image, PDF, and batch flows.
+- Setup and diagnostics flows now generate platform-aware install guidance using a safe LibreOffice Python interpreter path.
+- Runtime language handling preserves valid requested codes in order and reports missing-language guidance more clearly.
+
+### Fixed
+- Fixed multiple LibreOffice macOS helper-launch crashes caused by probing unsafe wrapper scripts such as:
+  - `Contents/Resources/python`
+  - `LibreOfficePython`
+  - `python3-config` / `python3.11-config`
+- Stopped executing candidate Python helpers just to build pip install commands.
+- Fixed settings-state regressions that could leave language and engine controls uninitialized.
+- Fixed packaging consistency so release-note and metadata files referenced by `description.xml` / `META-INF/manifest.xml` are included in release builds.
+
+### Documentation
+- Updated top-level and deep docs to reflect:
+  - the current OCR runtime model,
+  - adaptive PDF behavior for both single-page and multi-page PDFs,
+  - hidden maintainer rollback key,
+  - current known risks and trust boundaries.
+
+### Known limitations
+- The OCR runtime is substantially hardened, but the LibreOffice dialog UX is still only partially aligned with that runtime model.
+- Completion, review, and setup/diagnostic UI still rely too heavily on dense message-box output and remain a follow-up UX redesign target.
+
 ## [0.1.8] - 2026-02-27 - Batch OCR, PDF Support & UI/UX Polish
 
 ### 🎉 **MAJOR FEATURES**
@@ -301,6 +345,6 @@ With version 0.1.2, the extension is perfectly positioned for implementing real 
 - N/A
 
 ### Security
-- N/A 
+- N/A
 
-*Phase 1 Complete - Core functionality stable and tested* 🎉 
+*Phase 1 Complete - Core functionality stable and tested* 🎉

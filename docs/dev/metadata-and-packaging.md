@@ -32,6 +32,12 @@ Required sections are:
 - `registration` + license references
 - `icon` with default and optional high-contrast asset
 
+Release-note and description references must also resolve inside the packaged `.oxt`:
+
+- `CHANGELOG.md`
+- `description_en.txt`
+- `description_hi.txt`
+
 ### Common failure causes
 
 - Non-XML valid `description.xml` content (malformed tags/quotes)  
@@ -58,6 +64,7 @@ flowchart TD
 
 - Each file included at install time must have a manifest entry.
 - Removing/renaming files without manifest updates causes parser/runtime mismatches.
+- The reverse is also true: a manifest or descriptor reference to a file that is not packaged is a release bug.
 
 ## Distribution symptom: “Could not obtain path to license”
 

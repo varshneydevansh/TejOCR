@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "label": "english-image-fast",
+      "path": "english_paragraph.png",
+      "type": "image",
+      "preset": "fast",
+      "lang": "eng",
+      "expected_text": "TejOCR benchmark fixture\nFast text extraction should stay readable.\nPDF latency matters for single and multi page documents.\nRequested and effective settings must be visible."
+    },
+    {
+      "label": "english-image",
+      "path": "english_paragraph.png",
+      "type": "image",
+      "preset": "balanced",
+      "lang": "eng",
+      "expected_text": "TejOCR benchmark fixture\nFast text extraction should stay readable.\nPDF latency matters for single and multi page documents.\nRequested and effective settings must be visible."
+    },
+    {
+      "label": "mixed-language-image",
+      "path": "mixed_english_hindi.png",
+      "type": "image",
+      "preset": "balanced",
+      "lang": "eng+hin",
+      "expected_text": "Invoice total 2500 rupees.\nहिंदी पंक्ति परीक्षण के लिए है।\nEnglish and Hindi mixed together.\nकृपया गति और सटीकता दोनों जांचें।"
+    },
+    {
+      "label": "sparse-layout-image",
+      "path": "sparse_layout.png",
+      "type": "image",
+      "preset": "balanced",
+      "lang": "eng"
+    },
+    {
+      "label": "single-line-image",
+      "path": "single_line.png",
+      "type": "image",
+      "preset": "custom",
+      "lang": "eng",
+      "psm": "7",
+      "oem": "3",
+      "scale": 1.2,
+      "expected_text": "SINGLE LINE OCR TEST 12345"
+    },
+    {
+      "label": "small-text-image",
+      "path": "small_text_block.png",
+      "type": "image",
+      "preset": "accurate",
+      "lang": "eng",
+      "expected_text": "Small text PDF fixture\nThis page is intentionally denser and smaller.\nAdaptive DPI should help when text comes back weak.\nMeasure both speed and accuracy on this page.\nThe quick brown fox jumps over the lazy dog 1234567890."
+    },
+    {
+      "label": "single-page-pdf",
+      "path": "single_page_document.pdf",
+      "type": "pdf",
+      "preset": "balanced",
+      "lang": "eng",
+      "expected_text": "TejOCR benchmark fixture\nFast text extraction should stay readable.\nPDF latency matters for single and multi page documents.\nRequested and effective settings must be visible."
+    },
+    {
+      "label": "multi-page-pdf",
+      "path": "multi_page_document.pdf",
+      "type": "pdf",
+      "preset": "accurate",
+      "lang": "eng+hin",
+      "expected_text": "TejOCR benchmark fixture\nFast text extraction should stay readable.\nPDF latency matters for single and multi page documents.\nRequested and effective settings must be visible.\n\nSmall text PDF fixture\nThis page is intentionally denser and smaller.\nAdaptive DPI should help when text comes back weak.\nMeasure both speed and accuracy on this page.\nThe quick brown fox jumps over the lazy dog 1234567890.\n\nInvoice total 2500 rupees.\nहिंदी पंक्ति परीक्षण के लिए है।\nEnglish and Hindi mixed together.\nकृपया गति और सटीकता दोनों जांचें।"
+    }
+  ]
+}

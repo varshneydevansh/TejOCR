@@ -1,47 +1,45 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<description xmlns="http://openoffice.org/extensions/description/2006"
-             xmlns:d="http://openoffice.org/extensions/description/2006"
-             xmlns:xlink="http://www.w3.org/1999/xlink">
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:description xmlns:ns0="http://openoffice.org/extensions/description/2006" xmlns:ns1="http://www.w3.org/1999/xlink">
 
-    <version value="0.1.8" />
-    <identifier value="org.libreoffice.TejOCR" />
+    <ns0:version value="0.1.9" />
+    <ns0:identifier value="org.libreoffice.TejOCR" />
 
-    <display-name>
-        <name lang="en">TejOCR</name>
-        <name lang="hi-IN">तेज ओसीआर</name>
-        <name lang="es-ES">TejOCR</name>
-        <name lang="fr-FR">TejOCR</name>
-        <name lang="de-DE">TejOCR</name>
-        <name lang="zh-CN">TejOCR</name>
-    </display-name>
+    <ns0:display-name>
+        <ns0:name lang="en">TejOCR</ns0:name>
+        <ns0:name lang="hi-IN">तेज ओसीआर</ns0:name>
+        <ns0:name lang="es-ES">TejOCR</ns0:name>
+        <ns0:name lang="fr-FR">TejOCR</ns0:name>
+        <ns0:name lang="de-DE">TejOCR</ns0:name>
+        <ns0:name lang="zh-CN">TejOCR</ns0:name>
+    </ns0:display-name>
 
-    <platform value="all" />
+    <ns0:platform value="all" />
 
-    <dependencies>
-        <OpenOffice.org-minimal-version value="4.0" d:name="LibreOffice 4.0" />
-    </dependencies>
+    <ns0:dependencies>
+        <ns0:OpenOffice.org-minimal-version value="4.0" ns0:name="LibreOffice 4.0" />
+    </ns0:dependencies>
 
-    <publisher>
-        <name xlink:href="https://github.com/devanshvarshney" lang="en">Devansh Varshney</name>
-    </publisher>
+    <ns0:publisher>
+        <ns0:name ns1:href="https://github.com/devanshvarshney" lang="en">Devansh Varshney</ns0:name>
+    </ns0:publisher>
 
-    <release-notes>
-        <src lang="en" xlink:href="CHANGELOG.md" />
-    </release-notes>
+    <ns0:release-notes>
+        <ns0:src lang="en" ns1:href="CHANGELOG.md" />
+    </ns0:release-notes>
 
-    <registration>
-        <simple-license accept-by="admin" default-license-id="MPL-2.0" suppress-on-update="true" suppress-if-required="true">
-            <license-text xlink:href="LICENSE" lang="en"/>
-        </simple-license>
-    </registration>
+    <ns0:registration>
+        <ns0:simple-license accept-by="admin" default-license-id="MPL-2.0" suppress-on-update="true" suppress-if-required="true">
+            <ns0:license-text ns1:href="LICENSE" lang="en" />
+        </ns0:simple-license>
+    </ns0:registration>
 
-    <icon>
-        <default xlink:href="icons/tejocr_48.png" />
-        <high-contrast xlink:href="icons/tejocr_48_hc.png" />
-    </icon>
+    <ns0:icon>
+        <ns0:default ns1:href="icons/tejocr_48.png" />
+        <ns0:high-contrast ns1:href="icons/tejocr_48_hc.png" />
+    </ns0:icon>
 
-    <extension-description>
-        <src lang="en" xlink:href="description_en.txt" />
-        <src lang="hi-IN" xlink:href="description_hi.txt" />
-    </extension-description>
-</description>
+    <ns0:extension-description>
+        <ns0:src lang="en" ns1:href="description_en.txt" />
+        <ns0:src lang="hi-IN" ns1:href="description_hi.txt" />
+    </ns0:extension-description>
+</ns0:description>

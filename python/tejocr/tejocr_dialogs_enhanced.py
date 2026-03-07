@@ -123,13 +123,9 @@ class SettingsDialogHandler(unohelper.Base, XActionListener, XItemListener):
     def _update_dependency_status(self):
         """Update the dependency status indicators."""
         try:
-            # Check dependencies
-            from tejocr import tejocr_engine
-            
-            # Check Tesseract
-            tesseract_ready, tesseract_msg = tejocr_engine.is_tesseract_ready(
-                self.ctx, show_gui_errors=False
-            )
+            from tejocr import tejocr_dialogs
+            dependency_status = tejocr_dialogs._check_dependencies()
+            tesseract_ready = bool(dependency_status.get("tesseract_ok"))
             
             # Update Tesseract status
             tesseract_label = self.dialog.getControl("lblTesseractStatus")
@@ -139,14 +135,12 @@ class SettingsDialogHandler(unohelper.Base, XActionListener, XItemListener):
                 else:
                     tesseract_label.setText("❌ Tesseract: Not found")
             
-            # Check Python packages
-            python_status = "✅ Python packages: Ready"
-            try:
-                import pytesseract
-                import PIL
-                import numpy
-            except ImportError as e:
-                python_status = f"❌ Python packages: Missing ({e.name})"
+            if dependency_status.get("python_missing_packages"):
+                python_status = "❌ Python packages: Missing ({packages})".format(
+                    packages=", ".join(dependency_status.get("python_missing_packages") or [])
+                )
+            else:
+                python_status = "✅ Python packages: Ready"
             
             python_label = self.dialog.getControl("lblPythonStatus")
             if python_label:
@@ -158,9 +152,8 @@ class SettingsDialogHandler(unohelper.Base, XActionListener, XItemListener):
     def _populate_language_combo(self, combo, current_language):
         """Populate language combo with available languages."""
         try:
-            # Get available languages
-            from tejocr import tejocr_engine
-            available_langs = tejocr_engine.get_available_languages()
+            from tejocr import tejocr_dialogs
+            available_langs = list(tejocr_dialogs._get_tesseract_language_map(self.ctx).keys())
             
             # Clear existing items
             combo.removeItems(0, combo.getItemCount())

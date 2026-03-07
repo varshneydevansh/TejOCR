@@ -42,14 +42,15 @@ If the dialog framework is unavailable in the current LibreOffice runtime, OCR s
 
 ## Preset behavior
 
-Preset controls are applied as a profile bundle over the selected base options.
+Preset controls are resolved into a bounded execution plan. `Fast`, `Balanced`, and `Accuracy`
+apply a profile bundle over the selected base options; `Custom` keeps the manual values exactly.
 
 | Preset key | Label | Description | Core override |
 |---|---|---|---|
-| `fast` | Fast | faster extraction path | `psm=11`, `oem=3`, scale `1.0`, preprocessing off |
-| `balanced` | Balanced | default profile | `psm=3`, `oem=3`, scale `1.0`, `grayscale=on` |
-| `accurate` | Accuracy | quality-first profile | `psm=6`, `oem=3`, scale `1.5`, `grayscale=on`, `binarize=on`, `improve_image=on` |
-| `custom` | Custom | no profile override | uses manual values from dropdowns/checkboxes |
+| `fast` | Fast | one exact OCR attempt | `psm=11`, `oem=3`, scale `1.0`, preprocessing off, PDF default `200 DPI` |
+| `balanced` | Balanced | one exact pass plus one smart recovery if output is weak | `psm=3`, `oem=3`, scale `1.0`, `grayscale=on`, PDF default `200 DPI` |
+| `accurate` | Accuracy | one exact pass plus one enhanced preprocessing recovery | `psm=6`, `oem=3`, scale `1.5`, `grayscale=on`, `binarize=on`, `improve_image=on`, PDF default `300 DPI` |
+| `custom` | Custom | no profile override and no silent fallback override | uses manual values from dropdowns/checkboxes exactly |
 
 Implementation detail:
 - In `default` mode, user selection is resolved first.
@@ -64,9 +65,9 @@ TejOCR accepts these values directly from UI and settings:
 
 | `psm` | Meaning |
 |---|---|
-| `0` | Orientation and script detection only |
+| `0` | Orientation and script detection only; diagnostic mode with no OCR text output |
 | `1` | Full page segmentation with OSD |
-| `2` | Full page segmentation, OSD off |
+| `2` | Automatic page segmentation without OCR text output; diagnostic mode |
 | `3` | Fully automatic, OSD off *(default)* |
 | `4` | Single column of varying text height |
 | `5` | Single uniform block of vertically aligned text |
@@ -79,6 +80,8 @@ TejOCR accepts these values directly from UI and settings:
 | `12` | Sparse text with OSD |
 | `13` | Raw line |
 
+`PSM 0` and `PSM 2` are exposed for completeness, but they are diagnostic modes rather than normal OCR output modes.
+
 ## What OEM means
 
 `oem` selects the Tesseract recognition engine path.
@@ -89,6 +92,8 @@ TejOCR accepts these values directly from UI and settings:
 | `1` | LSTM engine only |
 | `2` | Legacy + LSTM |
 | `3` | Auto selection *(default)* |
+
+TejOCR probes OEM support once per OCR session and marks `0` / `2` as unsupported when the current traineddata/runtime cannot honor legacy engine modes.
 
 ## Runtime call flow for these options
 
@@ -111,8 +116,8 @@ flowchart TD
     F --> G
     G --> H["_perform_ocr_with_options()"]:::process
     H --> I["perform_ocr() in engine"]:::process
-    I --> J["_build_tesseract_config('--oem X --psm Y')"]:::process
-    J --> K["attempt loop over OEM/PSM + language fallback"]:::fallback
+    I --> J["resolve bounded attempt plan"]:::process
+    J --> K["run exact attempt, then optional recovery"]:::fallback
     K --> L{"show_preview"}:::decision
     L -->|off| M["insert to selected output mode"]:::success
     L -->|on| N["show_multiline_input_box or fallback preview"]:::preview
@@ -156,8 +161,8 @@ flowchart TD
             |
             v
 +----------------------+
-| _build_tesseract_config|
-| and retry attempts     |
+| resolve bounded plan |
+| exact + recovery     |
 +----------+-----------+
            |
            v
@@ -169,14 +174,25 @@ flowchart TD
 
 ## Runtime fallback behavior
 
-Preset/PSM/OEM are not absolute. TejOCR performs controlled fallback for resilience:
+Fallback is now intentionally bounded:
 
-- `_fallback_oem_values(primary)` adds default OEM alternatives
-- `_fallback_psm_values(primary)` tries default/sparse options next
-- `lang` fallback order is also applied when a language is unavailable
-- If first pass returns empty text, engine runs an enhanced preprocessing recovery pass
+- `fast`: one exact attempt only
+- `balanced`: one exact attempt plus one alternate-PSM recovery when output is empty or low-signal
+- `accurate`: one exact attempt plus one enhanced preprocessing recovery when output is empty or low-signal
+- `custom`: one exact attempt only, using the user-selected PSM/OEM/scale/preprocessing values exactly
 
-This is why the same input may be retried with more than one `--oem --psm` combination internally.
+Language validation is also bounded:
+
+- valid language codes are preserved in the order requested
+- missing language codes are skipped with an install hint
+- `eng` is only used as a runtime fallback when nothing valid remains or Tesseract reports missing language data during execution
+
+PDF handling is general, not single-page-specific:
+
+- PDFs are rasterized page-by-page instead of converting the whole document up front
+- `fast` and `balanced` start at `200 DPI`
+- `accurate` starts at `300 DPI`
+- PDF pages can be rerendered at `300 DPI` when the first OCR result is empty, low-signal, or when the rendered page looks text-dense enough to benefit from higher DPI
 
 ## Preview workflow details
 
@@ -210,8 +226,15 @@ Preview is controlled by `ShowPreviewBeforeOutput`:
 - `python/tejocr/tejocr_engine.py`
   - `perform_ocr`
   - `_build_tesseract_config`
-  - `_fallback_oem_values`, `_fallback_psm_values`
-  - `_run_ocr_attempts` loop logic
+  - `get_runtime_psm_modes`, `get_runtime_oem_modes`, `get_supported_oem_modes`
+  - `_build_legacy_attempt_plans`
+- `python/tejocr/ocr_runtime.py`
+  - `resolve_execution_plan`
+  - `select_pdf_dpi`
+  - `coerce_supported_oem`
+- `python/tejocr/tejocr_pdf.py`
+  - `iter_rasterized_pdf_pages`
+  - `is_probably_small_text_page`
 
 ## Related documentation
 

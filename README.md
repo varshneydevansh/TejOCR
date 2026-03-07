@@ -6,7 +6,7 @@
   <p>OCR inside Writer, with predictable output behavior</p>
 
   [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/varshneydevansh/TejOCR)
-  [![Version](https://img.shields.io/badge/version-0.1.8-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
+  [![Version](https://img.shields.io/badge/version-0.1.9-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
   [![License](https://img.shields.io/badge/license-MPL%202.0-green.svg)](LICENSE)
   [![LibreOffice](https://img.shields.io/badge/libreoffice-4.0+-7f52ff.svg)](https://www.libreoffice.org/)
   [![Repository Size](https://img.shields.io/github/repo-size/varshneydevansh/TejOCR?color=orange)](https://github.com/varshneydevansh/TejOCR)
@@ -18,6 +18,21 @@ TejOCR is a **LibreOffice Writer extension** that performs OCR from:
 - a local image file.
 
 The extension inserts recognized text based on the selected output mode with fallbacks for UI or session capability differences.
+
+## What's New In 0.1.9
+
+- Bounded OCR presets now map to explicit runtime behavior instead of loose fallback chains.
+- General PDF OCR is hardened with:
+  - page-by-page streaming,
+  - adaptive DPI,
+  - better multi-page and mixed-batch throughput.
+- Requested-vs-effective OCR diagnostics are now part of the runtime model and release docs.
+- macOS LibreOffice helper-launcher crashes were addressed by rejecting wrapper/helper Python launchers when generating install guidance.
+- Release docs now include:
+  - [CHANGELOG](CHANGELOG.md)
+  - [OCR hardening checklist](docs/dev/ocr-hardening-checklist.md)
+  - [UI alignment plan](docs/dev/tejocr-ui-alignment-plan.md)
+  - [Security and risk review](docs/dev/security-review.md)
 
 ---
 
@@ -51,8 +66,9 @@ The extension inserts recognized text based on the selected output mode with fal
       │ OCR Engine               │
       │ (tejocr_engine.py)       │
       │ - image export           │
-      │ - preprocessing          │
-      │ - tesseract OCR attempts │
+      │ - bounded OCR plan       │
+      │ - CLI tesseract runtime  │
+      │ - PDF page streaming     │
       └─────────┬────────────────┘
                 v
       ┌──────────────────────────┐
@@ -71,7 +87,7 @@ flowchart TD
   C --> D["_perform_ocr_with_options()"]
   D --> E["Option dialog/fallback + OCR settings"]
   E --> F["engine.perform_ocr()"]
-  F --> G["_preprocess + Tesseract"]
+  F --> G["resolve plan + preprocess + Tesseract"]
   F --> H["handle_ocr_output()"]
   H --> I["at_cursor / clipboard / new_text_box / replace_image"]
   classDef ui fill:#93c5fd,color:#0f172a,stroke:#1d4ed8,stroke-width:2px;
@@ -136,7 +152,7 @@ flowchart LR
 
 ## Install
 
-1. Install `TejOCR-0.1.8.oxt` from extension manager.
+1. Install `TejOCR-0.1.9.oxt` from extension manager.
 2. Restart LibreOffice.
 3. Open **TejOCR → Settings** and verify dependency status.
 
@@ -175,7 +191,7 @@ If detection fails, set full Tesseract executable path in Settings.
 1. Open `TejOCR → OCR Image from File`.
 2. Select one or more image files and/or PDF documents.
 3. Choose language/output/preprocessing, and toggle **Merge bulk/PDF into single output** if desired.
-4. Run and get result (merged with headers or processed sequentially).
+4. Run and get result. PDFs are rendered page-by-page, and file/PDF batches can run in bounded parallel workers.
 
 ---
 
@@ -195,6 +211,7 @@ If detection fails, set full Tesseract executable path in Settings.
 
 - increase contrast/binarization settings,
 - scale up (`1.2` to `1.5`),
+- for PDFs, try `Accuracy` preset to use `300 DPI` rendering,
 - verify installed language data.
 
 ### Extension card shows raw XML / tiny icon / stale metadata
@@ -216,6 +233,7 @@ Root index:
 - `CODEMAP.md`: module ownership map.
 - `DEVELOPER_GUIDE.md`: build/packaging guidance.
 - `FUNCTIONALITY.md`: user workflow.
+- `CHANGELOG.md`: release notes and shipped changes.
 
 Deep docs:
 
@@ -227,6 +245,9 @@ Deep docs:
 - `docs/flow/file-image-ocr.md`
 - `docs/reference/output-modes.md`
 - `docs/reference/ocr-options-and-engine-tuning.md`
+- `docs/dev/ocr-hardening-checklist.md`
+- `docs/dev/tejocr-ui-alignment-plan.md`
+- `docs/dev/security-review.md`
 - `docs/troubleshooting/installation.md`
 - `docs/troubleshooting/dialog-fallbacks.md`
 

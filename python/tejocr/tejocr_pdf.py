@@ -16,17 +16,64 @@ import subprocess
 import shlex
 import tempfile
 
+_OS_HINT_CACHE = None
+
+
+def _is_rejected_python_launcher(path):
+    """Reject known LibreOffice launcher scripts that exec the app wrapper binary."""
+    if not path:
+        return False
+
+    normalized = os.path.abspath(os.path.expanduser(path))
+    lowered = normalized.lower()
+    resolved = os.path.realpath(normalized).lower()
+    basename = os.path.basename(normalized).lower()
+
+    if lowered.endswith("/contents/resources/python") or lowered.endswith("/contents/resources/python3"):
+        return True
+    if resolved.endswith("/python.app/contents/macos/libreofficepython"):
+        return True
+    if os.path.basename(resolved) == "libreofficepython":
+        return True
+    if basename.endswith("-config"):
+        return True
+
+    try:
+        if (
+            os.path.isfile(normalized)
+            and os.path.getsize(normalized) <= 32768
+            and basename.startswith("python")
+        ):
+            with open(normalized, "r", encoding="utf-8", errors="ignore") as handle:
+                header = handle.read(2048).lower()
+            if "libreofficepython" in header and "python.app/contents/macos" in header:
+                return True
+        return False
+    except Exception:
+        return False
+
 
 def _python_package_command(package_name):
     """Return a pip install command using a known-good Python interpreter."""
-    return "{python} -m pip install {package}".format(
-        python=shlex.quote(_resolve_python_executable()), package=package_name
+    return get_runtime_pip_install_command([package_name])
+
+
+def get_runtime_pip_install_command(packages=None, upgrade=False):
+    """Return a pip install command using a known-good Python interpreter."""
+    package_list = [str(package).strip() for package in (packages or []) if str(package).strip()]
+    command = "{python} -m pip install".format(
+        python=shlex.quote(_resolve_python_executable())
     )
+    if upgrade:
+        command += " -U"
+    if package_list:
+        command += " " + " ".join(package_list)
+    return command
 
 
 def get_pdf2image_install_command():
     """Return the currently detected pip install command for pdf2image."""
-    return _python_package_command("pdf2image")
+    return get_runtime_pip_install_command(["pdf2image"])
 
 
 def _command_is_available(command_name):
@@ -94,11 +141,7 @@ def _is_poppler_available():
     if not pdftoppm_path:
         return False
 
-    has_pdftoppm = _command_works("pdftoppm")
-    if not has_pdftoppm:
-        # Loosened probe: if command exists but does not answer with classic probes,
-        # still accept executable presence to avoid false negatives on unusual builds.
-        has_pdftoppm = os.access(pdftoppm_path, os.X_OK)
+    has_pdftoppm = os.access(pdftoppm_path, os.X_OK) or _command_works("pdftoppm")
     if not has_pdftoppm:
         return False
 
@@ -109,9 +152,7 @@ def _is_poppler_available():
         aux_path = _resolve_command(aux)
         if not aux_path:
             continue
-        aux_ok = _command_works(aux)
-        if not aux_ok:
-            aux_ok = os.access(aux_path, os.X_OK)
+        aux_ok = os.access(aux_path, os.X_OK) or _command_works(aux)
         if aux_ok:
             has_auxiliary = True
             break
@@ -125,11 +166,26 @@ def _is_python_executable(path):
         return False
     if not os.path.isfile(path) or not os.access(path, os.X_OK):
         return False
+    if _is_rejected_python_launcher(path):
+        return False
 
     base = os.path.basename(path).lower()
-    if base in {"soffice", "soffice.bin", "soffice.exe", "soffice.bin"}:
+    if base in {"soffice", "soffice.bin", "soffice.exe", "libreofficepython"}:
         return False
-    return (base == "python" or base.startswith("python") or "python" in base)
+    if base.endswith("-config"):
+        return False
+    stem = base[:-4] if base.endswith(".exe") else base
+    if stem == "python":
+        return True
+    if stem.startswith("python"):
+        suffix = stem[len("python") :]
+        if not suffix:
+            return True
+        suffix = suffix.lstrip(".")
+        if not suffix:
+            return True
+        return all(part.isdigit() for part in suffix.split(".") if part)
+    return False
 
 
 def _is_python_with_pip(path):
@@ -212,10 +268,15 @@ def _collect_python_candidates():
 
 
 def _resolve_python_executable():
-    """Return the best candidate python command for installing PDF helper packages."""
-    for candidate in _collect_python_candidates():
-        if _is_python_with_pip(candidate):
-            return candidate
+    """Return the best candidate python command for install guidance.
+
+    This is used to build user-facing pip commands. Do not execute candidate
+    interpreters here; probing LibreOffice-bundled helper scripts on macOS can
+    trigger codesigning crashes even when we only need a printable command.
+    """
+    candidates = _collect_python_candidates()
+    if candidates:
+        return candidates[0]
     return "python3"
 
 
@@ -267,8 +328,12 @@ def _resolve_command(command_name):
 
 def _os_hint():
     """Return OS-specific renderer install hints."""
+    global _OS_HINT_CACHE
+    if _OS_HINT_CACHE is not None:
+        return list(_OS_HINT_CACHE)
+
     if os.name == "nt":
-        return [
+        hints = [
             "choco install poppler",
             "scoop install poppler",
             "Install MuPDF tools via official package distribution.",
@@ -276,50 +341,53 @@ def _os_hint():
                 cmd=_python_package_command("pdf2image")
             ),
         ]
-    if platform.system() == "Darwin":  # pragma: no cover - platform dependent
-        return [
+    elif platform.system() == "Darwin":  # pragma: no cover - platform dependent
+        hints = [
             "brew install poppler",
             "brew install mupdf",
             "Install PDF conversion runtime in this Python: {cmd}".format(
                 cmd=_python_package_command("pdf2image")
             ),
         ]
-    if platform.system() == "Linux":
-        return [
+    elif platform.system() == "Linux":
+        hints = [
             "apt-get install poppler-utils",
             "apt-get install mupdf-tools",
             "Install PDF conversion runtime in this Python: {cmd}".format(
                 cmd=_python_package_command("pdf2image")
             ),
         ]
-    return [
-        "Please install a PDF renderer such as:",
-        "1) poppler-utils",
-        "2) MuPDF",
-        "3) {cmd}".format(cmd=_python_package_command("pdf2image")),
-    ]
+    else:
+        hints = [
+            "Please install a PDF renderer such as:",
+            "1) poppler-utils",
+            "2) MuPDF",
+            "3) {cmd}".format(cmd=_python_package_command("pdf2image")),
+        ]
+
+    _OS_HINT_CACHE = list(hints)
+    return list(_OS_HINT_CACHE)
 
 
 def get_pdf_renderer_status():
     """Return whether a PDF renderer is available in the current runtime."""
-    hints = _os_hint()
-
     pdftoppm_path = _resolve_command("pdftoppm")
-    if pdftoppm_path and (_command_works("pdftoppm") or os.access(pdftoppm_path, os.X_OK)):
+    if pdftoppm_path and os.access(pdftoppm_path, os.X_OK):
         return {
             "available": True,
             "engine": "pdftoppm",
-            "hints": hints,
+            "hints": [],
         }
 
     mutool_path = _resolve_command("mutool")
-    if mutool_path and _command_works("mutool"):
+    if mutool_path and os.access(mutool_path, os.X_OK):
         return {
             "available": True,
             "engine": "mutool",
-            "hints": hints,
+            "hints": [],
         }
 
+    hints = _os_hint()
     poppler_available = _is_poppler_available()
     try:
         from pdf2image import convert_from_path  # noqa: F401
@@ -386,6 +454,27 @@ def _render_with_pdftoppm(pdf_path, output_prefix, dpi):
     return candidates
 
 
+def _render_page_with_pdftoppm(pdf_path, output_prefix, dpi, page_number):
+    """Render a single PDF page using pdftoppm."""
+    command = _resolve_command("pdftoppm")
+    cmd = [
+        command,
+        "-png",
+        "-f",
+        str(page_number),
+        "-l",
+        str(page_number),
+        "-r",
+        str(dpi),
+        pdf_path,
+        output_prefix,
+    ]
+    ok, output = _run_command(cmd, timeout=20)
+    if not ok:
+        return []
+    return sorted(glob.glob(output_prefix + "-*.png"))
+
+
 def _render_with_mutool(pdf_path, output_prefix, dpi):
     """Render PDF pages using mutool draw if available."""
     command = _resolve_command("mutool")
@@ -407,6 +496,28 @@ def _render_with_mutool(pdf_path, output_prefix, dpi):
 
     candidates = sorted(glob.glob(output_prefix + "_*.png"))
     return candidates
+
+
+def _render_page_with_mutool(pdf_path, output_prefix, dpi, page_number):
+    """Render a single PDF page using mutool draw."""
+    command = _resolve_command("mutool")
+    output_path = output_prefix + ".png"
+    cmd = [
+        command,
+        "draw",
+        "-r",
+        str(dpi),
+        "-F",
+        "png",
+        "-o",
+        output_path,
+        pdf_path,
+        str(page_number),
+    ]
+    ok, output = _run_command(cmd, timeout=20)
+    if not ok:
+        return []
+    return [output_path] if os.path.isfile(output_path) else []
 
 
 def _render_with_pdf2image(pdf_path, dpi, output_prefix):
@@ -440,8 +551,197 @@ def _render_with_pdf2image(pdf_path, dpi, output_prefix):
     return output_paths
 
 
-def rasterize_pdf_pages(pdf_path, dpi=300):
-    """Convert PDF pages into temporary PNG files and return their paths."""
+def _render_page_with_pdf2image(pdf_path, dpi, output_prefix, page_number):
+    """Render a single page through pdf2image when CLI renderers are unavailable."""
+    try:
+        from pdf2image import convert_from_path
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError(
+            "pdf2image is not installed. Install it in this Python environment: {cmd}".format(
+                cmd=_python_package_command("pdf2image")
+            )
+        ) from exc
+
+    try:
+        pages = convert_from_path(
+            pdf_path,
+            dpi=dpi,
+            first_page=page_number,
+            last_page=page_number,
+        )
+    except Exception as exc:
+        msg = str(exc)
+        if ("pdftoppm" in msg.lower()) or ("pdfinfo" in msg.lower()) or ("poppler" in msg.lower()):
+            raise RuntimeError(
+                "pdf2image conversion failed because poppler tools are unavailable. "
+                "Install poppler-utils and ensure its binaries are on PATH."
+            ) from exc
+        raise RuntimeError(f"pdf2image failed: {msg}") from exc
+
+    output_paths = []
+    for index, page in enumerate(pages, start=1):
+        out_path = "{prefix}_{index}.png".format(prefix=output_prefix, index=index)
+        page.save(out_path, format="PNG")
+        output_paths.append(out_path)
+    return output_paths
+
+
+def get_pdf_page_count(pdf_path):
+    """Return the page count for a PDF when a lightweight probe is available."""
+    if not pdf_path or not os.path.isfile(pdf_path):
+        return None
+
+    command = _resolve_command("pdfinfo")
+    if command:
+        ok, output = _run_command([command, pdf_path], timeout=10)
+        lines = (output or "").splitlines()
+        for line in lines:
+            if line.lower().startswith("pages:"):
+                try:
+                    return int(line.split(":", 1)[1].strip())
+                except Exception:
+                    return None
+        if ok:
+            return None
+
+    try:
+        from pdf2image import pdfinfo_from_path
+        info = pdfinfo_from_path(pdf_path)
+        pages = info.get("Pages")
+        return int(pages) if pages else None
+    except Exception:
+        return None
+
+
+def _count_true_runs(values, min_run_length=1):
+    """Count sequences of truthy values, optionally filtering out tiny runs."""
+    run_count = 0
+    current_run = 0
+    for value in values:
+        if value:
+            current_run += 1
+            continue
+        if current_run >= int(min_run_length):
+            run_count += 1
+        current_run = 0
+    if current_run >= int(min_run_length):
+        run_count += 1
+    return run_count
+
+
+def is_probably_small_text_page(image_path):
+    """Return True when a rendered PDF page looks text-dense enough to justify 300 DPI."""
+    if not image_path or not os.path.isfile(image_path):
+        return False
+
+    try:
+        from PIL import Image
+    except Exception:
+        return False
+
+    try:
+        with Image.open(image_path) as image:
+            grayscale = image.convert("L")
+            if grayscale.width < 900 or grayscale.height < 1200:
+                return False
+            sample = grayscale.copy()
+            sample.thumbnail((900, 1400))
+            width, height = sample.size
+            pixels = sample.tobytes()
+    except Exception:
+        return False
+
+    if width <= 0 or height <= 0:
+        return False
+
+    threshold = 195
+    dark_pixels = 0
+    active_rows = 0
+    row_densities = []
+    row_flags = []
+    for row_index in range(height):
+        start = row_index * width
+        row = pixels[start:start + width]
+        dark_count = sum(1 for pixel in row if pixel < threshold)
+        dark_fraction = float(dark_count) / float(width)
+        row_densities.append(dark_fraction)
+        dark_pixels += dark_count
+        is_active = 0.012 <= dark_fraction <= 0.35
+        row_flags.append(is_active)
+        if is_active:
+            active_rows += 1
+
+    dark_ratio = float(dark_pixels) / float(width * height)
+    active_ratio = float(active_rows) / float(height)
+    line_runs = _count_true_runs(row_flags, min_run_length=2)
+    active_densities = [density for density, is_active in zip(row_densities, row_flags) if is_active]
+    average_active_density = (
+        sum(active_densities) / float(len(active_densities))
+        if active_densities
+        else 0.0
+    )
+
+    if dark_ratio < 0.006 or dark_ratio > 0.28:
+        return False
+    if active_ratio < 0.14:
+        return (
+            line_runs >= 6
+            and active_ratio >= 0.08
+            and dark_ratio <= 0.018
+            and average_active_density <= 0.14
+        )
+    if line_runs >= 18 and average_active_density <= 0.12:
+        return True
+    if line_runs >= 28 and dark_ratio >= 0.012:
+        return True
+    return False
+
+
+def rasterize_pdf_page(pdf_path, page_number, dpi=300):
+    """Render a single PDF page into a temporary PNG and return its path."""
+    if not pdf_path:
+        return []
+
+    if not os.path.isfile(pdf_path):
+        raise RuntimeError(f"PDF path does not exist: {pdf_path}")
+
+    if not str(pdf_path).lower().endswith(".pdf"):
+        raise RuntimeError(f"Input is not a PDF file: {pdf_path}")
+
+    work_dir = tempfile.mkdtemp(prefix="tejocr_pdf_page_")
+    output_prefix = os.path.join(work_dir, "page_{page}".format(page=page_number))
+
+    images = _render_page_with_pdftoppm(pdf_path, output_prefix, dpi, page_number)
+    if images:
+        return images[0]
+
+    images = _render_page_with_mutool(pdf_path, output_prefix, dpi, page_number)
+    if images:
+        return images[0]
+
+    try:
+        images = _render_page_with_pdf2image(pdf_path, dpi, output_prefix, page_number)
+        return images[0] if images else None
+    except Exception as pdf_error:
+        return _raise_or_rethrow(pdf_error)
+
+
+def iter_rasterized_pdf_pages(pdf_path, dpi=300):
+    """Yield ``(page_number, image_path)`` for a PDF one page at a time."""
+    page_count = get_pdf_page_count(pdf_path)
+    if not page_count:
+        for index, path in enumerate(_rasterize_pdf_pages_all(pdf_path, dpi=dpi), start=1):
+            yield index, path
+        return
+
+    for page_number in range(1, int(page_count) + 1):
+        image_path = rasterize_pdf_page(pdf_path, page_number, dpi=dpi)
+        if image_path:
+            yield page_number, image_path
+
+
+def _rasterize_pdf_pages_all(pdf_path, dpi=300):
+    """Render all pages using the fastest available renderer."""
     if not pdf_path:
         return []
 
@@ -454,21 +754,26 @@ def rasterize_pdf_pages(pdf_path, dpi=300):
     work_dir = tempfile.mkdtemp(prefix="tejocr_pdf_")
     output_prefix = os.path.join(work_dir, "page")
 
-    # Try pdftoppm first
     images = _render_with_pdftoppm(pdf_path, output_prefix, dpi)
     if images:
         return images
 
-    # Fallback to mutool
     images = _render_with_mutool(pdf_path, output_prefix, dpi)
     if images:
         return images
 
-    # Final fallback: pdf2image
     try:
         return _render_with_pdf2image(pdf_path, dpi, output_prefix)
     except Exception as pdf_error:
         return _raise_or_rethrow(pdf_error)
+
+
+def rasterize_pdf_pages(pdf_path, dpi=300):
+    """Convert PDF pages into temporary PNG files and return their paths."""
+    page_paths = []
+    for _, image_path in iter_rasterized_pdf_pages(pdf_path, dpi=dpi):
+        page_paths.append(image_path)
+    return page_paths
 
 
 def _raise_or_rethrow(error):
@@ -494,7 +799,10 @@ def cleanup_temp_images(image_paths):
         try:
             parent_dir = os.path.dirname(os.path.abspath(image_path))
             if os.path.isdir(parent_dir) and parent_dir.startswith(tempfile.gettempdir()):
-                if parent_dir.startswith(tempfile.gettempdir() + os.sep + "tejocr_pdf_"):
+                if (
+                    parent_dir.startswith(tempfile.gettempdir() + os.sep + "tejocr_pdf_")
+                    or parent_dir.startswith(tempfile.gettempdir() + os.sep + "tejocr_pdf_page_")
+                ):
                     shutil.rmtree(parent_dir, ignore_errors=True)
         except Exception:
             continue

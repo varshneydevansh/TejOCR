@@ -518,6 +518,9 @@ PSM controls how Tesseract prepares page layout before recognition.
 | `2` | Legacy + LSTM |
 | `3` | Auto selection (default) |
 
+TejOCR probes OEM support once per OCR session. If the current runtime cannot honor legacy modes,
+`0` and `2` are marked unsupported in the UI and are rejected before OCR runs.
+
 #### Output, preview, and fallback behavior
 
 - `ShowPreviewBeforeOutput` controls whether OCR text is shown in a preview window before insertion.
@@ -545,11 +548,11 @@ flowchart TD
     E --> G["Final options object"]:::process
     F --> G
     G --> H["perform_ocr()"]:::process
-    H --> I["Run OCR attempts: fallback OEM list and fallback PSM list"]:::fallback
-    I --> J{"Text found?"}:::decision
-    J -- yes --> K["Optional preview then insert in selected output mode"]:::success
-    J -- no --> L["Auto-enhanced preprocessing fallback"]:::fallback
-    L --> I
+    H --> I["Resolve bounded execution plan"]:::process
+    I --> J["Run exact attempt, then optional recovery"]:::fallback
+    J --> K{"Text found?"}:::decision
+    K -- yes --> L["Optional preview then insert in selected output mode"]:::success
+    K -- no --> M["Return warning or install hint"]:::fallback
 ```
 
 ```text

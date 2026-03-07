@@ -25,6 +25,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import time
 import json
+import glob
+import re
 
 class TejOCRBuilder:
     """Comprehensive builder for TejOCR extension."""
@@ -34,7 +36,7 @@ class TejOCRBuilder:
         self.workspace_dir = Path(workspace_dir or os.getcwd())
         self.build_dir = self.workspace_dir / "build"
         self.dist_dir = self.workspace_dir / "dist"
-        self.version = "0.1.5"  # Will be read from constants.py
+        self.version = "0.1.9"  # Will be read from constants.py
         
         # Create build directories
         self.build_dir.mkdir(exist_ok=True)
@@ -44,6 +46,69 @@ class TejOCRBuilder:
         print(f"Workspace: {self.workspace_dir}")
         print(f"Build dir: {self.build_dir}")
         print(f"Dist dir: {self.dist_dir}")
+
+    def _detect_running_soffice_path(self):
+        """Best-effort detection of the LibreOffice executable that is currently running."""
+        try:
+            result = subprocess.run(
+                ["ps", "axww", "-o", "command="],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except Exception:
+            return None
+
+        pattern = re.compile(r"(/[^\s]*?(?:LibreOffice[^/\s]*\.app/Contents/MacOS/soffice(?:\.bin)?|program/soffice(?:\.bin|\.exe)?|/soffice(?:\.bin)?))")
+        for line in result.stdout.splitlines():
+            match = pattern.search(line)
+            if not match:
+                continue
+            candidate = match.group(1)
+            if os.path.exists(candidate):
+                return candidate
+        return None
+
+    def _candidate_soffice_paths(self):
+        """Return LibreOffice executable candidates, preferring the running app and PATH."""
+        candidates = []
+
+        def add(path):
+            if not path:
+                return
+            normalized = os.path.abspath(os.path.expanduser(str(path)))
+            if normalized not in candidates and os.path.exists(normalized):
+                candidates.append(normalized)
+
+        add(os.environ.get("LIBREOFFICE_SOFFICE_PATH"))
+        add(self._detect_running_soffice_path())
+        add(shutil.which("soffice"))
+        add(shutil.which("libreoffice"))
+
+        if sys.platform == "darwin":
+            for pattern in (
+                "/Applications/LibreOffice*.app/Contents/MacOS/soffice",
+                os.path.expanduser("~/Applications/LibreOffice*.app/Contents/MacOS/soffice"),
+            ):
+                for match in sorted(glob.glob(pattern)):
+                    add(match)
+        elif sys.platform == "win32":
+            for path in (
+                r"C:\Program Files\LibreOffice\program\soffice.exe",
+                r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+            ):
+                add(path)
+        else:
+            for path in ("/usr/bin/libreoffice", "/usr/bin/soffice", "/snap/bin/libreoffice"):
+                add(path)
+
+        return candidates
+
+    def _find_soffice_path(self):
+        """Resolve the best LibreOffice executable path for install/test flows."""
+        candidates = self._candidate_soffice_paths()
+        return candidates[0] if candidates else None
     
     def get_version_from_constants(self):
         """Extract version from constants.py file."""
@@ -53,7 +118,7 @@ class TejOCRBuilder:
                 with open(constants_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         if line.strip().startswith('EXTENSION_VERSION'):
-                            # Extract version from line like: EXTENSION_VERSION = "0.1.5"
+                            # Extract version from line like: EXTENSION_VERSION = "0.1.9"
                             version = line.split('=')[1].strip().strip('"\'')
                             self.version = version
                             print(f"Found version in constants.py: {self.version}")
@@ -112,8 +177,18 @@ class TejOCRBuilder:
             "python/tejocr/tejocr_output.py",
             "python/tejocr/tejocr_interactive_dialogs.py",
             "python/tejocr/locale_setup.py",
+            "dialogs/tejocr_settings_dialog_full.xdl",
+            "dialogs/tejocr_settings_dialog.xdl",
+            "dialogs/tejocr_options_dialog_full.xdl",
+            "dialogs/tejocr_options_dialog.xdl",
+            "dialogs/tejocr_setup_dialog.xdl",
             "META-INF/manifest.xml",
             "description.xml",
+            "CHANGELOG.md",
+            "description_en.txt",
+            "description_hi.txt",
+            "README.md",
+            "LICENSE",
             "Addons.xcu",
             "ProtocolHandler.xcu"
         ]
@@ -177,8 +252,11 @@ class TejOCRBuilder:
                 tree = ET.parse(desc_file)
                 root = tree.getroot()
                 
-                # Update version in description.xml
-                version_elem = root.find(".//version")
+                # Update version in namespaced description.xml
+                namespace = {"desc": "http://openoffice.org/extensions/description/2006"}
+                version_elem = root.find("desc:version", namespace)
+                if version_elem is None:
+                    version_elem = root.find(".//version")
                 if version_elem is not None:
                     version_elem.set("value", self.version)
                     tree.write(desc_file, encoding='utf-8', xml_declaration=True)
@@ -212,12 +290,22 @@ class TejOCRBuilder:
         # Files and directories to include in the package
         include_items = [
             "python/",
+            "dialogs/",
+            "icons/",
+            "l10n/",
             "META-INF/",
             "description.xml",
             "Addons.xcu",
             "ProtocolHandler.xcu",
+            "CHANGELOG.md",
+            "description_en.txt",
+            "description_hi.txt",
             "README.md",
-            "LICENSE"
+            "LICENSE",
+            "CODEMAP.md",
+            "DEVELOPER_GUIDE.md",
+            "FUNCTIONALITY.md",
+            "TECHNICAL.md",
         ]
         
         print("Creating extension package...")
@@ -280,20 +368,7 @@ class TejOCRBuilder:
             print("❌ No package to install!")
             return False
         
-        # Try to find LibreOffice installation
-        lo_paths = [
-            "/Applications/LibreOffice.app/Contents/MacOS/soffice",  # macOS
-            "/usr/bin/libreoffice",  # Linux
-            "/usr/bin/soffice",  # Linux alternative
-            "C:\\Program Files\\LibreOffice\\program\\soffice.exe",  # Windows
-            "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe"  # Windows 32-bit
-        ]
-        
-        soffice_path = None
-        for path in lo_paths:
-            if os.path.exists(path):
-                soffice_path = path
-                break
+        soffice_path = self._find_soffice_path()
         
         if not soffice_path:
             print("❌ LibreOffice installation not found!")
@@ -351,18 +426,7 @@ class TejOCRBuilder:
         print("PHASE 4: Testing Extension in LibreOffice")
         print("="*60)
         
-        # Find LibreOffice
-        lo_paths = [
-            "/Applications/LibreOffice.app/Contents/MacOS/soffice",  # macOS
-            "/usr/bin/libreoffice",  # Linux
-            "C:\\Program Files\\LibreOffice\\program\\soffice.exe",  # Windows
-        ]
-        
-        soffice_path = None
-        for path in lo_paths:
-            if os.path.exists(path):
-                soffice_path = path
-                break
+        soffice_path = self._find_soffice_path()
         
         if not soffice_path:
             print("❌ LibreOffice not found for testing!")
@@ -463,4 +527,4 @@ def main():
     return 0 if success else 1
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())

@@ -1,0 +1,184 @@
+{
+  "cases": [
+    {
+      "label": "english-image-fast",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/english_paragraph.png",
+      "type": "image",
+      "executor_mode": "modern",
+      "preset": "fast",
+      "lang": "eng",
+      "success": true,
+      "seconds": 0.1568,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "",
+      "pdf_dpi": 200,
+      "accuracy": 1.0,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset fast | Effective: PSM 11, OEM 3, preset fast, lang eng | Attempts: 1 | PDF DPI: 200",
+      "message": "OCR successful."
+    },
+    {
+      "label": "english-image",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/english_paragraph.png",
+      "type": "image",
+      "executor_mode": "modern",
+      "preset": "balanced",
+      "lang": "eng",
+      "success": true,
+      "seconds": 0.1457,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "",
+      "pdf_dpi": 200,
+      "accuracy": 1.0,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset balanced | Effective: PSM 3, OEM 3, preset balanced, lang eng | Attempts: 1 | PDF DPI: 200",
+      "message": "OCR successful."
+    },
+    {
+      "label": "mixed-language-image",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/mixed_english_hindi.png",
+      "type": "image",
+      "executor_mode": "modern",
+      "preset": "balanced",
+      "lang": "eng+hin",
+      "success": true,
+      "seconds": 0.207,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "",
+      "pdf_dpi": 200,
+      "accuracy": 1.0,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset balanced | Effective: PSM 3, OEM 3, preset balanced, lang eng+hin | Attempts: 1 | PDF DPI: 200",
+      "message": "OCR successful."
+    },
+    {
+      "label": "sparse-layout-image",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/sparse_layout.png",
+      "type": "image",
+      "executor_mode": "modern",
+      "preset": "balanced",
+      "lang": "eng",
+      "success": true,
+      "seconds": 0.1056,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "",
+      "pdf_dpi": 200,
+      "accuracy": null,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset balanced | Effective: PSM 3, OEM 3, preset balanced, lang eng | Attempts: 1 | PDF DPI: 200",
+      "message": "OCR successful."
+    },
+    {
+      "label": "single-line-image",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/single_line.png",
+      "type": "image",
+      "executor_mode": "modern",
+      "preset": "custom",
+      "lang": "eng",
+      "success": true,
+      "seconds": 0.0903,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "",
+      "pdf_dpi": 200,
+      "accuracy": 1.0,
+      "diagnostics": "Executor: modern | Requested: PSM 7, OEM 3, preset custom | Effective: PSM 7, OEM 3, preset custom, lang eng | Attempts: 1 | PDF DPI: 200",
+      "message": "OCR successful."
+    },
+    {
+      "label": "small-text-image",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/small_text_block.png",
+      "type": "image",
+      "executor_mode": "modern",
+      "preset": "accurate",
+      "lang": "eng",
+      "success": true,
+      "seconds": 0.164,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "",
+      "pdf_dpi": 300,
+      "accuracy": 1.0,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset accurate | Effective: PSM 6, OEM 3, preset accurate, lang eng | Attempts: 1 | PDF DPI: 300",
+      "message": "OCR successful."
+    },
+    {
+      "label": "single-page-pdf",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/single_page_document.pdf",
+      "type": "pdf",
+      "executor_mode": "modern",
+      "preset": "balanced",
+      "lang": "eng",
+      "success": true,
+      "seconds": 0.2905,
+      "attempts": 1,
+      "page_count": 1,
+      "renderer": "pdftoppm",
+      "pdf_dpi": 200,
+      "accuracy": 1.0,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset balanced | Effective: PSM 3, OEM 3, preset balanced, lang eng | Attempts: 1 | PDF DPI: 200 | Renderer: pdftoppm",
+      "message": ""
+    },
+    {
+      "label": "multi-page-pdf",
+      "path": "/Users/devanshvarshney/TejOCR/tests/fixtures/multi_page_document.pdf",
+      "type": "pdf",
+      "executor_mode": "modern",
+      "preset": "accurate",
+      "lang": "eng+hin",
+      "success": true,
+      "seconds": 1.657,
+      "attempts": 3,
+      "page_count": 3,
+      "renderer": "pdftoppm",
+      "pdf_dpi": 300,
+      "accuracy": 0.9105,
+      "diagnostics": "Executor: modern | Requested: PSM 3, OEM 3, preset accurate | Effective: PSM 6, OEM 3, preset accurate, lang eng+hin | Attempts: 3 | PDF DPI: 300 | Renderer: pdftoppm",
+      "message": ""
+    }
+  ],
+  "summary": {
+    "count": 8,
+    "executor_mode": "modern",
+    "total_seconds": 2.8169,
+    "average_seconds": 0.3521,
+    "successful_cases": 8,
+    "total_pages": 10,
+    "throughput_cases_per_second": 2.84,
+    "throughput_pages_per_second": 3.55
+  },
+  "comparison": {
+    "accuracy": {
+      "fast": {
+        "current_mean": 1.0,
+        "baseline_mean": 1.0,
+        "delta": 0.0
+      },
+      "balanced": {
+        "current_mean": 1.0,
+        "baseline_mean": 0.8386,
+        "delta": 0.1614
+      },
+      "accurate": {
+        "current_mean": 0.9552,
+        "baseline_mean": 0.953,
+        "delta": 0.0022
+      }
+    },
+    "latency": {
+      "single-page-pdf": {
+        "current_seconds": 0.2905,
+        "baseline_seconds": 0.5525,
+        "improvement_ratio": 0.4742
+      }
+    },
+    "throughput": {
+      "current_pages_per_second": 3.55,
+      "baseline_pages_per_second": 0.9466,
+      "multiplier": 3.7503
+    },
+    "warnings": [],
+    "violations": [],
+    "passed": true
+  }
+}

@@ -65,11 +65,11 @@ _handle_ocr_image_from_file()
 
 ```text
 _perform_ocr_with_options(
-    source_type, image_path, language, output_mode, default_output_mode,
-    legacy_output_mode, scale, psm, oem, improve_image, preprocessing)
+    source_type, image_path, language, output_mode, ocr_options=None,
+    insertion_anchor=None, replacement_target=None)
   -> _build_default_ocr_options(ctx)
-  -> _coerce_bool / _coerce_scale / _coerce_output_mode
-  -> _normalize_language_request
+  -> _coerce_bool / _coerce_scale / _coerce_output_mode / preset normalization
+  -> resolve_execution_plan
   -> _persist_last_ocr_preferences
   -> _show_ocr_options_dialog (preferred XDL)
   -> if unavailable, fallback prompt path
@@ -100,12 +100,13 @@ perform_ocr(ctx, frame, source, image_path_or_selection, ocr_options)
           +-- _get_image_from_selection
           +-- _export_graphic_to_file
       +-- file image: extract_text_from_image_file
-   -> _preprocess_image
-   -> attempt loop:
-      - ocr language list
-      - PSM attempts
-      - OEM attempts
-   -> return recognized text and diagnostics
+   -> run-scoped OCRSession cache
+   -> resolve_execution_plan
+   -> direct `tesseract` subprocess attempts
+   -> bounded retry plan:
+      - exact
+      - optional recovery
+   -> return recognized text, stats, and diagnostics
 ```
 
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
@@ -117,7 +118,7 @@ flowchart TD
   E --> F["_export_graphic_to_file"]
   F --> G["_preprocess_image"]
   D --> G
-  G --> H["OCR attempt loop (PSM + OEM)"]
+  G --> H["bounded OCR attempt plan"]
   H --> I["text / error"]
 ```
 
@@ -210,4 +211,3 @@ flowchart TD
   D --> F
   E --> F
 ```
-

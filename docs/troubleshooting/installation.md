@@ -152,6 +152,48 @@ Settings command
 - `supports_uno_dialog_model` result
 - `Could not create OCR options dialog` / `fallback form skipped`
 
+## 5) macOS crash popup mentioning `LibreOfficePython`
+
+### Symptom
+
+macOS shows a crash report for:
+
+- `LibreOfficePython`
+- `Code Signature Invalid`
+- `Launch Constraint Violation`
+
+while opening Settings, Setup & Diagnostics, or running PDF/file OCR.
+
+### Why this happens
+
+LibreOffice bundles helper launchers such as:
+
+- `Contents/Resources/python`
+- `python3-config`
+- `python3.11-config`
+
+Those are not safe interpreter targets for TejOCR runtime guidance. If a runtime probe executes them, macOS may kill the helper process even though LibreOffice itself stays open.
+
+### Expected safe interpreter path
+
+On macOS, install guidance should point to the real framework interpreter, for example:
+
+`/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3`
+
+not:
+
+`/Applications/LibreOffice.app/Contents/Resources/python`
+
+### Recovery workflow
+
+```text
+1. Quit LibreOffice fully.
+2. Rebuild or reinstall the latest TejOCR package.
+3. Reopen Settings and Setup & Diagnostics.
+4. Verify copied install commands use the framework python3 path, not Resources/python.
+5. If the popup still appears, capture the new crash report and the rebuilt package version.
+```
+
 ## 5) Why replacement mode differs between selected-image and file-image
 
 `replace_image` requires a selected replacement target.
@@ -167,7 +209,24 @@ Method flow:
 If users report "replace image" with file path mode, expected behavior is
 stable cursor/text insertion, not in-place replacement.
 
-## 6) Commands
+## 6) Trusted executable path note
+
+TejOCR allows a custom Tesseract executable path. That path is treated as trusted.
+
+Practical meaning:
+
+- if the path points to the real Tesseract binary, OCR works normally,
+- if the path points to some other executable, TejOCR will run that executable.
+
+This is a local trust boundary, not a remote exploit path, but it is still important operationally.
+
+Recommendation:
+
+- prefer auto-detect when possible,
+- use custom path only for a known-good local Tesseract install,
+- reset the field to blank if you are not sure.
+
+## 7) Commands
 
 ### Rebuild and package
 
@@ -192,7 +251,7 @@ Use these commands when:
 - icon/card still stale after upgrade,
 - dependency/metadata UI does not reflect fresh package state.
 
-## 7) Capture data for support
+## 8) Capture data for support
 
 When the issue persists, share:
 - full install exception text,
@@ -202,3 +261,23 @@ When the issue persists, share:
 - whether cache clear + rebuild reproduces.
 
 This usually separates metadata descriptor issues from runtime UNO service issues quickly.
+
+## 9) Hidden OCR executor rollback for maintainers
+
+For one-release rollout comparisons, TejOCR also supports a hidden executor setting in the fallback settings file:
+
+```text
+HiddenOcrExecutor=modern
+HiddenOcrExecutor=legacy
+```
+
+Use `legacy` only for maintainer comparison and rollback checks. It is not intended as a normal user-facing mode.
+
+Recommended validation flow:
+
+```text
+1. Keep normal runs on modern.
+2. Generate a legacy baseline report with the local benchmark corpus.
+3. Run the modern comparison against that baseline.
+4. Switch back to modern after verification.
+```

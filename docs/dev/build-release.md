@@ -36,7 +36,9 @@ flowchart TD
 
 1. Update version markers:
    - `description.xml`
+   - `python/tejocr/constants.py`
    - `README`/release notes (`CHANGELOG.md`) where applicable
+   - any installer-facing docs that mention the shipped `.oxt` filename
 2. Run icon generation if logo changed (or before release sanity check).
 3. Run packaging script and inspect generated file:
    - confirm `description.xml` and `META-INF/manifest.xml` are inside.
@@ -44,6 +46,10 @@ flowchart TD
    - Python files and entry point
    - all required dialogs
    - LICENSE and metadata files
+   - `CHANGELOG.md`
+   - `description_en.txt`
+   - `description_hi.txt`
+   - root pointer docs referenced by `META-INF/manifest.xml`
 5. Install `.oxt` into LibreOffice -> restart.
 6. Verify in Extension Manager:
    - display name

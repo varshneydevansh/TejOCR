@@ -16,6 +16,7 @@ from com.sun.star.awt import XActionListener
 
 from tejocr import uno_utils
 from tejocr import constants
+from tejocr import ocr_runtime
 from tejocr import tejocr_engine 
 from tejocr import locale_setup
 
@@ -25,6 +26,60 @@ logger = uno_utils.get_logger("TejOCR.InteractiveDialogs")
 
 def _build_mode_items(mode_map):
     return tuple([f"{key}: {value.split(':', 1)[1].strip() if ':' in value else value}" for key, value in mode_map.items()])
+
+
+def _get_psm_mode_map(ctx=None):
+    try:
+        return dict(tejocr_engine.get_runtime_psm_modes(ctx=ctx) or constants.TESSERACT_PSM_MODES)
+    except Exception:
+        return dict(constants.TESSERACT_PSM_MODES)
+
+
+def _get_oem_mode_map(ctx=None):
+    try:
+        return dict(tejocr_engine.get_runtime_oem_modes(ctx=ctx) or constants.TESSERACT_OEM_MODES)
+    except Exception:
+        return dict(constants.TESSERACT_OEM_MODES)
+
+
+def _get_oem_support_map(ctx=None):
+    try:
+        return dict(
+            tejocr_engine.get_supported_oem_modes(ctx=ctx)
+            or {mode: True for mode in constants.TESSERACT_OEM_MODES}
+        )
+    except Exception:
+        return {mode: True for mode in constants.TESSERACT_OEM_MODES}
+
+
+def _coerce_supported_oem_value(mode_value, ctx=None, support_map=None, fallback=None):
+    fallback_value = str(fallback or constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE
+    candidate = _mode_value(mode_value, fallback_value)
+    if candidate not in constants.TESSERACT_OEM_MODES:
+        candidate = fallback_value
+    return ocr_runtime.coerce_supported_oem(
+        candidate,
+        support_map or _get_oem_support_map(ctx),
+        fallback=fallback_value,
+    )
+
+
+def _get_psm_items(ctx=None):
+    return _build_mode_items(_get_psm_mode_map(ctx))
+
+
+def _get_oem_items(ctx=None):
+    return _build_mode_items(_get_oem_mode_map(ctx))
+
+
+def _get_mode_text(mode_map, mode_value, fallback_value):
+    candidate = str(mode_value or fallback_value).strip() or fallback_value
+    if candidate not in mode_map:
+        candidate = str(fallback_value or "").strip() or candidate
+    label = mode_map.get(candidate, "{mode}: {text}".format(mode=candidate, text=candidate))
+    if ":" not in label:
+        label = "{mode}: {text}".format(mode=candidate, text=label)
+    return candidate, label
 
 
 def _mode_value(raw_value, fallback):
@@ -240,21 +295,27 @@ def _preset_combo_item(preset_value):
 
 def _installed_languages_preview(ctx, limit=10):
     try:
-        languages = list((tejocr_engine.get_available_languages() or []))
-        if not languages:
-            return _("Installed languages: not detected")
-        languages = [code for code in languages if code]
-        preview = ", ".join(languages[:limit])
-        if len(languages) > limit:
-            preview += ", ..."
-        return _("Installed languages: {languages}").format(languages=preview)
+        languages = list((tejocr_engine.get_available_languages(ctx=ctx) or []))
+        return ocr_runtime.build_language_preview(languages, limit=limit)
     except Exception:
         return _("Installed languages: not detected")
 
 
+def _runtime_python_package_command(packages, upgrade=False):
+    try:
+        from tejocr import tejocr_pdf
+        return tejocr_pdf.get_runtime_pip_install_command(packages, upgrade=upgrade)
+    except Exception:
+        upgrade_flag = " -U" if upgrade else ""
+        return f'"{sys.executable}" -m pip install{upgrade_flag} ' + " ".join(packages)
+
+
 def _format_tesseract_install_help():
     name = (platform.system() or "").lower()
-    package_cmd = f'"{sys.executable}" -m pip install -U numpy pytesseract pillow'
+    package_cmd = _runtime_python_package_command(
+        ["numpy", "pytesseract", "pillow"],
+        upgrade=True,
+    )
     if name == "darwin":
         return (
             "Install Tesseract:\n"
@@ -453,16 +514,18 @@ def _build_settings_snapshot_from_controls(dialog):
 
 def _split_lang_codes(language_input):
     """Split comma/plus-separated language input into normalized list."""
-    if not language_input:
-        return []
-    normalized = str(language_input).replace(",", "+").lower()
-    return [code.strip() for code in normalized.split("+") if code.strip()]
+    return ocr_runtime.split_language_codes(
+        language_input,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+    )
 
 
 def _normalize_lang_codes(language_input):
     """Return canonical plus-delimited language code string."""
-    codes = _split_lang_codes(language_input)
-    return "+".join(codes) if codes else ""
+    return ocr_runtime.normalize_language_request(
+        language_input,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+    )
 
 
 def _validate_language_codes(language_input, available_languages):
@@ -471,37 +534,22 @@ def _validate_language_codes(language_input, available_languages):
     Returns tuple ``(normalized_codes, invalid_codes, validated)`` where ``validated``
     is ``False`` when language availability could not be checked.
     """
-    normalized_codes = _split_lang_codes(language_input)
-    if not normalized_codes:
-        return constants.DEFAULT_OCR_LANGUAGE, [], False
-
-    normalized_value = "+".join(normalized_codes)
-    if not available_languages:
-        return normalized_value, [], False
-
-    available_set = {str(code).strip().lower() for code in available_languages if str(code).strip()}
-    valid = [code for code in normalized_codes if code in available_set]
-    invalid = [code for code in normalized_codes if code not in available_set]
-
-    if not valid:
-        valid = [constants.DEFAULT_OCR_LANGUAGE]
-
-    return "+".join(valid), invalid, True
+    result = ocr_runtime.validate_language_codes(
+        language_input,
+        available_languages,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+        platform_name=platform.system(),
+    )
+    return result.normalized, result.invalid_codes, result.validated
 
 
 def _build_language_validation_message(language_input, invalid_codes, validated):
-    if validated and invalid_codes:
-        invalid_text = ", ".join(invalid_codes)
-        language = _normalize_lang_codes(language_input)
-        return (
-            _("These language codes are not installed and were skipped: {invalid_codes}. "
-              "Using: {used_codes}.")
-            .format(invalid_codes=invalid_text, used_codes=_normalize_lang_codes(language))
-        )
-    if not validated and language_input:
-        return _(
-            "Language availability could not be verified. Using:") + f" {language_input}."
-    return ""
+    return ocr_runtime.build_language_validation_message(
+        language_input,
+        invalid_codes,
+        validated,
+        platform_name=platform.system(),
+    )
 
 
 def _preset_values_help():
@@ -539,8 +587,6 @@ def _resolve_tesseract_path(ctx, configured_path=""):
         return ""
 
 
-_PSM_ITEMS = _build_mode_items(constants.TESSERACT_PSM_MODES)
-_OEM_ITEMS = _build_mode_items(constants.TESSERACT_OEM_MODES)
 _PRESET_ITEMS = tuple(_preset_combo_item(key) for key in constants.OCR_PRESET_CHOICES)
 
 class SettingsActionListener(unohelper.Base, XActionListener):
@@ -956,11 +1002,11 @@ def create_settings_dialog(ctx, parent_frame=None):
         psm_combo.setPropertyValue("Height", 15)
         psm_combo.setPropertyValue("Dropdown", True)
         psm_combo.setPropertyValue("ReadOnly", True)
-        psm_combo.setPropertyValue("StringItemList", _PSM_ITEMS)
+        psm_mode_map = _get_psm_mode_map(ctx)
+        psm_combo.setPropertyValue("StringItemList", _get_psm_items(ctx))
         current_psm = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PSM, constants.DEFAULT_PSM_MODE, ctx)
-        if current_psm not in constants.TESSERACT_PSM_MODES:
-            current_psm = constants.DEFAULT_PSM_MODE
-        psm_combo.setPropertyValue("Text", f"{current_psm}: {constants.TESSERACT_PSM_MODES[current_psm]}")
+        current_psm, current_psm_text = _get_mode_text(psm_mode_map, current_psm, constants.DEFAULT_PSM_MODE)
+        psm_combo.setPropertyValue("Text", current_psm_text)
         dialog_model.insertByName("psm_combo", psm_combo)
 
         # OEM label
@@ -980,11 +1026,18 @@ def create_settings_dialog(ctx, parent_frame=None):
         oem_combo.setPropertyValue("Height", 15)
         oem_combo.setPropertyValue("Dropdown", True)
         oem_combo.setPropertyValue("ReadOnly", True)
-        oem_combo.setPropertyValue("StringItemList", _OEM_ITEMS)
+        oem_mode_map = _get_oem_mode_map(ctx)
+        oem_support_map = _get_oem_support_map(ctx)
+        oem_combo.setPropertyValue("StringItemList", _get_oem_items(ctx))
         current_oem = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, ctx)
-        if current_oem not in constants.TESSERACT_OEM_MODES:
-            current_oem = constants.DEFAULT_OEM_MODE
-        oem_combo.setPropertyValue("Text", f"{current_oem}: {constants.TESSERACT_OEM_MODES[current_oem]}")
+        current_oem, _current_oem_warning = _coerce_supported_oem_value(
+            current_oem,
+            ctx=ctx,
+            support_map=oem_support_map,
+            fallback=constants.DEFAULT_OEM_MODE,
+        )
+        current_oem, current_oem_text = _get_mode_text(oem_mode_map, current_oem, constants.DEFAULT_OEM_MODE)
+        oem_combo.setPropertyValue("Text", current_oem_text)
         dialog_model.insertByName("oem_combo", oem_combo)
 
         # Scale label
@@ -1480,8 +1533,8 @@ def create_compat_settings_dialog(ctx, parent_frame=None):
             uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PSM, constants.DEFAULT_PSM_MODE, ctx),
             constants.DEFAULT_PSM_MODE,
         )
-        if current_psm not in constants.TESSERACT_PSM_MODES:
-            current_psm = constants.DEFAULT_PSM_MODE
+        psm_mode_map = _get_psm_mode_map(ctx)
+        current_psm, current_psm_text = _get_mode_text(psm_mode_map, current_psm, constants.DEFAULT_PSM_MODE)
         _add_control(
             dialog_model,
             "psm_combo",
@@ -1493,8 +1546,8 @@ def create_compat_settings_dialog(ctx, parent_frame=None):
                 "Height": 15,
                 "Dropdown": True,
                 "ReadOnly": True,
-                "StringItemList": _PSM_ITEMS,
-                "Text": f"{current_psm}: {constants.TESSERACT_PSM_MODES[current_psm]}",
+                "StringItemList": _get_psm_items(ctx),
+                "Text": current_psm_text,
             },
             required=True,
         )
@@ -1516,8 +1569,15 @@ def create_compat_settings_dialog(ctx, parent_frame=None):
             uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, ctx),
             constants.DEFAULT_OEM_MODE,
         )
-        if current_oem not in constants.TESSERACT_OEM_MODES:
-            current_oem = constants.DEFAULT_OEM_MODE
+        oem_mode_map = _get_oem_mode_map(ctx)
+        oem_support_map = _get_oem_support_map(ctx)
+        current_oem, _current_oem_warning = _coerce_supported_oem_value(
+            current_oem,
+            ctx=ctx,
+            support_map=oem_support_map,
+            fallback=constants.DEFAULT_OEM_MODE,
+        )
+        current_oem, current_oem_text = _get_mode_text(oem_mode_map, current_oem, constants.DEFAULT_OEM_MODE)
         _add_control(
             dialog_model,
             "oem_combo",
@@ -1529,8 +1589,8 @@ def create_compat_settings_dialog(ctx, parent_frame=None):
                 "Height": 15,
                 "Dropdown": True,
                 "ReadOnly": True,
-                "StringItemList": _OEM_ITEMS,
-                "Text": f"{current_oem}: {constants.TESSERACT_OEM_MODES[current_oem]}",
+                "StringItemList": _get_oem_items(ctx),
+                "Text": current_oem_text,
             },
             required=True,
         )
@@ -1752,6 +1812,7 @@ def show_interactive_settings_dialog(ctx, parent_frame=None):
                         scale_raw = self.dialog.getControl("scale_text").getText()
                         selected_preset = _coerce_preset_value(preset_text, constants.DEFAULT_OCR_PRESET)
                         preset_profile = constants.OCR_QUALITY_PRESETS.get(selected_preset, {})
+                        oem_support_map = _get_oem_support_map(self.ctx)
 
                         # Save path
                         uno_utils.set_setting(constants.CFG_KEY_TESSERACT_PATH, resolved_path, self.ctx)
@@ -1805,8 +1866,12 @@ def show_interactive_settings_dialog(ctx, parent_frame=None):
                         if psm_value not in constants.TESSERACT_PSM_MODES:
                             psm_value = constants.DEFAULT_PSM_MODE
                         uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PSM, psm_value, self.ctx)
-                        if oem_value not in constants.TESSERACT_OEM_MODES:
-                            oem_value = constants.DEFAULT_OEM_MODE
+                        oem_value, oem_warning = _coerce_supported_oem_value(
+                            oem_value,
+                            ctx=self.ctx,
+                            support_map=oem_support_map,
+                            fallback=constants.DEFAULT_OEM_MODE,
+                        )
                         uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OEM, oem_value, self.ctx)
                         uno_utils.set_setting(constants.CFG_KEY_DEFAULT_SCALE, str(scale_value), self.ctx)
 
@@ -1814,6 +1879,8 @@ def show_interactive_settings_dialog(ctx, parent_frame=None):
                             self.status_control.setText(
                                 _("Saved with unresolved path. Please install or point OCR to Tesseract.")
                             )
+                        elif oem_warning and self.status_control is not None:
+                            self.status_control.setText(oem_warning)
                         self._refresh_status()
                         self._update_settings_snapshot()
                         self.result = True
@@ -1891,8 +1958,9 @@ def show_interactive_settings_dialog(ctx, parent_frame=None):
                                 "\n\nNeed to install Python dependencies in LibreOffice:\n{command}\n\n"
                                 "For more languages: https://tesseract-ocr.github.io/tessdoc/"
                             ).format(
-                                command=(
-                                    f'"{sys.executable}" -m pip install -U numpy pytesseract pillow'
+                                command=_runtime_python_package_command(
+                                    ["numpy", "pytesseract", "pillow"],
+                                    upgrade=True,
                                 )
                             )
                         )
@@ -2146,6 +2214,7 @@ def _show_fallback_settings_prompts(ctx, parent_frame=None):
     )
     uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PRESET, current_preset, ctx)
     selected_profile = constants.OCR_QUALITY_PRESETS.get(current_preset, {})
+    oem_support_map = _get_oem_support_map(ctx)
 
     # Quality controls
     if current_preset != constants.OCR_PRESET_CUSTOM:
@@ -2162,8 +2231,12 @@ def _show_fallback_settings_prompts(ctx, parent_frame=None):
             psm_value = constants.DEFAULT_PSM_MODE
 
         oem_value = _mode_value(values.get("oem", current_oem), current_oem)
-        if oem_value not in constants.TESSERACT_OEM_MODES:
-            oem_value = constants.DEFAULT_OEM_MODE
+        oem_value, _oem_warning = _coerce_supported_oem_value(
+            oem_value,
+            ctx=ctx,
+            support_map=oem_support_map,
+            fallback=constants.DEFAULT_OEM_MODE,
+        )
 
         scale_value = _coerce_scale_text(
             values.get("scale", str(current_scale)),
@@ -2192,8 +2265,12 @@ def _show_fallback_settings_prompts(ctx, parent_frame=None):
     # Apply quality settings
     if psm_value not in constants.TESSERACT_PSM_MODES:
         psm_value = constants.DEFAULT_PSM_MODE
-    if oem_value not in constants.TESSERACT_OEM_MODES:
-        oem_value = constants.DEFAULT_OEM_MODE
+    oem_value, _oem_warning = _coerce_supported_oem_value(
+        oem_value,
+        ctx=ctx,
+        support_map=oem_support_map,
+        fallback=constants.DEFAULT_OEM_MODE,
+    )
 
     uno_utils.set_setting(constants.CFG_KEY_DEFAULT_PSM, psm_value, ctx)
     uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OEM, oem_value, ctx)
@@ -2440,11 +2517,11 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         psm_combo.setPropertyValue("Height", 15)
         psm_combo.setPropertyValue("Dropdown", True)
         psm_combo.setPropertyValue("ReadOnly", True)
-        psm_combo.setPropertyValue("StringItemList", _PSM_ITEMS)
+        psm_mode_map = _get_psm_mode_map(ctx)
+        psm_combo.setPropertyValue("StringItemList", _get_psm_items(ctx))
         current_psm = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_PSM, constants.DEFAULT_PSM_MODE, ctx)
-        if current_psm not in constants.TESSERACT_PSM_MODES:
-            current_psm = constants.DEFAULT_PSM_MODE
-        psm_combo.setPropertyValue("Text", f"{current_psm}: {constants.TESSERACT_PSM_MODES[current_psm]}")
+        current_psm, current_psm_text = _get_mode_text(psm_mode_map, current_psm, constants.DEFAULT_PSM_MODE)
+        psm_combo.setPropertyValue("Text", current_psm_text)
         dialog_model.insertByName("psm_combo", psm_combo)
 
         psm_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
@@ -2472,11 +2549,18 @@ def create_ocr_options_dialog(ctx, parent_frame=None, source_type="selected", im
         oem_combo.setPropertyValue("Height", 15)
         oem_combo.setPropertyValue("Dropdown", True)
         oem_combo.setPropertyValue("ReadOnly", True)
-        oem_combo.setPropertyValue("StringItemList", _OEM_ITEMS)
+        oem_mode_map = _get_oem_mode_map(ctx)
+        oem_support_map = _get_oem_support_map(ctx)
+        oem_combo.setPropertyValue("StringItemList", _get_oem_items(ctx))
         current_oem = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, ctx)
-        if current_oem not in constants.TESSERACT_OEM_MODES:
-            current_oem = constants.DEFAULT_OEM_MODE
-        oem_combo.setPropertyValue("Text", f"{current_oem}: {constants.TESSERACT_OEM_MODES[current_oem]}")
+        current_oem, _current_oem_warning = _coerce_supported_oem_value(
+            current_oem,
+            ctx=ctx,
+            support_map=oem_support_map,
+            fallback=constants.DEFAULT_OEM_MODE,
+        )
+        current_oem, current_oem_text = _get_mode_text(oem_mode_map, current_oem, constants.DEFAULT_OEM_MODE)
+        oem_combo.setPropertyValue("Text", current_oem_text)
         dialog_model.insertByName("oem_combo", oem_combo)
         
         oem_hint = dialog_model.createInstance("com.sun.star.awt.UnoControlFixedTextModel")
@@ -2775,9 +2859,10 @@ def show_interactive_ocr_options_dialog(ctx, parent_frame=None, source_type="sel
                         if status_label and start_status:
                             self._set_status(start_status, self.COLOR_OK)
                         try:
-                            execute_callable()
+                            result = execute_callable()
                             if status_label and done_status:
                                 self._set_status(done_status, self.COLOR_OK)
+                            return result
                         except Exception:
                             if status_label and start_status:
                                 self._set_status("OCR options action failed.", self.COLOR_ERROR)
@@ -2816,6 +2901,7 @@ def show_interactive_ocr_options_dialog(ctx, parent_frame=None, source_type="sel
                                 constants.DEFAULT_OCR_PRESET
                             )
                             preset_profile = constants.OCR_QUALITY_PRESETS.get(selected_preset, {})
+                            oem_support_map = _get_oem_support_map(self.ctx)
                             
                             self.result_output = _output_mode_from_text(
                                 self.dialog.getControl("output_combo").getText(),
@@ -2876,6 +2962,16 @@ def show_interactive_ocr_options_dialog(ctx, parent_frame=None, source_type="sel
                                     preset_profile.get("invert", result_invert)
                                 )
 
+                            oem_value, oem_warning = _coerce_supported_oem_value(
+                                oem_value,
+                                ctx=self.ctx,
+                                support_map=oem_support_map,
+                                fallback=constants.DEFAULT_OEM_MODE,
+                            )
+                            if oem_warning:
+                                self._set_status(oem_warning, self.COLOR_WARN)
+                                return False
+
                             self.result_extra = {
                                 "show_preview": result_preview,
                                 "preset": selected_preset,
@@ -2890,8 +2986,9 @@ def show_interactive_ocr_options_dialog(ctx, parent_frame=None, source_type="sel
                             }
                             self.result_improve = result_improve
                             self.cancelled = False
+                            return True
 
-                        _run_feedback(
+                        should_close = _run_feedback(
                             start_btn,
                             "Starting OCR...",
                             "Collecting OCR options...",
@@ -2900,7 +2997,8 @@ def show_interactive_ocr_options_dialog(ctx, parent_frame=None, source_type="sel
                             bg_color=self.COLOR_BTN_SUCCESS,
                             fg_color=self.COLOR_TEXT_ON_DARK,
                         )
-                        self.dialog.endExecute()
+                        if should_close:
+                            self.dialog.endExecute()
                     
                     elif action_command == "cancel_ocr_action":
                         def _cancel_operation():

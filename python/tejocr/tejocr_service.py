@@ -12,6 +12,7 @@ import sys
 import os
 import datetime
 import platform
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Python Path Modification for OXT Structure: python/tejocr ---
 # This ensures that the 'python' directory (which contains the 'tejocr' package)
@@ -41,6 +42,7 @@ try:
     # we can import 'tejocr' as if it's a top-level package.
     from tejocr import uno_utils
     from tejocr import constants
+    from tejocr import ocr_runtime
     from tejocr import locale_setup
     
     # Set up internationalization function
@@ -86,7 +88,14 @@ TESSERACT_INSTALL_GUIDE_URL = "https://tesseract-ocr.github.io/tessdoc/Installat
 def _get_tesseract_setup_guide():
     """Return platform-aware quick troubleshooting steps."""
     name = (platform.system() or "").lower()
-    package_cmd = f'"{sys.executable}" -m pip install -U numpy pytesseract pillow'
+    try:
+        from tejocr import tejocr_pdf
+        package_cmd = tejocr_pdf.get_runtime_pip_install_command(
+            ["numpy", "pytesseract", "pillow"],
+            upgrade=True,
+        )
+    except Exception:
+        package_cmd = f'"{sys.executable}" -m pip install -U numpy pytesseract pillow'
     if name == "darwin":
         return "Install Tesseract:\n  brew install tesseract\nInstall Python dependencies in LibreOffice Python:\n%s" % package_cmd
     if name == "windows":
@@ -164,68 +173,53 @@ def _format_dependency_short_status(message):
 
 def _normalize_language_request(language_input):
     """Normalize comma/plus-separated language inputs and drop empty entries."""
-    if not language_input:
-        return constants.DEFAULT_OCR_LANGUAGE
-    normalized = str(language_input).replace(",", "+").strip()
-    normalized = "+".join([part.strip().lower() for part in normalized.split("+") if part.strip()])
-    return normalized or constants.DEFAULT_OCR_LANGUAGE
+    return ocr_runtime.normalize_language_request(
+        language_input,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+    )
 
 
 def _normalize_language_codes(language_input):
     """Split normalized language text into canonical tokens."""
-    normalized = _normalize_language_request(language_input)
-    return [part.strip() for part in normalized.split("+") if part.strip()]
+    return ocr_runtime.split_language_codes(
+        language_input,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+    )
 
 
 def _validate_language_codes(language_input, available_languages):
     """Validate language tokens against available Tesseract languages."""
-    normalized_codes = _normalize_language_codes(language_input)
-    if not normalized_codes:
-        return constants.DEFAULT_OCR_LANGUAGE, [], False
-
-    normalized = "+".join(normalized_codes)
-    if not available_languages:
-        return normalized, [], False
-
-    available_set = {
-        str(language).strip().lower() for language in available_languages if str(language).strip()
-    }
-    if not available_set:
-        return normalized, [], False
-
-    valid_codes = [code for code in normalized_codes if code in available_set]
-    invalid_codes = [code for code in normalized_codes if code not in available_set]
-
-    if not valid_codes:
-        valid_codes = [constants.DEFAULT_OCR_LANGUAGE]
-
-    return "+".join(valid_codes), invalid_codes, True
+    result = ocr_runtime.validate_language_codes(
+        language_input,
+        available_languages,
+        default_language=constants.DEFAULT_OCR_LANGUAGE,
+        platform_name=platform.system(),
+    )
+    return result.normalized, result.invalid_codes, result.validated
 
 
 def _build_language_validation_message(language_input, invalid_codes, validated):
     """Build user-facing language warning text."""
-    if validated and invalid_codes:
-        invalid_text = ", ".join(invalid_codes)
-        return (
-            _("Some language codes are not installed and were skipped: {invalid_codes}. Using: {used_codes}.")
-            .format(invalid_codes=invalid_text, used_codes=_normalize_language_request(language_input))
-        )
-    if not validated and language_input:
-        return _("Language availability could not be verified. Using: {used_codes}.").format(
-            used_codes=_normalize_language_request(language_input)
-        )
-    return ""
+    return ocr_runtime.build_language_validation_message(
+        language_input,
+        invalid_codes,
+        validated,
+        platform_name=platform.system(),
+    )
 
 
 def _coerce_preset_request(preset_name, fallback):
-    if not preset_name:
-        return fallback or constants.DEFAULT_OCR_PRESET
-    normalized = str(preset_name).strip().lower()
-    if ":" in normalized:
-        normalized = normalized.split(":", 1)[0].strip()
-    if normalized in constants.OCR_PRESET_CHOICES:
-        return normalized
-    return fallback or constants.DEFAULT_OCR_PRESET
+    return ocr_runtime.coerce_preset_request(
+        preset_name,
+        fallback or constants.DEFAULT_OCR_PRESET,
+    )
+
+
+def _coerce_executor_mode(executor_name, fallback):
+    return ocr_runtime.coerce_executor_mode(
+        executor_name,
+        fallback or constants.DEFAULT_OCR_EXECUTOR,
+    )
 
 
 def _coerce_preset_profile(preset_name):
@@ -912,6 +906,14 @@ def _build_default_ocr_options(ctx):
             )
         ),
         "merge_batch_results": merge_batch_results,
+        "executor_mode": _coerce_executor_mode(
+            uno_utils.get_setting(
+                constants.CFG_KEY_HIDDEN_OCR_EXECUTOR,
+                constants.DEFAULT_OCR_EXECUTOR,
+                ctx,
+            ),
+            constants.DEFAULT_OCR_EXECUTOR,
+        ),
         "language_warning": "",
     }
 
@@ -969,57 +971,63 @@ def _normalize_dialog_result(dialog_result, defaults, available_languages):
         return None
 
     language_input = dialog_result[0] or default_lang
-    normalized_language, invalid_codes, validated = _validate_language_codes(
-        language_input,
-        available_languages,
-    )
-    language = normalized_language or default_lang
     output_mode = _coerce_output_mode(dialog_result[1], default_output_mode)
-    improve_image = _coerce_bool(dialog_result[2])
     extra_options = dialog_result[3] if len(dialog_result) > 3 and isinstance(dialog_result[3], dict) else {}
-    language_warning = _build_language_validation_message(language, invalid_codes, validated)
-
+    improve_image = _coerce_bool(dialog_result[2])
     selected_preset = _coerce_preset_request(extra_options.get("preset", default_preset), default_preset)
-    preset_profile = constants.OCR_QUALITY_PRESETS.get(selected_preset)
-
-    requested_psm = str(extra_options.get("psm", default_psm)).strip() or default_psm
-    requested_oem = str(extra_options.get("oem", default_oem)).strip() or default_oem
-    requested_scale = _coerce_scale(extra_options.get("scale", default_scale), default_scale)
-    requested_grayscale = _coerce_bool(extra_options.get("grayscale", default_grayscale))
-    requested_binarize = _coerce_bool(extra_options.get("binarize", default_binarize))
-    requested_invert = _coerce_bool(extra_options.get("invert", default_invert))
-    requested_show_preview = _coerce_bool(extra_options.get("show_preview", default_show_preview))
-    requested_merge = _coerce_bool(
+    requested_options = {
+        "lang": language_input,
+        "psm": str(extra_options.get("psm", default_psm)).strip() or default_psm,
+        "oem": str(extra_options.get("oem", default_oem)).strip() or default_oem,
+        "scale": _coerce_scale(extra_options.get("scale", default_scale), default_scale),
+        "grayscale": _coerce_bool(extra_options.get("grayscale", default_grayscale)),
+        "binarize": _coerce_bool(extra_options.get("binarize", default_binarize)),
+        "invert": _coerce_bool(extra_options.get("invert", default_invert)),
+        "show_preview": _coerce_bool(extra_options.get("show_preview", default_show_preview)),
+        "merge_batch_results": _coerce_bool(
         extra_options.get(
             "merge_batch_results",
             extra_options.get("merge_results", extra_options.get("merge", default_merge)),
         )
+        ),
+        "improve_image": _coerce_bool(extra_options.get("improve_image", improve_image)) if dialog_result and len(dialog_result) > 2 else improve_image,
+        "preset": selected_preset,
+    }
+    execution_plan = ocr_runtime.resolve_execution_plan(
+        requested_options,
+        available_languages=available_languages,
+        default_options={
+            "lang": default_lang,
+            "psm": default_psm,
+            "oem": default_oem,
+            "scale": default_scale,
+            "grayscale": default_grayscale,
+            "binarize": default_binarize,
+            "invert": default_invert,
+            "show_preview": default_show_preview,
+            "merge_batch_results": default_merge,
+            "improve_image": _coerce_bool(defaults.get("improve_image", False)),
+            "preset": default_preset,
+        },
+        platform_name=platform.system(),
     )
-    requested_improve = _coerce_bool(extra_options.get("improve_image", improve_image)) if dialog_result and len(dialog_result) > 2 else improve_image
-
-    if preset_profile:
-        requested_psm = str(preset_profile.get("psm", requested_psm)).strip() or requested_psm
-        requested_oem = str(preset_profile.get("oem", requested_oem)).strip() or requested_oem
-        requested_scale = _coerce_scale(preset_profile.get("scale", requested_scale), requested_scale)
-        requested_grayscale = _coerce_bool(preset_profile.get("grayscale", requested_grayscale))
-        requested_binarize = _coerce_bool(preset_profile.get("binarize", requested_binarize))
-        requested_invert = _coerce_bool(preset_profile.get("invert", requested_invert))
-        requested_improve = _coerce_bool(preset_profile.get("improve_image", requested_improve))
+    effective_options = dict(execution_plan.effective_options)
 
     return {
-        "lang": language,
+        "lang": effective_options.get("lang", default_lang),
         "output_mode": output_mode,
-        "improve_image": requested_improve,
-        "grayscale": requested_grayscale,
-        "binarize": requested_binarize,
-        "invert": requested_invert,
-        "scale": requested_scale,
-        "psm": requested_psm,
-        "oem": requested_oem,
-        "show_preview": requested_show_preview,
-        "merge_batch_results": requested_merge,
-        "preset": selected_preset,
-        "language_warning": language_warning,
+        "improve_image": _coerce_bool(effective_options.get("improve_image", False)),
+        "grayscale": _coerce_bool(effective_options.get("grayscale", False)),
+        "binarize": _coerce_bool(effective_options.get("binarize", False)),
+        "invert": _coerce_bool(effective_options.get("invert", False)),
+        "scale": _coerce_scale(effective_options.get("scale"), default_scale),
+        "psm": str(effective_options.get("psm", default_psm)).strip() or default_psm,
+        "oem": str(effective_options.get("oem", default_oem)).strip() or default_oem,
+        "show_preview": _coerce_bool(effective_options.get("show_preview", default_show_preview)),
+        "merge_batch_results": _coerce_bool(effective_options.get("merge_batch_results", default_merge)),
+        "preset": execution_plan.preset,
+        "language_warning": effective_options.get("language_warning", ""),
+        "language_install_hint": effective_options.get("language_install_hint", ""),
     }
 
 
@@ -2365,49 +2373,64 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 "merge_batch_results": _coerce_bool(
                     ocr_options.get("merge_batch_results", defaults.get("merge_batch_results"))
                 ),
+                "executor_mode": _coerce_executor_mode(
+                    ocr_options.get("executor_mode", defaults.get("executor_mode")),
+                    defaults.get("executor_mode"),
+                ),
             }
+            ocr_session = _tejocr_engine_module.create_ocr_session(
+                self.ctx,
+                self.frame,
+                show_gui_errors=False,
+                executor_mode=options.get("executor_mode", constants.DEFAULT_OCR_EXECUTOR),
+            )
+            if not ocr_session or not getattr(ocr_session, "ready", False):
+                raise RuntimeError(
+                    getattr(ocr_session, "path_message", None)
+                    or tr("Tesseract is not ready for OCR.")
+                )
+            execution_plan = ocr_runtime.resolve_execution_plan(
+                options,
+                available_languages=getattr(ocr_session, "available_languages", []),
+                default_options=defaults,
+                platform_name=platform.system(),
+            )
+            options = dict(execution_plan.effective_options)
 
             _persist_last_ocr_preferences(
                 self.ctx,
                 options["lang"],
                 output_mode,
-                ocr_options.get("merge_batch_results"),
+                options.get("merge_batch_results"),
             )
             self.logger.info(
                 f"Performing batch OCR: mode='{output_mode}', source='{source_type}', files={len(image_paths)}"
             )
 
-            def _rasterize_pdf_file(pdf_path):
-                if not _is_pdf_path(pdf_path):
-                    return []
-                if pdf_module is None:
-                    raise RuntimeError(tr("PDF module is not loaded."))
+            def _raise_pdf_runtime_error(pdf_error):
                 current_status = _refresh_pdf_status()
                 pdf_runtime_status["value"] = current_status
-                try:
-                    return pdf_module.rasterize_pdf_pages(pdf_path)
-                except Exception as pdf_error:
-                    error_text = str(pdf_error)
-                    if current_status and current_status.get("available"):
-                        if current_status.get("hints"):
-                            raise RuntimeError(
-                                tr("PDF rendering failed. Install one of:\\n{hints}\\n\\nOriginal error: {error}").format(
-                                    hints="\\n".join(
-                                        " - {cmd}".format(cmd=entry) for entry in current_status["hints"]
-                                    ),
-                                    error=error_text,
-                                )
+                error_text = str(pdf_error)
+                if current_status and current_status.get("available"):
+                    if current_status.get("hints"):
+                        raise RuntimeError(
+                            tr("PDF rendering failed. Install one of:\\n{hints}\\n\\nOriginal error: {error}").format(
+                                hints="\\n".join(
+                                    " - {cmd}".format(cmd=entry) for entry in current_status["hints"]
+                                ),
+                                error=error_text,
                             )
-                        raise RuntimeError(error_text)
-
-                    if current_status and current_status.get("hints"):
-                        hint_text = tr("No PDF renderer found. Install one of:\\n{hints}").format(
-                            hints="\\n".join(" - {cmd}".format(cmd=entry) for entry in current_status["hints"])
                         )
-                        if hint_text not in error_text:
-                            raise RuntimeError(f"{hint_text}\n\nOriginal error: {error_text}")
-                        raise RuntimeError(error_text)
-                    raise RuntimeError(tr("No PDF renderer found."))
+                    raise RuntimeError(error_text)
+
+                if current_status and current_status.get("hints"):
+                    hint_text = tr("No PDF renderer found. Install one of:\\n{hints}").format(
+                        hints="\\n".join(" - {cmd}".format(cmd=entry) for entry in current_status["hints"])
+                    )
+                    if hint_text not in error_text:
+                        raise RuntimeError(f"{hint_text}\n\nOriginal error: {error_text}")
+                    raise RuntimeError(error_text)
+                raise RuntimeError(tr("No PDF renderer found."))
 
             def _clean_source_name(raw_path):
                 if raw_path:
@@ -2415,63 +2438,185 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 return tr("Source")
 
             def _process_single_file(source_path):
+                local_failed_sources = []
+                local_temp_images = []
+                local_attempt_count = 0
+                local_effective_pdf_dpi = 0
                 if not os.path.isfile(source_path):
-                    return None, tr("File not found")
+                    return {
+                        "processed": None,
+                        "error": tr("File not found"),
+                        "failed_sources": local_failed_sources,
+                        "attempt_count": local_attempt_count,
+                        "effective_pdf_dpi": local_effective_pdf_dpi,
+                    }
 
-                if _is_pdf_path(source_path):
-                    base_name = _clean_source_name(source_path)
-                    try:
-                        page_paths = _rasterize_pdf_file(source_path)
-                    except Exception as pdf_error:
-                        error_text = str(pdf_error)
-                        nonlocal_pdf_renderer_hint["value"] = error_text
-                        return None, error_text
+                try:
+                    if _is_pdf_path(source_path):
+                        base_name = _clean_source_name(source_path)
+                        if pdf_module is None:
+                            return {
+                                "processed": None,
+                                "error": tr("PDF module is not loaded."),
+                                "failed_sources": local_failed_sources,
+                                "attempt_count": local_attempt_count,
+                                "effective_pdf_dpi": local_effective_pdf_dpi,
+                            }
 
-                    if not page_paths:
-                        return None, tr("No pages rasterized from PDF")
+                        current_status = _refresh_pdf_status()
+                        pdf_runtime_status["value"] = current_status
+                        base_dpi = execution_plan.pdf_dpi
+                        page_count = 0
+                        try:
+                            page_count = pdf_module.get_pdf_page_count(source_path) or 0
+                        except Exception:
+                            page_count = 0
 
-                    temp_image_paths.extend(page_paths)
-                    total_pages = len(page_paths)
-                    source_name = tr("{source} (PDF, {pages} page(s))").format(
-                        source=base_name,
-                        pages=total_pages,
-                    )
-                    page_sections = []
-                    for index, page_image in enumerate(page_paths, start=1):
-                        result = _tejocr_engine_module.perform_ocr(
-                            self.ctx,
-                            self.frame,
-                            "file",
-                            page_image,
-                            options,
-                        )
-                        page_label = tr("Page {page} of {total} in {source}").format(
-                            page=index, total=total_pages, source=source_name
-                        )
-                        if result.get("success"):
-                            page_text = (result.get("text") or "").strip()
-                            if page_text:
-                                section = tr("{page_label}:\\n{page_text}").format(
-                                    page_label=page_label,
-                                    page_text=page_text,
+                        page_sections = []
+                        rendered_pages = 0
+                        try:
+                            page_iterator = pdf_module.iter_rasterized_pdf_pages(source_path, dpi=base_dpi)
+                            for index, page_image in page_iterator:
+                                if not page_image:
+                                    continue
+                                rendered_pages = max(rendered_pages, index)
+                                local_temp_images.append(page_image)
+                                result = _tejocr_engine_module.perform_ocr(
+                                    self.ctx,
+                                    self.frame,
+                                    "file",
+                                    page_image,
+                                    options,
+                                    session=ocr_session,
                                 )
-                                page_sections.append(section)
-                        else:
-                            failed_sources.append((page_label, result.get("message", tr("OCR failed"))))
-                    if page_sections:
-                        return ((source_name, "\n\n".join(page_sections)), None)
-                    return None, tr("No text recognized from PDF")
+                                result_stats = result.get("stats") or {}
+                                local_attempt_count += len(result_stats.get("attempts") or [])
+                                page_text = (result.get("text") or "").strip() if result.get("success") else ""
+                                small_text_page = False
+                                if base_dpi < 300:
+                                    try:
+                                        small_text_page = bool(
+                                            getattr(pdf_module, "is_probably_small_text_page", lambda *_args, **_kwargs: False)(
+                                                page_image
+                                            )
+                                        )
+                                    except Exception:
+                                        small_text_page = False
+                                retry_needed = base_dpi < 300 and (
+                                    (not page_text)
+                                    or ocr_runtime.is_low_signal_text(page_text)
+                                    or small_text_page
+                                )
 
-                result = _tejocr_engine_module.perform_ocr(
-                    self.ctx,
-                    self.frame,
-                    "file",
-                    source_path,
-                    options,
-                )
-                if result.get("success"):
-                    return ((os.path.basename(source_path), result.get("text") or "")), None
-                return None, result.get("message", tr("OCR failed"))
+                                if retry_needed:
+                                    try:
+                                        hi_res_page = pdf_module.rasterize_pdf_page(source_path, index, dpi=300)
+                                        if hi_res_page:
+                                            local_temp_images.append(hi_res_page)
+                                            retry_result = _tejocr_engine_module.perform_ocr(
+                                                self.ctx,
+                                                self.frame,
+                                                "file",
+                                                hi_res_page,
+                                                options,
+                                                session=ocr_session,
+                                            )
+                                            retry_stats = retry_result.get("stats") or {}
+                                            local_attempt_count += len(retry_stats.get("attempts") or [])
+                                            retry_text = (retry_result.get("text") or "").strip() if retry_result.get("success") else ""
+                                            if len(retry_text) >= len(page_text):
+                                                result = retry_result
+                                                page_text = retry_text
+                                    except Exception:
+                                        pass
+
+                                total_pages = page_count or rendered_pages
+                                local_effective_pdf_dpi = max(
+                                    local_effective_pdf_dpi,
+                                    base_dpi if not retry_needed else 300,
+                                )
+                                source_name = tr("{source} (PDF, {pages} page(s), {dpi} DPI)").format(
+                                    source=base_name,
+                                    pages=total_pages or rendered_pages or 1,
+                                    dpi=base_dpi if not retry_needed else 300,
+                                )
+                                page_label = tr("Page {page} of {total} in {source}").format(
+                                    page=index,
+                                    total=total_pages or rendered_pages or 1,
+                                    source=source_name,
+                                )
+                                if result.get("success") and page_text:
+                                    section = tr("{page_label}:\\n{page_text}").format(
+                                        page_label=page_label,
+                                        page_text=page_text,
+                                    )
+                                    page_sections.append(section)
+                                else:
+                                    local_failed_sources.append(
+                                        (page_label, result.get("message", tr("OCR failed")))
+                                    )
+                        except Exception as pdf_error:
+                            _raise_pdf_runtime_error(pdf_error)
+
+                        if page_sections:
+                            source_name = tr("{source} (PDF, {pages} page(s))").format(
+                                source=base_name,
+                                pages=page_count or rendered_pages or 1,
+                            )
+                            return {
+                                "processed": (source_name, "\n\n".join(page_sections)),
+                                "error": None,
+                                "failed_sources": local_failed_sources,
+                                "attempt_count": local_attempt_count,
+                                "effective_pdf_dpi": local_effective_pdf_dpi,
+                            }
+                        return {
+                            "processed": None,
+                            "error": tr("No text recognized from PDF"),
+                            "failed_sources": local_failed_sources,
+                            "attempt_count": local_attempt_count,
+                            "effective_pdf_dpi": local_effective_pdf_dpi,
+                        }
+
+                    result = _tejocr_engine_module.perform_ocr(
+                        self.ctx,
+                        self.frame,
+                        "file",
+                        source_path,
+                        options,
+                        session=ocr_session,
+                    )
+                    result_stats = result.get("stats") or {}
+                    local_attempt_count += len(result_stats.get("attempts") or [])
+                    if result.get("success"):
+                        return {
+                            "processed": (os.path.basename(source_path), result.get("text") or ""),
+                            "error": None,
+                            "failed_sources": local_failed_sources,
+                            "attempt_count": local_attempt_count,
+                            "effective_pdf_dpi": local_effective_pdf_dpi,
+                        }
+                    return {
+                        "processed": None,
+                        "error": result.get("message", tr("OCR failed")),
+                        "failed_sources": local_failed_sources,
+                        "attempt_count": local_attempt_count,
+                        "effective_pdf_dpi": local_effective_pdf_dpi,
+                    }
+                except Exception as processing_error:
+                    return {
+                        "processed": None,
+                        "error": str(processing_error),
+                        "failed_sources": local_failed_sources,
+                        "attempt_count": local_attempt_count,
+                        "effective_pdf_dpi": local_effective_pdf_dpi,
+                    }
+                finally:
+                    try:
+                        if pdf_module is not None:
+                            pdf_module.cleanup_temp_images(local_temp_images)
+                    except Exception:
+                        pass
 
             def _route_batch_output(target_text):
                 if output_mode == constants.OUTPUT_MODE_CURSOR:
@@ -2523,9 +2668,10 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             batch_results = []
             processed_sources = 0
             failed_sources = []
-            temp_image_paths = []
             nonlocal_pdf_renderer_hint = {"value": None}
             total_requests = list(image_paths or [])
+            batch_attempt_count = 0
+            batch_effective_pdf_dpi = 0
 
             def _format_pdf_renderer_hint():
                 renderer_status = pdf_runtime_status.get("value")
@@ -2548,38 +2694,62 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
             has_pdf_source = any(_is_pdf_path(entry) for entry in total_requests)
             has_non_pdf_source = any(not _is_pdf_path(entry) for entry in total_requests)
+            batch_effective_pdf_dpi = execution_plan.pdf_dpi if has_pdf_source else 0
             pdf_status_hint = _format_pdf_renderer_hint()
 
-            try:
-                for input_path in total_requests:
+            ordered_results = {}
+            worker_cap = min(max(1, len(total_requests)), min(os.cpu_count() or 1, 4))
+            if len(total_requests) > 1 and worker_cap > 1:
+                with ThreadPoolExecutor(max_workers=worker_cap) as executor:
+                    future_map = {
+                        executor.submit(_process_single_file, input_path): (index, input_path)
+                        for index, input_path in enumerate(total_requests)
+                        if input_path
+                    }
+                    for future in as_completed(future_map):
+                        index, input_path = future_map[future]
+                        try:
+                            ordered_results[index] = future.result()
+                        except Exception as future_error:
+                            ordered_results[index] = {
+                                "processed": None,
+                                "error": str(future_error),
+                                "failed_sources": [],
+                            }
+            else:
+                for index, input_path in enumerate(total_requests):
                     if not input_path:
                         continue
-                    processed, error = _process_single_file(input_path)
-                    if error:
-                        failed_sources.append((_clean_source_name(input_path), error))
-                        self.logger.error(
-                            "Batch OCR source failed: '{source}' -> {error}".format(
-                                source=input_path,
-                                error=error,
-                            )
+                    ordered_results[index] = _process_single_file(input_path)
+
+            for index, input_path in enumerate(total_requests):
+                if not input_path:
+                    continue
+                outcome = ordered_results.get(index) or {}
+                error = outcome.get("error")
+                processed = outcome.get("processed")
+                batch_attempt_count += int(outcome.get("attempt_count") or 0)
+                batch_effective_pdf_dpi = max(
+                    batch_effective_pdf_dpi,
+                    int(outcome.get("effective_pdf_dpi") or 0),
+                )
+                for page_failure in outcome.get("failed_sources", []):
+                    failed_sources.append(page_failure)
+                if error:
+                    failed_sources.append((_clean_source_name(input_path), error))
+                    if _is_pdf_path(input_path):
+                        nonlocal_pdf_renderer_hint["value"] = error
+                    self.logger.error(
+                        "Batch OCR source failed: '{source}' -> {error}".format(
+                            source=input_path,
+                            error=error,
                         )
-                        continue
-
-                    if processed is None:
-                        continue
-
-                    if isinstance(processed, tuple):
-                        batch_results.append(processed)
-                    else:
-                        batch_results.extend(processed)
-                    processed_sources += 1
-
-            finally:
-                try:
-                    from tejocr import tejocr_pdf as pdf_module
-                    pdf_module.cleanup_temp_images(temp_image_paths)
-                except Exception:
-                    pass
+                    )
+                    continue
+                if processed is None:
+                    continue
+                batch_results.append(processed)
+                processed_sources += 1
 
             if not batch_results:
                 self.logger.warning("Batch OCR completed with no successful recognition results.")
@@ -2624,6 +2794,21 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             total_chars = len(combined_text or "")
             source_summary = _build_preprocessing_summary(options)
             preview_text = combined_text
+            batch_diagnostics = ocr_runtime.build_run_diagnostics_text(
+                ocr_runtime.OcrRunStats(
+                    source_type=str(source_type or ""),
+                    source_label=tr("Batch OCR"),
+                    requested_options=execution_plan.requested_options,
+                    effective_options=execution_plan.effective_options,
+                    pdf_dpi=batch_effective_pdf_dpi if has_pdf_source else 0,
+                    executor_mode=options.get("executor_mode", constants.DEFAULT_OCR_EXECUTOR),
+                    attempt_count=batch_attempt_count,
+                    renderer=(pdf_runtime_status.get("value") or {}).get("engine", "") if has_pdf_source else "",
+                    used_language=options.get("lang", ""),
+                )
+            )
+            if batch_diagnostics:
+                self.logger.info("Batch OCR diagnostics: %s", batch_diagnostics)
             source_overview = []
             for source_label, source_text in batch_results:
                 try:
@@ -2656,6 +2841,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 )
 
             force_merge_review = False
+            show_merged_preview = False
             if show_preview and len(total_requests) > 1:
                 if not uno_utils.supports_uno_dialog_model(self.ctx):
                     force_merge_review = True
@@ -2673,55 +2859,57 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             if show_preview:
                 if not force_merge_review and len(combined_text or "") > 9000:
                     force_merge_review = True
-                source_lines = [
-                    tr("Source {index}: {source} ({length} chars)").format(
-                        index=index,
-                        source=source_label,
-                        length=source_len,
-                    )
-                    for index, (source_label, source_len) in enumerate(source_overview, start=1)
-                ]
-                preview_title = source_file_count_text
-                if force_merge_review:
-                    preview_title = source_file_count_text + tr(" (single consolidated review)")
-                merged_preview_max_chars = min(30000, max(2400, len(combined_text) + 120))
-                preview_result = uno_utils.show_multiline_input_box(
-                    title=preview_title,
-                    message=tr(
-                        "Review or edit the recognized text before inserting.\\n"
-                        "Click OK to continue, Cancel to stop."
-                    ),
-                    default_text=combined_text,
-                    ctx=self.ctx,
-                    parent_frame=self.frame,
-                )
-                if preview_result is None:
-                    preview_result = uno_utils.show_ocr_preview_fallback(
-                        preview_title,
-                        combined_text,
+                show_merged_preview = bool(merge_batch or force_merge_review)
+                if show_merged_preview:
+                    source_lines = [
+                        tr("Source {index}: {source} ({length} chars)").format(
+                            index=index,
+                            source=source_label,
+                            length=source_len,
+                        )
+                        for index, (source_label, source_len) in enumerate(source_overview, start=1)
+                    ]
+                    preview_title = source_file_count_text
+                    if force_merge_review:
+                        preview_title = source_file_count_text + tr(" (single consolidated review)")
+                    merged_preview_max_chars = min(30000, max(2400, len(combined_text) + 120))
+                    preview_result = uno_utils.show_multiline_input_box(
+                        title=preview_title,
+                        message=tr(
+                            "Review or edit the recognized text before inserting.\\n"
+                            "Click OK to continue, Cancel to stop."
+                        ),
+                        default_text=combined_text,
                         ctx=self.ctx,
                         parent_frame=self.frame,
-                        max_chars=merged_preview_max_chars,
-                        source_lines=source_lines,
                     )
-                if preview_result is None:
-                    self.logger.info("User cancelled OCR workflow at batch preview stage.")
-                    uno_utils.show_message_box(
-                        tr("OCR Canceled"),
-                        tr("OCR output was cancelled by user."),
-                        "infobox",
-                        parent_frame=self.frame,
-                        ctx=self.ctx,
-                    )
-                    return
-                preview_text = preview_result
+                    if preview_result is None:
+                        preview_result = uno_utils.show_ocr_preview_fallback(
+                            preview_title,
+                            combined_text,
+                            ctx=self.ctx,
+                            parent_frame=self.frame,
+                            max_chars=merged_preview_max_chars,
+                            source_lines=source_lines,
+                        )
+                    if preview_result is None:
+                        self.logger.info("User cancelled OCR workflow at batch preview stage.")
+                        uno_utils.show_message_box(
+                            tr("OCR Canceled"),
+                            tr("OCR output was cancelled by user."),
+                            "infobox",
+                            parent_frame=self.frame,
+                            ctx=self.ctx,
+                        )
+                        return
+                    preview_text = preview_result
 
             if merge_batch:
                 if output_mode == constants.OUTPUT_MODE_REPLACE and source_type == "selected":
                     merge_batch = False
                 _route_batch_output(preview_text)
             else:
-                if show_preview:
+                if show_preview and not show_merged_preview and len(batch_results) > 1:
                     preview_note = (
                         tr("Merge mode is disabled for this run.\\n")
                         + tr("Will process {source_count} item(s) as separate insertions.").format(
@@ -2739,7 +2927,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 for source_label, source_text in batch_results:
                     item_text = source_text or ""
                     preview_result = item_text
-                    if show_preview and item_text:
+                    if show_preview and not show_merged_preview and item_text:
                         source_name = source_label or tr("Source")
                         preview_result = uno_utils.show_multiline_input_box(
                             title=tr("Review OCR result - {source}").format(source=source_label),
@@ -2801,6 +2989,11 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                     processing=source_summary,
                 )
             )
+            if batch_diagnostics:
+                extraction_summary = "{summary}\nRuntime: {diagnostics}".format(
+                    summary=extraction_summary,
+                    diagnostics=batch_diagnostics,
+                )
             failure_summary = (
                 tr("\n\nSome sources failed:\n{failures}").format(
                     failures="\n".join([f"• {item}: {reason}" for item, reason in failed_sources[:5]])
@@ -2868,22 +3061,45 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 output_mode = constants.OUTPUT_MODE_CURSOR
             if ocr_options is None:
                 ocr_options = defaults.copy()
-            
-            options = {
-                "lang": language,
-                "psm": str(ocr_options.get("psm", defaults["psm"])).strip() or defaults["psm"],
-                "oem": str(ocr_options.get("oem", defaults["oem"])).strip() or defaults["oem"],
-                "scale": _coerce_scale(ocr_options.get("scale"), defaults.get("scale")),
-                "grayscale": _coerce_bool(ocr_options.get("grayscale", defaults.get("grayscale", False))),
-                "binarize": _coerce_bool(ocr_options.get("binarize", defaults.get("binarize", False))),
-                "invert": _coerce_bool(ocr_options.get("invert", defaults.get("invert", False))),
-                "improve_image": _coerce_bool(ocr_options.get("improve_image", defaults.get("improve_image", False))),
-                "preset": _coerce_preset_request(ocr_options.get("preset"), defaults.get("preset")),
-                "show_preview": _coerce_bool(ocr_options.get("show_preview", defaults.get("show_preview"))),
-                "merge_batch_results": _coerce_bool(
-                    ocr_options.get("merge_batch_results", defaults.get("merge_batch_results"))
+            ocr_session = _tejocr_engine_module.create_ocr_session(
+                self.ctx,
+                self.frame,
+                show_gui_errors=False,
+                executor_mode=_coerce_executor_mode(
+                    ocr_options.get("executor_mode", defaults.get("executor_mode")),
+                    defaults.get("executor_mode"),
                 ),
-            }
+            )
+            if not ocr_session or not getattr(ocr_session, "ready", False):
+                raise RuntimeError(
+                    getattr(ocr_session, "path_message", None)
+                    or _("Tesseract is not ready for OCR.")
+                )
+            execution_plan = ocr_runtime.resolve_execution_plan(
+                {
+                    "lang": language,
+                    "psm": str(ocr_options.get("psm", defaults["psm"])).strip() or defaults["psm"],
+                    "oem": str(ocr_options.get("oem", defaults["oem"])).strip() or defaults["oem"],
+                    "scale": _coerce_scale(ocr_options.get("scale"), defaults.get("scale")),
+                    "grayscale": _coerce_bool(ocr_options.get("grayscale", defaults.get("grayscale", False))),
+                    "binarize": _coerce_bool(ocr_options.get("binarize", defaults.get("binarize", False))),
+                    "invert": _coerce_bool(ocr_options.get("invert", defaults.get("invert", False))),
+                    "improve_image": _coerce_bool(ocr_options.get("improve_image", defaults.get("improve_image", False))),
+                    "preset": _coerce_preset_request(ocr_options.get("preset"), defaults.get("preset")),
+                    "show_preview": _coerce_bool(ocr_options.get("show_preview", defaults.get("show_preview"))),
+                    "merge_batch_results": _coerce_bool(
+                        ocr_options.get("merge_batch_results", defaults.get("merge_batch_results"))
+                    ),
+                    "executor_mode": _coerce_executor_mode(
+                        ocr_options.get("executor_mode", defaults.get("executor_mode")),
+                        defaults.get("executor_mode"),
+                    ),
+                },
+                available_languages=getattr(ocr_session, "available_languages", []),
+                default_options=defaults,
+                platform_name=platform.system(),
+            )
+            options = dict(execution_plan.effective_options)
 
             _persist_last_ocr_preferences(
                 self.ctx,
@@ -2904,23 +3120,26 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
             # Perform OCR based on source type, now passing improve_image to engine methods
             source_message = ""
+            diagnostics_text = ""
             if source_type == "selected":
                 result = _tejocr_engine_module.perform_ocr(
-                    self.ctx, self.frame, "selected", None, options
+                    self.ctx, self.frame, "selected", None, options, session=ocr_session
                 )
                 if result.get("success"):
                     text = result.get("text")
                     source_message = result.get("message", "") or ""
+                    diagnostics_text = result.get("diagnostics", "") or ""
                 else:
                     self.logger.error(f"perform_ocr failed for selected image: {result.get('message')}")
                 source_description = _("selected image")
             elif source_type == "file": # Ensure this is 'elif' for clarity if more source types are added later
                 result = _tejocr_engine_module.perform_ocr(
-                    self.ctx, self.frame, "file", image_path, options
+                    self.ctx, self.frame, "file", image_path, options, session=ocr_session
                 )
                 if result.get("success"):
                     text = result.get("text")
                     source_message = result.get("message", "") or ""
+                    diagnostics_text = result.get("diagnostics", "") or ""
                 else:
                     self.logger.error(f"perform_ocr failed for file image: {result.get('message')}")
                 source_description = f"'{os.path.basename(image_path)}'"
@@ -3063,6 +3282,11 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                         processing=_build_preprocessing_summary(options),
                     )
                 )
+                if diagnostics_text:
+                    extraction_summary = "{summary}\nRuntime: {diagnostics}".format(
+                        summary=extraction_summary,
+                        diagnostics=diagnostics_text,
+                    )
                 uno_utils.show_message_box(
                     _("OCR Complete"), 
                     _("Successfully extracted {char_count} characters from {source_description} and {mode_description}.\n\n{summary}").format(
@@ -3098,7 +3322,10 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                             else source_message
                         ),
                         recommendations=recommendation_text,
-                        summary=source_summary
+                        summary=source_summary if not diagnostics_text else "{summary}\nRuntime: {diagnostics}".format(
+                            summary=source_summary,
+                            diagnostics=diagnostics_text,
+                        )
                     ),
                     "warningbox", # Changed to warningbox as this is more than just no text
                     parent_frame=self.frame, 
@@ -3125,12 +3352,6 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     def _handle_settings(self):
         self.logger.info("Handling Settings action.")
-        
-        # Ensure OCR engine is loaded for dependency checks inside the dialog code path.
-        if not _ensure_modules_loaded(self, engine=True):
-            self.logger.error("Settings: Critical module (Engine) could not be loaded.")
-            # Message box would have been shown by _ensure_modules_loaded
-            return
 
         try:
             self.logger.info("Opening settings with XDL-backed handler.")

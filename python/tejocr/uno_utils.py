@@ -2258,29 +2258,20 @@ def create_temp_file_from_graphic(graphic, ctx):
     except Exception as e:
         logger.debug(f"Strategy 5 FAILED (URL copy): {e}")
     
-    # Strategy 6: Try to create a simple placeholder image with PIL if available
+    # Strategy 6: Try to create a simple placeholder image without any font APIs.
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
         
         # Create a simple placeholder image
         img = Image.new('RGB', (400, 200), color='lightgray')
         draw = ImageDraw.Draw(img)
-        
-        text = "OCR Error: Could not export\nselected image.\n\nTry saving the image as a\nfile and using 'OCR from File'\ninstead."
-        
-        # Use default font
-        try:
-            # Try to load a default font
-            font = ImageFont.load_default()
-        except:
-            font = None
-        
-        # Draw text on placeholder
-        draw.multiline_text((10, 10), text, fill='black', font=font)
+        draw.rectangle((12, 12, 388, 188), outline='black', width=3)
+        draw.line((12, 12, 388, 188), fill='black', width=3)
+        draw.line((388, 12, 12, 188), fill='black', width=3)
         
         # Save placeholder
         img.save(path, 'PNG')
-        logger.warning(f"Strategy 6 FALLBACK: Created placeholder image at {path}")
+        logger.warning(f"Strategy 6 FALLBACK: Created non-text placeholder image at {path}")
         return path
         
     except ImportError:

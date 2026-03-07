@@ -32,8 +32,6 @@
 
     <!-- Dialog Definition Files -->
     <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
-                         manifest:full-path="dialogs/test_dialog.xdl"/>
-    <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
                            manifest:full-path="dialogs/tejocr_options_dialog.xdl"/>
     <manifest:file-entry manifest:media-type="application/vnd.sun.star.dialog-ui"
                            manifest:full-path="dialogs/tejocr_settings_dialog.xdl"/>

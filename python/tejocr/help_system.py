@@ -16,6 +16,15 @@ _ = locale_setup.get_translator().gettext
 logger = uno_utils.get_logger("TejOCR.Help")
 
 
+def _runtime_pip_install_command(packages, upgrade=False):
+    try:
+        from tejocr import tejocr_pdf
+        return tejocr_pdf.get_runtime_pip_install_command(packages, upgrade=upgrade)
+    except Exception:
+        suffix = " -U" if upgrade else ""
+        return f"{sys.executable} -m pip install{suffix} " + " ".join(packages)
+
+
 class HelpSystem:
     """Comprehensive help system for TejOCR."""
 
@@ -30,7 +39,7 @@ class HelpSystem:
             "2) macOS: run `brew install tesseract`\n"
             "3) Linux: run `sudo apt install tesseract-ocr`\n"
             "4) Install packages in LibreOffice Python:\n"
-            f"   `{sys.executable} -m pip install numpy pytesseract pillow`\n"
+            f"   `{_runtime_pip_install_command(['numpy', 'pytesseract', 'pillow'])}`\n"
             "5) PDF files are supported in file-based OCR. Install one of:\n"
             "   - `brew install poppler` (macOS)\n"
             "   - `brew install mupdf` (macOS)\n"
@@ -38,7 +47,7 @@ class HelpSystem:
             "   - `apt-get install mupdf-tools` (Linux)\n"
             "   - `choco install poppler` (Windows)\n"
             "   - or install PDF conversion runtime in this Python:\n"
-            f"     `{sys.executable} -m pip install pdf2image`\n"
+            f"     `{_runtime_pip_install_command(['pdf2image'])}`\n"
             "6) Keep your Tesseract language packs up to date.\n\n"
             "More reference:\n"
             "https://tesseract-ocr.github.io/tessdoc/Installation.html"

@@ -8,8 +8,11 @@
 """Core OCR processing, Tesseract interaction, and image handling."""
 
 import os
+import re
 import sys
 import platform
+import subprocess
+import time
 import uno
 import unohelper
 import tempfile
@@ -17,6 +20,7 @@ import shutil # For shutil.which & tesseract path checking
 
 from tejocr import uno_utils
 from tejocr import constants
+from tejocr import ocr_runtime
 from tejocr import locale_setup # Added for i18n
 
 try:
@@ -27,6 +31,23 @@ except Exception:
 
 # Initialize logger for this module
 logger = uno_utils.get_logger("TejOCR.Engine")
+
+_MODE_ALIAS_RE = re.compile(r"^([a-z0-9_]+)\s+(.+)$")
+
+
+def _clean_mode_description(description):
+    cleaned = str(description or "").strip()
+    if not cleaned:
+        return cleaned
+
+    match = _MODE_ALIAS_RE.match(cleaned)
+    if not match:
+        return cleaned
+
+    alias, remainder = match.groups()
+    if "_" in alias or alias in {"auto", "default"}:
+        return remainder.strip()
+    return cleaned
 
 
 def _platform_name():
@@ -52,7 +73,13 @@ def _has_module(module_name):
 
 def _lo_python_dependency_command():
     """Return a practical install command for the active LibreOffice Python interpreter."""
-    return f'"{sys.executable}" -m pip install numpy pytesseract pillow'
+    try:
+        from tejocr import tejocr_pdf
+        return tejocr_pdf.get_runtime_pip_install_command(
+            ["numpy", "pytesseract", "pillow"]
+        )
+    except Exception:
+        return f'"{sys.executable}" -m pip install numpy pytesseract pillow'
 
 
 def _tesseract_install_recommendation():
@@ -166,95 +193,265 @@ def _find_tesseract_executable(ctx=None):
     return None
 
 def is_tesseract_ready(ctx=None, show_gui_errors=True, parent_frame=None):
-    """Check if Tesseract and pytesseract are ready for OCR operations."""
-    if not _initialize_pytesseract(ctx):
-        configured_path = ""
-        try:
-            if ctx:
-                configured_path = (uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx) or "").strip()
-        except Exception:
-            configured_path = ""
-
-        try:
-            pytesseract_available = _has_module("pytesseract")
-            tesseract_path = _find_tesseract_executable(ctx=ctx)
-        except Exception:
-            pytesseract_available = False
-            tesseract_path = None
-
-        if not pytesseract_available:
-            title = "Missing pytesseract"
-            error_message = (
-                "TejOCR cannot access pytesseract in LibreOffice's Python environment.\n\n"
-                "Run this command from a terminal:\n"
-                f"{_lo_python_dependency_command()}\n\n"
-                "Then restart LibreOffice."
+    """Check whether the direct CLI OCR runtime is ready for use."""
+    session = create_ocr_session(ctx=ctx, frame=parent_frame, show_gui_errors=False)
+    if session and session.ready:
+        runtime_message = session.version or session.path_message or _("Tesseract ready")
+        if not _has_module("pytesseract"):
+            logger.info(
+                "pytesseract is not installed in this LibreOffice runtime; continuing because direct CLI OCR is available."
             )
-        elif not tesseract_path:
-            title = "Tesseract Not Available"
-            if configured_path:
-                path_hint = _(
-                    "Configured path '{path}' is not valid or cannot be executed.\n"
-                ).format(path=configured_path)
-            else:
-                path_hint = _("No Tesseract executable path could be detected.\n")
-            error_message = (
-                f"{path_hint}\n"
-                "TejOCR can load Python dependencies, but it cannot reach Tesseract from LibreOffice.\n\n"
-                f"{_tesseract_install_recommendation()}\n\n"
-                "Or set the exact executable path in: Settings → Tesseract Path.\n\n"
-                "Then restart LibreOffice if needed."
+            runtime_message = "{message} ({note})".format(
+                message=runtime_message,
+                note=_("direct CLI OCR active; pytesseract not required"),
             )
-        else:
-            title = "OCR Engine Not Ready"
-            error_message = (
-                "OCR dependencies are partly available, but initialization failed.\n\n"
-                "Details:\n"
-                f"{_LAST_PYTESSERACT_INIT_ERROR or _('No internal details available.')}\n\n"
-                "Try:\n"
-                f"1) {_lo_python_dependency_command()}\n"
-                f"2) {_tesseract_install_recommendation()}\n"
-                f"3) Confirm the path shown in Settings{' (Current: ' + configured_path + ')' if configured_path else ''}.\n\n"
-                "Then restart LibreOffice."
-            )
+        logger.debug("Tesseract ready check passed. %s", runtime_message)
+        return True, runtime_message
 
-        if show_gui_errors:
-            uno_utils.show_message_box(
-                title,
-                error_message,
-                "errorbox",
-                parent_frame=parent_frame,
-                ctx=ctx
-            )
-
-        return False, error_message
-    
+    configured_path = ""
     try:
-        # Test actual OCR capability with a minimal operation
-        version = pytesseract.get_tesseract_version()
-        logger.debug(f"Tesseract ready check passed. Version: {version}")
-        return True, f"Tesseract v{version} ready"
-    except Exception as e:
-        error_msg = f"Tesseract test failed: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        if show_gui_errors:
-            uno_utils.show_message_box(
-                "Tesseract Test Failed",
-                f"Tesseract is installed but not working properly:\n\n{error_msg}\n\nPlease check your installation.",
-                "errorbox",
-                parent_frame=parent_frame,
-                ctx=ctx
-            )
-        return False, error_msg
+        if ctx:
+            configured_path = (uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, "", ctx) or "").strip()
+    except Exception:
+        configured_path = ""
+
+    title = "Tesseract Not Available"
+    if configured_path:
+        path_hint = _(
+            "Configured path '{path}' is not valid or cannot be executed.\n"
+        ).format(path=configured_path)
+    else:
+        path_hint = _("No Tesseract executable path could be detected.\n")
+
+    error_message = (
+        f"{path_hint}\n"
+        "TejOCR cannot reach Tesseract from LibreOffice.\n\n"
+        f"{_tesseract_install_recommendation()}\n\n"
+        "Or set the exact executable path in: Settings -> Tesseract Path.\n\n"
+        "Then restart LibreOffice if needed."
+    )
+    if session and getattr(session, "path_message", ""):
+        error_message = "{message}\n\nDetails: {details}".format(
+            message=error_message,
+            details=session.path_message,
+        )
+
+    if show_gui_errors:
+        uno_utils.show_message_box(
+            title,
+            error_message,
+            "errorbox",
+            parent_frame=parent_frame,
+            ctx=ctx
+        )
+    return False, error_message
 
 # Attempt to import pytesseract and Pillow, but handle if not available initially
 PILLOW_AVAILABLE = False
 
 try:
-    from PIL import Image, ImageOps, ImageFilter
+    from PIL import Image, ImageOps, ImageFilter, ImageDraw
     PILLOW_AVAILABLE = True
 except ImportError:
     logger.warning("Pillow (PIL) library not found. Advanced image preprocessing will be disabled.")
+
+class OCRSession(object):
+    """Cache Tesseract and OCR runtime state for a run."""
+
+    def __init__(self, tesseract_path, version="", available_languages=None, oem_support=None, executor_mode=None):
+        self.tesseract_path = tesseract_path
+        self.version = version or ""
+        self.available_languages = list(available_languages or [])
+        self.oem_support = dict(oem_support or {})
+        self.executor_mode = ocr_runtime.coerce_executor_mode(
+            executor_mode,
+            constants.DEFAULT_OCR_EXECUTOR,
+        )
+        self.tessdata_prefix = _detect_tessdata_prefix(tesseract_path)
+        self.ready = bool(tesseract_path)
+        self.path_message = ""
+
+
+def _detect_tessdata_prefix(tesseract_path):
+    """Best-effort tessdata discovery based on the executable path."""
+    if not tesseract_path:
+        return os.environ.get("TESSDATA_PREFIX") or ""
+    if os.environ.get("TESSDATA_PREFIX"):
+        return os.environ.get("TESSDATA_PREFIX") or ""
+    try:
+        tess_dir = os.path.dirname(os.path.abspath(tesseract_path))
+        candidates = [
+            os.path.abspath(os.path.join(tess_dir, "..", "share", "tessdata")),
+            os.path.abspath(os.path.join(tess_dir, "..", "..", "share", "tessdata")),
+        ]
+        for candidate in candidates:
+            if os.path.isdir(candidate):
+                return candidate
+    except Exception:
+        return ""
+    return ""
+
+
+def _tesseract_env(session=None):
+    env = os.environ.copy()
+    prefix = ""
+    if session is not None:
+        prefix = getattr(session, "tessdata_prefix", "") or ""
+    if prefix and not env.get("TESSDATA_PREFIX"):
+        env["TESSDATA_PREFIX"] = prefix
+    return env
+
+
+def _run_tesseract_subprocess(command, session=None, timeout=120):
+    """Execute a Tesseract command with a stable environment."""
+    return subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=timeout,
+        env=_tesseract_env(session),
+    )
+
+
+def _split_help_mode_line(raw_line):
+    line = str(raw_line or "").strip()
+    if not line or "|" not in line:
+        return None, None
+    left, right = line.split("|", 1)
+    mode = left.strip()
+    if not mode.isdigit():
+        return None, None
+    description = right.strip()
+    return mode, description
+
+
+def _extract_mode_descriptions(command):
+    try:
+        result = _run_tesseract_subprocess(command, timeout=8)
+    except Exception:
+        return {}
+    output = "\n".join([result.stdout or "", result.stderr or ""]).splitlines()
+    descriptions = {}
+    pending_mode = None
+    for raw_line in output:
+        mode, description = _split_help_mode_line(raw_line)
+        if mode:
+            descriptions[mode] = description
+            pending_mode = mode
+            continue
+        if pending_mode and raw_line.startswith(" "):
+            descriptions[pending_mode] = "{current} {extra}".format(
+                current=descriptions[pending_mode],
+                extra=str(raw_line).strip(),
+            ).strip()
+        else:
+            pending_mode = None
+    return descriptions
+
+
+def _build_oem_probe_image():
+    if not PILLOW_AVAILABLE:
+        return None
+    try:
+        probe_path = _get_temp_image_path(suffix=".png")
+        image = Image.new("RGB", (220, 80), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((18, 16, 74, 64), outline="black", width=4)
+        draw.line((106, 16, 136, 64), fill="black", width=4)
+        draw.line((136, 16, 106, 64), fill="black", width=4)
+        image.save(probe_path, "PNG")
+        return probe_path
+    except Exception:
+        return None
+
+
+def _probe_legacy_oem_support(session, language_code=None):
+    """Probe whether legacy OEM modes can execute with the current runtime."""
+    support = {"0": True, "1": True, "2": True, "3": True}
+    if session is None or not session.tesseract_path:
+        return support
+    probe_image = _build_oem_probe_image()
+    if not probe_image:
+        return support
+
+    probe_lang = language_code or constants.DEFAULT_OCR_LANGUAGE
+    try:
+        for mode in ("0", "2"):
+            command = [
+                session.tesseract_path,
+                probe_image,
+                "stdout",
+                "-l",
+                probe_lang,
+                "--oem",
+                mode,
+                "--psm",
+                "10",
+            ]
+            result = _run_tesseract_subprocess(command, session=session, timeout=12)
+            output = "{stdout}\n{stderr}".format(stdout=result.stdout or "", stderr=result.stderr or "").lower()
+            if result.returncode != 0 and any(
+                token in output
+                for token in (
+                    "legacy engine requested, but components are not present",
+                    "failed loading language",
+                    "error opening data file",
+                    "read_params_file",
+                )
+            ):
+                support[mode] = False
+    except Exception:
+        pass
+    finally:
+        try:
+            os.remove(probe_image)
+        except Exception:
+            pass
+
+    return support
+
+
+def create_ocr_session(ctx=None, frame=None, show_gui_errors=False, executor_mode=None):
+    """Create a run-scoped OCR session with cached runtime state."""
+    configured_path = ""
+    if ctx:
+        try:
+            configured_path = uno_utils.get_setting(
+                constants.CFG_KEY_TESSERACT_PATH,
+                constants.DEFAULT_TESSERACT_PATH,
+                ctx,
+            )
+        except Exception:
+            configured_path = ""
+
+    is_ready, path_message = check_tesseract_path(
+        configured_path,
+        ctx=ctx,
+        parent_frame=frame,
+        show_gui_errors=show_gui_errors,
+    )
+    if not is_ready:
+        session = OCRSession(None, executor_mode=executor_mode)
+        session.path_message = path_message
+        session.ready = False
+        return session
+
+    tesseract_path = uno_utils.find_tesseract_executable(configured_path)
+    version = ""
+    if tesseract_path:
+        try:
+            version_result = _run_tesseract_subprocess([tesseract_path, "--version"], timeout=10)
+            version = (version_result.stdout or "").strip().splitlines()[0] if version_result.returncode == 0 else ""
+        except Exception:
+            version = ""
+
+    session = OCRSession(tesseract_path, version=version, executor_mode=executor_mode)
+    session.path_message = path_message or version
+    session.available_languages = get_available_languages(ctx=ctx, session=session)
+    session.oem_support = get_supported_oem_modes(ctx=ctx, session=session)
+    return session
 
 
 def _get_temp_image_path(suffix=".png"):
@@ -460,128 +657,27 @@ def extract_text_from_selected_image(
     scale=1.0,
     invert=False,
 ):
-    """Extract text from currently selected image in LibreOffice."""
-    if not _initialize_pytesseract(ctx):
-        logger.error("Cannot extract text: Pytesseract not available")
-        # uno_utils.show_message_box(_("Pytesseract Error"), _("Pytesseract library is not available. Please check installation."), "errorbox", parent_frame=frame, ctx=ctx)
-        return None
-    
-    exported_temp_image_path = None # Path of the image exported from selection
-    processed_image_path = None # Path of the image after preprocessing (if any)
-    final_image_path_for_ocr = None
-
-    try:
-        controller = frame.getController()
-        if not controller: logger.error("No controller available"); return None
-        selection = controller.getSelection()
-        if not selection: logger.error("No selection available"); return None
-        
-        graphic = uno_utils.get_graphic_from_selection(selection, ctx)
-        if not graphic: logger.error("Could not extract graphic from selection"); return None
-        
-        exported_temp_image_path = uno_utils.create_temp_file_from_graphic(graphic, ctx)
-        if not exported_temp_image_path:
-            logger.error("Could not create temporary image file from graphic")
-            # uno_utils.show_message_box(_("Image Export Error"), _("Failed to export selected image for OCR."), "errorbox", parent_frame=frame, ctx=ctx)
-            return None
-        
-        final_image_path_for_ocr = exported_temp_image_path # Default to exported path
-
-        lang_code = _normalize_lang_codes(lang)
-        psm_mode = str(psm if psm is not None else constants.DEFAULT_PSM_MODE).strip() or constants.DEFAULT_PSM_MODE
-        oem_mode = str(oem if oem is not None else constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE
-        should_grayscale = _coerce_bool(grayscale, False)
-        should_binarize = _coerce_bool(binarize, False)
-        should_invert = _coerce_bool(invert, False)
-        should_scale = _coerce_float(scale, 1.0)
-
-        if (improve_image or should_grayscale or should_binarize) and PILLOW_AVAILABLE:
-            logger.info(f"Preprocessing selected image (originally: {exported_temp_image_path}) as improvement was requested.")
-            processed_image_path = _preprocess_image(
-                exported_temp_image_path,
-                improve_quality=bool(improve_image),
-                grayscale=should_grayscale,
-                binarize_method='otsu' if should_binarize else None,
-                scale_factor=should_scale,
-                invert=should_invert,
-            )
-            if processed_image_path and processed_image_path != exported_temp_image_path:
-                logger.debug(f"Using preprocessed image: {processed_image_path}")
-                final_image_path_for_ocr = processed_image_path
-            elif not processed_image_path:
-                logger.warning(f"Preprocessing returned None for {exported_temp_image_path}. Using original temp image.")
-            # If processed_image_path is same as exported_temp_image_path, no change, final_image_path_for_ocr is already correct
-        elif improve_image and not PILLOW_AVAILABLE:
-            logger.warning("Image improvement requested but Pillow is not available. OCR will proceed without it.")
-            # uno_utils.show_message_box(_("Pillow Missing"), _("Image improvement requires Pillow library, which is not found. OCR will proceed on the original image."), "warningbox", parent_frame=frame, ctx=ctx)
-
-        if not final_image_path_for_ocr or not os.path.exists(final_image_path_for_ocr):
-            logger.error(f"Final image path for OCR is invalid or does not exist: {final_image_path_for_ocr}")
-            return None
-
-        language_chain = _build_language_fallback_chain(lang_code)
-        if not language_chain:
-            language_chain = [constants.DEFAULT_OCR_LANGUAGE]
-
-        logger.info(
-            f"Performing OCR on selected image (using '{final_image_path_for_ocr}') "
-            f"with language chain: {language_chain}"
-        )
-        custom_config = f"--oem {oem_mode} --psm {psm_mode}"
-        text = ""
-        last_error = None
-        for attempt_lang in language_chain:
-            try:
-                text = pytesseract.image_to_string(
-                    final_image_path_for_ocr,
-                    lang=attempt_lang,
-                    config=custom_config,
-                )
-                text = text.strip() if text is not None else ""
-                if text:
-                    logger.info(
-                        f"OCR completed. Extracted {len(text)} characters using lang='{attempt_lang}'."
-                    )
-                    break
-            except pytesseract.TesseractError as tess_err:
-                last_error = tess_err
-                logger.warning(
-                    f"Tesseract selected-image extraction failed for lang='{attempt_lang}': {tess_err}"
-                )
-                text = ""
-
-        if not text and last_error:
-            logger.warning(f"OCR selected-image extraction completed with no text. Last error: {last_error}")
-
-        logger.info(f"OCR completed. Extracted {len(text)} characters.")
-        return text.strip()
-        
-    except pytesseract.TesseractError as tess_err:
-        logger.error(f"Tesseract error for selected image: {tess_err}", exc_info=True)
-        # Fallback for language error can be added here if desired, as before
-        # uno_utils.show_message_box(_("Tesseract Error"), str(tess_err), "errorbox", parent_frame=frame, ctx=ctx)
-        return None
-    except Exception as e:
-        logger.error(f"Error extracting text from selected image: {e}", exc_info=True)
-        # uno_utils.show_message_box(_("OCR Error"), _("An unexpected error occurred: {error}").format(error=e), "errorbox", parent_frame=frame, ctx=ctx)
-        return None
-    finally:
-        # Clean up: exported_temp_image_path is the one from create_temp_file_from_graphic
-        if exported_temp_image_path and os.path.exists(exported_temp_image_path):
-            try: 
-                os.remove(exported_temp_image_path)
-                logger.debug(f"Cleaned up temporary exported image: {exported_temp_image_path}")
-            except Exception as e_remove:
-                logger.warning(f"Could not remove temporary exported image {exported_temp_image_path}: {e_remove}")
-        
-        # Clean up: processed_image_path is the one from _preprocess_image
-        # Only remove if it's different from exported_temp_image_path and exists
-        if processed_image_path and processed_image_path != exported_temp_image_path and os.path.exists(processed_image_path):
-            try: 
-                os.remove(processed_image_path)
-                logger.debug(f"Cleaned up temporary preprocessed image: {processed_image_path}")
-            except Exception as e_remove:
-                logger.warning(f"Could not remove temporary preprocessed image {processed_image_path}: {e_remove}")
+    """Extract text from the selected image through the unified OCR path."""
+    result = perform_ocr(
+        ctx,
+        frame,
+        "selected",
+        None,
+        {
+            "lang": lang,
+            "psm": psm if psm is not None else constants.DEFAULT_PSM_MODE,
+            "oem": oem if oem is not None else constants.DEFAULT_OEM_MODE,
+            "grayscale": grayscale,
+            "binarize": binarize,
+            "scale": scale,
+            "invert": invert,
+            "improve_image": improve_image,
+            "preset": constants.OCR_PRESET_CUSTOM,
+        },
+    )
+    if result.get("success"):
+        return (result.get("text") or "").strip()
+    return None
 
 def extract_text_from_image_file(
     ctx,
@@ -595,110 +691,27 @@ def extract_text_from_image_file(
     scale=1.0,
     invert=False,
 ):
-    """Extract text from an image file."""
-    if not _initialize_pytesseract(ctx):
-        logger.error("Cannot extract text: Pytesseract not available")
-        # uno_utils.show_message_box(_("Pytesseract Error"), _("Pytesseract library is not available. Please check installation."), "errorbox", ctx=ctx) # Assuming no frame here
-        return None
-    
-    if not os.path.exists(image_path):
-        logger.error(f"Image file does not exist: {image_path}")
-        # uno_utils.show_message_box(_("File Not Found"), _("Image file not found: {path}").format(path=image_path), "errorbox", ctx=ctx)
-        return None
-    
-    processed_image_path = None # Path of the image after preprocessing (if any)
-    final_image_path_for_ocr = image_path # Default to original user-provided path
-
-    try:
-        lang_code = _normalize_lang_codes(lang)
-        psm_mode = str(psm if psm is not None else constants.DEFAULT_PSM_MODE).strip() or constants.DEFAULT_PSM_MODE
-        oem_mode = str(oem if oem is not None else constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE
-        should_grayscale = _coerce_bool(grayscale, False)
-        should_binarize = _coerce_bool(binarize, False)
-        should_invert = _coerce_bool(invert, False)
-        should_scale = _coerce_float(scale, 1.0)
-
-        if (improve_image or should_grayscale or should_binarize) and PILLOW_AVAILABLE:
-            logger.info(f"Preprocessing image file ('{image_path}') as improvement was requested.")
-            # _preprocess_image will create a new temp file if it modifies the image
-            processed_image_path = _preprocess_image(
-                image_path,
-                improve_quality=bool(improve_image),
-                grayscale=should_grayscale,
-                binarize_method='otsu' if should_binarize else None,
-                scale_factor=should_scale,
-                invert=should_invert,
-            )
-            if processed_image_path and processed_image_path != image_path:
-                logger.debug(f"Using preprocessed image: {processed_image_path}")
-                final_image_path_for_ocr = processed_image_path
-            elif not processed_image_path:
-                logger.warning(f"Preprocessing returned None for {image_path}. Using original image.")
-            # If processed_image_path is same as image_path, no change, final_image_path_for_ocr is already correct
-        elif improve_image and not PILLOW_AVAILABLE:
-            logger.warning("Image improvement requested but Pillow is not available. OCR will proceed on the original image file.")
-            # uno_utils.show_message_box(_("Pillow Missing"), _("Image improvement requires Pillow library, which is not found. OCR will proceed on the original image."), "warningbox", ctx=ctx)
-
-        if not final_image_path_for_ocr or not os.path.exists(final_image_path_for_ocr):
-            logger.error(f"Final image path for OCR is invalid or does not exist: {final_image_path_for_ocr}")
-            return None
-
-        language_chain = _build_language_fallback_chain(lang_code)
-        if not language_chain:
-            language_chain = [constants.DEFAULT_OCR_LANGUAGE]
-
-        logger.info(
-            f"Performing OCR on image file (using '{final_image_path_for_ocr}') "
-            f"with language chain: {language_chain}"
-        )
-        custom_config = f"--oem {oem_mode} --psm {psm_mode}"
-        text = ""
-        last_error = None
-        for attempt_lang in language_chain:
-            try:
-                text = pytesseract.image_to_string(
-                    final_image_path_for_ocr,
-                    lang=attempt_lang,
-                    config=custom_config
-                )
-                text = text.strip() if text is not None else ""
-                if text:
-                    logger.info(
-                        f"OCR completed. Extracted {len(text)} characters from "
-                        f"{os.path.basename(final_image_path_for_ocr)} using lang='{attempt_lang}'."
-                    )
-                    break
-            except pytesseract.TesseractError as tess_err:
-                last_error = tess_err
-                logger.warning(
-                    f"Tesseract file extraction failed for lang='{attempt_lang}': {tess_err}"
-                )
-                text = ""
-
-        if not text and last_error:
-            logger.warning(f"OCR file extraction completed with no text. Last error: {last_error}")
-
-        logger.info(
-            f"OCR completed. Extracted {len(text)} characters from {os.path.basename(final_image_path_for_ocr)}"
-        )
-        return text.strip()
-    except pytesseract.TesseractError as tess_err:
-        logger.error(f"Tesseract error for {final_image_path_for_ocr}: {tess_err}", exc_info=True)
-        # Fallback for language error can be added here if desired
-        # uno_utils.show_message_box(_("Tesseract Error"), str(tess_err), "errorbox", ctx=ctx)
-        return None
-    except Exception as e:
-        logger.error(f"Error extracting text from image file {final_image_path_for_ocr}: {e}", exc_info=True)
-        # uno_utils.show_message_box(_("OCR Error"), _("An unexpected error occurred: {error}").format(error=e), "errorbox", ctx=ctx)
-        return None
-    finally:
-        # If a separate processed image was created (i.e., it's a temp file and different from original user path)
-        if processed_image_path and processed_image_path != image_path and os.path.exists(processed_image_path) and processed_image_path.startswith(tempfile.gettempdir()):
-            try:
-                os.remove(processed_image_path)
-                logger.debug(f"Cleaned up temporary preprocessed image: {processed_image_path}")
-            except Exception as e_remove:
-                logger.warning(f"Could not remove temporary preprocessed image {processed_image_path}: {e_remove}")
+    """Extract text from an image file through the unified OCR path."""
+    result = perform_ocr(
+        ctx,
+        None,
+        "file",
+        image_path,
+        {
+            "lang": lang,
+            "psm": psm if psm is not None else constants.DEFAULT_PSM_MODE,
+            "oem": oem if oem is not None else constants.DEFAULT_OEM_MODE,
+            "grayscale": grayscale,
+            "binarize": binarize,
+            "scale": scale,
+            "invert": invert,
+            "improve_image": improve_image,
+            "preset": constants.OCR_PRESET_CUSTOM,
+        },
+    )
+    if result.get("success"):
+        return (result.get("text") or "").strip()
+    return None
 
 def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_success=False, show_gui_errors=True):
     """Check if a given tesseract path is valid and working."""
@@ -867,7 +880,199 @@ def _normalize_lang_codes(lang_value):
     normalized = _dedupe_sequence(normalized)
     return "+".join(normalized)
 
-def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_options, status_callback=None):
+def _build_default_plan_options():
+    return {
+        "lang": constants.DEFAULT_OCR_LANGUAGE,
+        "psm": constants.DEFAULT_PSM_MODE,
+        "oem": constants.DEFAULT_OEM_MODE,
+        "scale": 1.0,
+        "grayscale": False,
+        "binarize": False,
+        "invert": False,
+        "improve_image": False,
+        "preset": constants.DEFAULT_OCR_PRESET,
+        "show_preview": False,
+        "merge_batch_results": False,
+    }
+
+
+def _build_tesseract_command(tesseract_path, image_path, lang, oem_mode, psm_mode):
+    return [
+        tesseract_path,
+        image_path,
+        "stdout",
+        "-l",
+        lang,
+        "--oem",
+        str(oem_mode).strip(),
+        "--psm",
+        str(psm_mode).strip(),
+    ]
+
+
+def _is_missing_language_error(error_text):
+    lowered = str(error_text or "").lower()
+    return any(
+        token in lowered
+        for token in (
+            "failed loading language",
+            "error opening data file",
+            "tessdata",
+            "language data",
+        )
+    )
+
+
+def _prepare_image_for_attempt(source_image_path, attempt_plan):
+    preprocess_start = time.perf_counter()
+    prepared_path = _preprocess_image(
+        source_image_path,
+        improve_quality=bool(attempt_plan.improve_image),
+        grayscale=bool(attempt_plan.grayscale),
+        binarize_method="otsu" if bool(attempt_plan.binarize) else None,
+        scale_factor=float(attempt_plan.scale),
+        invert=bool(attempt_plan.invert),
+    )
+    preprocess_seconds = time.perf_counter() - preprocess_start
+    return prepared_path or source_image_path, preprocess_seconds
+
+
+def _run_cli_ocr_attempt(session, image_path, attempt_plan):
+    start = time.perf_counter()
+    completed = _run_tesseract_subprocess(
+        _build_tesseract_command(
+            session.tesseract_path,
+            image_path,
+            attempt_plan.lang,
+            attempt_plan.oem,
+            attempt_plan.psm,
+        ),
+        session=session,
+        timeout=120,
+    )
+    used_language = attempt_plan.lang
+    stdout_text = (completed.stdout or "").strip()
+    stderr_text = (completed.stderr or "").strip()
+
+    if (
+        completed.returncode != 0
+        and attempt_plan.lang != constants.DEFAULT_OCR_LANGUAGE
+        and constants.DEFAULT_OCR_LANGUAGE in (session.available_languages or [])
+        and _is_missing_language_error(stderr_text)
+    ):
+        completed = _run_tesseract_subprocess(
+            _build_tesseract_command(
+                session.tesseract_path,
+                image_path,
+                constants.DEFAULT_OCR_LANGUAGE,
+                attempt_plan.oem,
+                attempt_plan.psm,
+            ),
+            session=session,
+            timeout=120,
+        )
+        used_language = constants.DEFAULT_OCR_LANGUAGE
+        stdout_text = (completed.stdout or "").strip()
+        stderr_text = (completed.stderr or "").strip()
+
+    return {
+        "text": stdout_text,
+        "error": stderr_text,
+        "returncode": completed.returncode,
+        "used_language": used_language,
+        "seconds": time.perf_counter() - start,
+    }
+
+
+def _resolve_executor_mode(ocr_options=None, session=None, ctx=None):
+    requested_mode = ""
+    if isinstance(ocr_options, dict):
+        requested_mode = ocr_options.get("executor_mode", "")
+    if not requested_mode and session is not None:
+        requested_mode = getattr(session, "executor_mode", "")
+    if not requested_mode and ctx is not None:
+        try:
+            requested_mode = uno_utils.get_setting(
+                constants.CFG_KEY_HIDDEN_OCR_EXECUTOR,
+                constants.DEFAULT_OCR_EXECUTOR,
+                ctx,
+            )
+        except Exception:
+            requested_mode = constants.DEFAULT_OCR_EXECUTOR
+    return ocr_runtime.coerce_executor_mode(
+        requested_mode,
+        constants.DEFAULT_OCR_EXECUTOR,
+    )
+
+
+def _supported_oem_values_for_executor(session, primary_oem, allow_fallback=False):
+    candidates = [str(primary_oem or constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE]
+    if allow_fallback:
+        candidates = _fallback_oem_values(candidates[0])
+
+    if not session or not getattr(session, "oem_support", None):
+        return candidates
+
+    supported = [mode for mode in candidates if session.oem_support.get(str(mode), True)]
+    return supported or candidates
+
+
+def _build_legacy_attempt_plans(execution_plan, session):
+    effective_options = dict(execution_plan.effective_options or {})
+    normalized_lang = effective_options.get("lang", constants.DEFAULT_OCR_LANGUAGE)
+    language_chain = _dedupe_sequence(
+        [normalized_lang] + _build_language_fallback_chain(normalized_lang)
+    )
+    psm_values = _fallback_psm_values(effective_options.get("psm", constants.DEFAULT_PSM_MODE))
+    oem_values = _supported_oem_values_for_executor(
+        session,
+        effective_options.get("oem", constants.DEFAULT_OEM_MODE),
+        allow_fallback=True,
+    )
+
+    attempts = []
+    for lang in language_chain:
+        for psm_value in psm_values:
+            for oem_value in oem_values:
+                attempts.append(
+                    ocr_runtime.OcrAttemptPlan(
+                        label="legacy-{index}".format(index=len(attempts) + 1),
+                        lang=lang,
+                        psm=psm_value,
+                        oem=oem_value,
+                        scale=float(effective_options.get("scale", 1.0)),
+                        improve_image=bool(effective_options.get("improve_image", False)),
+                        grayscale=bool(effective_options.get("grayscale", False)),
+                        binarize=bool(effective_options.get("binarize", False)),
+                        invert=bool(effective_options.get("invert", False)),
+                        reason="legacy fallback chain",
+                    )
+                )
+
+    enhanced_scale = max(float(effective_options.get("scale", 1.0)), 1.5)
+    for lang in language_chain:
+        for psm_value in psm_values:
+            for oem_value in oem_values:
+                attempts.append(
+                    ocr_runtime.OcrAttemptPlan(
+                        label="legacy-enhanced-{index}".format(index=len(attempts) + 1),
+                        lang=lang,
+                        psm=psm_value,
+                        oem=oem_value,
+                        scale=enhanced_scale,
+                        improve_image=True,
+                        grayscale=True,
+                        binarize=True,
+                        invert=bool(effective_options.get("invert", False)),
+                        reason="legacy enhanced fallback chain",
+                        enhanced=True,
+                    )
+                )
+
+    return attempts
+
+
+def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_options, status_callback=None, session=None):
     """Main function to perform OCR.
     source_type: 'file' or 'selected'
     image_path_or_selection_options: file path if source_type is 'file', or dict of selection info (not used yet)
@@ -875,41 +1080,58 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
     status_callback: function to update a status label (e.g., lambda msg: status_label.setText(msg))
     Returns a dict: {"success": True/False, "text": "recognized_text" or None, "message": "status_message"}
     """
-    if not PYTESSERACT_AVAILABLE:
-        logger.error("perform_ocr called but Pytesseract library not installed.")
-        return {"success": False, "text": None, "message": _("Pytesseract library not installed.")} # i18n
-
     if status_callback:
         status_callback(_("Initializing OCR...")) # i18n
     logger.info(f"Performing OCR: source='{source_type}', options={ocr_options}")
 
-    ocr_options = ocr_options or {}
-    lang_code = _normalize_lang_codes(ocr_options.get("lang", constants.DEFAULT_OCR_LANGUAGE))
-    psm_mode = str(ocr_options.get("psm", constants.DEFAULT_PSM_MODE)).strip() or constants.DEFAULT_PSM_MODE
-    oem_mode = str(ocr_options.get("oem", constants.DEFAULT_OEM_MODE)).strip() or constants.DEFAULT_OEM_MODE
-    grayscale = _coerce_bool(ocr_options.get("grayscale"), False)
-    binarize = _coerce_bool(ocr_options.get("binarize"), False)
-    scale_factor = _coerce_float(ocr_options.get("scale"), 1.0)
-    improve_image = _coerce_bool(ocr_options.get("improve_image"), False)
-    invert = _coerce_bool(ocr_options.get("invert"), False)
+    total_start = time.perf_counter()
+    dependency_start = time.perf_counter()
+    requested_executor_mode = _resolve_executor_mode(ocr_options=ocr_options, session=session, ctx=ctx)
+    active_session = session or create_ocr_session(
+        ctx=ctx,
+        frame=frame,
+        show_gui_errors=False,
+        executor_mode=requested_executor_mode,
+    )
+    dependency_seconds = time.perf_counter() - dependency_start
+    if active_session is None or not active_session.ready:
+        message = getattr(active_session, "path_message", "") or _("Tesseract not found or not working. Please check settings.")
+        logger.warning("Tesseract session creation failed during perform_ocr: %s", message)
+        return {"success": False, "text": None, "message": message}
+    active_session.executor_mode = requested_executor_mode
 
-    tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, ctx)
-    is_ready, path_message = check_tesseract_path(tess_path_cfg, ctx, frame)
-    if not is_ready:
-        logger.warning(f"Tesseract path check failed during perform_ocr: {path_message}")
-        logger.warning("Tesseract path check failed during perform_ocr.")
-        return {"success": False, "text": None, "message": _("Tesseract not found or not working. Please check settings.")} # i18n
-    
-    # Ensure tesseract_cmd is set for this pytesseract session
-    effective_tess_path = uno_utils.find_tesseract_executable(tess_path_cfg)
-    if not effective_tess_path: # Should have been caught by check_tesseract_path, but double check
-        logger.error("Effective Tesseract path could not be determined even after check_tesseract_path passed.")
-        return {"success": False, "text": None, "message": _("Critical error: Tesseract path inconsistency.")} # i18n
-    pytesseract.pytesseract.tesseract_cmd = effective_tess_path
+    execution_plan = ocr_runtime.resolve_execution_plan(
+        ocr_options or {},
+        available_languages=active_session.available_languages,
+        default_options=_build_default_plan_options(),
+        platform_name=platform.system(),
+    )
+    effective_oem = execution_plan.effective_options.get("oem", constants.DEFAULT_OEM_MODE)
+    if (
+        requested_executor_mode == constants.OCR_EXECUTOR_MODERN
+        and active_session.oem_support
+        and not active_session.oem_support.get(str(effective_oem), True)
+    ):
+        oem_message = _(
+            "Selected OEM {oem} is not supported by the current Tesseract traineddata/runtime."
+        ).format(oem=effective_oem)
+        logger.warning(oem_message)
+        return {"success": False, "text": None, "message": oem_message}
 
+    run_stats = ocr_runtime.OcrRunStats(
+        source_type=str(source_type or ""),
+        source_label="selected image" if source_type == "selected" else os.path.basename(str(image_path_or_selection_options or "")),
+        requested_options=execution_plan.requested_options,
+        effective_options=execution_plan.effective_options,
+        pdf_dpi=execution_plan.pdf_dpi,
+        executor_mode=requested_executor_mode,
+        dependency_probe_seconds=dependency_seconds,
+        warning=execution_plan.language.warning,
+        install_hint=execution_plan.language.install_hint,
+    )
     temp_image_to_ocr = None
     original_image_path_for_cleanup = None
-    final_image_for_ocr = None # Initialize here for broader scope in finally block
+    final_image_for_ocr = None
 
     try:
         if source_type == 'file':
@@ -931,179 +1153,109 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
             logger.error(f"Invalid OCR source type: {source_type}")
             return {"success": False, "text": None, "message": _("Invalid OCR source type.")} # i18n
 
-        if status_callback: status_callback(_("Preprocessing image (if enabled)...")) # i18n
-        logger.info(
-            f"Preprocessing image '{temp_image_to_ocr}' with options: "
-            f"improve_image={improve_image}, grayscale={grayscale}, binarize={binarize}, scale={scale_factor}"
-        )
-        processed_image_path = _preprocess_image(
-            temp_image_to_ocr,
-            improve_quality=improve_image,
-            grayscale=grayscale,
-            binarize_method='otsu' if binarize else None,
-            scale_factor=scale_factor,
-            invert=invert,
-        )
-        
-        # If preprocessing created a new file and the original was a temp file, clean up original.
-        if original_image_path_for_cleanup and processed_image_path != original_image_path_for_cleanup and \
-           original_image_path_for_cleanup.startswith(tempfile.gettempdir()):
-            logger.debug(f"Cleaning up original temp image: {original_image_path_for_cleanup}")
-            try: os.remove(original_image_path_for_cleanup)
-            except OSError as e_rem_orig:
-                 logger.warning(f"Could not remove original temp image '{original_image_path_for_cleanup}': {e_rem_orig}")
-                 pass
+        best_text = ""
+        best_used_language = execution_plan.effective_options.get("lang", constants.DEFAULT_OCR_LANGUAGE)
+        last_error = ""
+        attempt_plans = list(execution_plan.attempts)
+        if requested_executor_mode == constants.OCR_EXECUTOR_LEGACY:
+            attempt_plans = _build_legacy_attempt_plans(execution_plan, active_session)
+            logger.info(
+                "Legacy OCR executor enabled; fallback chain contains %s attempts.",
+                len(attempt_plans),
+            )
 
-        final_image_for_ocr = processed_image_path
-        logger.info(f"Image for Tesseract: {final_image_for_ocr}")
-
-        if status_callback: status_callback(_("Performing OCR (Lang: {lang_code})...").format(lang_code=ocr_options.get('lang'))) # i18n
-
-        language_chain = _build_language_fallback_chain(lang_code)
-        if not language_chain:
-            language_chain = [constants.DEFAULT_OCR_LANGUAGE]
-
-        def _build_ocr_attempts(current_oem_mode, current_psm_mode):
-            attempts = []
-            for attempt_oem in _fallback_oem_values(current_oem_mode):
-                for attempt_psm in _fallback_psm_values(current_psm_mode):
-                    attempts.append((attempt_oem, attempt_psm))
-            return attempts
-
-        ocr_attempts = _build_ocr_attempts(oem_mode, psm_mode)
-
-        logger.info(
-            "OCR engine will try %s configuration(s) for extraction. "
-            "Primary config: %s",
-            len(ocr_attempts),
-            _build_tesseract_config(oem_mode, psm_mode),
-        )
-
-        def _run_ocr_attempts(image_path, attempt_label, attempts, languages):
-            last_text = ""
-            last_error = None
-            last_language = None
-
+        for attempt_index, attempt_plan in enumerate(attempt_plans, start=1):
             if status_callback:
                 status_callback(
-                    _("OCR {attempt_label}: trying {count} configurations...").format(
-                        attempt_label=attempt_label,
-                        count=len(attempts),
-                        
+                    _("OCR attempt {index}/{count}: PSM {psm}, OEM {oem}").format(
+                        index=attempt_index,
+                        count=len(attempt_plans),
+                        psm=attempt_plan.psm,
+                        oem=attempt_plan.oem,
                     )
                 )
 
-            for attempt_lang in languages:
-                for attempt_index, (attempt_oem, attempt_psm) in enumerate(attempts, start=1):
-                    attempt_config = _build_tesseract_config(attempt_oem, attempt_psm)
-                    if status_callback:
-                        status_callback(
-                            _("OCR attempt {index}/{count}: {config}").format(
-                                index=attempt_index,
-                                count=len(attempts),
-                                config=attempt_config,
-                            )
-                        ) # i18n
-                    logger.info(
-                        "OCR attempt %s/%s using %s with lang=%s",
-                        attempt_index,
-                        len(attempts),
-                        attempt_config,
-                        attempt_lang,
-                    )
-                    try:
-                        last_text = pytesseract.image_to_string(
-                            image_path,
-                            lang=attempt_lang,
-                            config=attempt_config,
-                        )
-                        last_text = last_text.strip() if last_text is not None else ""
-                        logger.info(
-                            "Tesseract attempt %s output length: %s (lang=%s)",
-                            attempt_index,
-                            len(last_text),
-                            attempt_lang,
-                        )
-                        if last_text:
-                            logger.info(
-                                "Tesseract attempt %s produced non-empty output; stopping attempts.",
-                                attempt_index,
-                            )
-                            last_language = attempt_lang
-                            break
-                    except pytesseract.TesseractError as attempt_error:
-                        last_error = attempt_error
-                        logger.warning(
-                            "Tesseract attempt %s failed (lang=%s, OEM=%s, PSM=%s): %s",
-                            attempt_index,
-                            attempt_lang,
-                            attempt_oem,
-                            attempt_psm,
-                            attempt_error,
-                        )
-                        last_text = ""
-
-                if last_text:
-                    break
-
-            return last_text, last_error, last_language
-
-        text, last_error, used_language = _run_ocr_attempts(
-            final_image_for_ocr,
-            _("Pass"),
-            ocr_attempts,
-            language_chain,
-        )
-        if used_language:
-            logger.info("OCR language selected for final text: %s", used_language)
-
-        # Automatic quality recovery: try a stronger preprocessing pass when first pass
-        # returns empty text. This often improves results on noisy or low-res scans.
-        if not text and (
-            not improve_image
-            or not grayscale
-            or not binarize
-            or scale_factor < 1.5
-        ):
+            attempt_image = temp_image_to_ocr
+            preprocess_seconds = 0.0
             try:
-                if status_callback:
-                    status_callback(
-                        _("No text found. Trying enhanced preprocessing fallback...")
-                    ) # i18n
-                enhanced_scale = max(scale_factor, 1.5)
-                enhanced_image = _preprocess_image(
-                    final_image_for_ocr,
-                    improve_quality=True,
-                    grayscale=True,
-                    binarize_method="otsu",
-                    scale_factor=enhanced_scale,
-                    invert=invert,
-                )
-                if enhanced_image and enhanced_image != final_image_for_ocr:
-                    if final_image_for_ocr and final_image_for_ocr.startswith(tempfile.gettempdir()):
-                        try:
-                            os.remove(final_image_for_ocr)
-                            logger.debug(f"Removed primary temp image before enhanced pass: {final_image_for_ocr}")
-                        except OSError as _err:
-                            logger.debug(f"Could not remove primary temp image '{final_image_for_ocr}': {_err}")
-                    final_image_for_ocr = enhanced_image
-                    ocr_attempts = _build_ocr_attempts(oem_mode, psm_mode)
-                    text, retry_error, retry_lang = _run_ocr_attempts(
-                        final_image_for_ocr,
-                        _("Enhanced pass"),
-                        ocr_attempts,
-                        language_chain,
+                attempt_image, preprocess_seconds = _prepare_image_for_attempt(temp_image_to_ocr, attempt_plan)
+                run_stats.preprocessing_seconds += preprocess_seconds
+                final_image_for_ocr = attempt_image
+                attempt_result = _run_cli_ocr_attempt(active_session, attempt_image, attempt_plan)
+                attempt_text = (attempt_result.get("text") or "").strip()
+                attempt_error = attempt_result.get("error") or ""
+                attempt_seconds = float(attempt_result.get("seconds", 0.0))
+                used_language = attempt_result.get("used_language") or attempt_plan.lang
+                low_signal = ocr_runtime.is_low_signal_text(
+                    attempt_text,
+                    min_chars=execution_plan.low_signal_char_count,
+                ) if attempt_text else True
+
+                run_stats.attempts.append(
+                    ocr_runtime.OcrAttemptStats(
+                        label=attempt_plan.label,
+                        lang=used_language,
+                        psm=attempt_plan.psm,
+                        oem=attempt_plan.oem,
+                        scale=float(attempt_plan.scale),
+                        improve_image=bool(attempt_plan.improve_image),
+                        grayscale=bool(attempt_plan.grayscale),
+                        binarize=bool(attempt_plan.binarize),
+                        invert=bool(attempt_plan.invert),
+                        seconds=attempt_seconds,
+                        output_length=len(attempt_text),
+                        success=bool(attempt_text),
+                        low_signal=bool(low_signal),
+                        reason=attempt_plan.reason,
+                        error=attempt_error,
+                        enhanced=bool(attempt_plan.enhanced),
                     )
-                    if retry_error:
-                        last_error = retry_error
-            except Exception as enhance_error:
-                logger.warning("Enhanced OCR pass failed: %s", enhance_error, exc_info=True)
+                )
+
+                if attempt_text and len(attempt_text) > len(best_text):
+                    best_text = attempt_text
+                    best_used_language = used_language
+
+                if attempt_text and not low_signal:
+                    best_text = attempt_text
+                    best_used_language = used_language
+                    if requested_executor_mode == constants.OCR_EXECUTOR_MODERN:
+                        break
+
+                if attempt_error:
+                    last_error = attempt_error
+
+                if (
+                    requested_executor_mode == constants.OCR_EXECUTOR_MODERN
+                    and attempt_index >= len(attempt_plans)
+                    and execution_plan.language.install_hint
+                    and not attempt_text
+                    and not last_error
+                ):
+                    last_error = execution_plan.language.install_hint
+            finally:
+                if (
+                    attempt_image
+                    and attempt_image != temp_image_to_ocr
+                    and attempt_image.startswith(tempfile.gettempdir())
+                    and os.path.exists(attempt_image)
+                ):
+                    try:
+                        os.remove(attempt_image)
+                    except Exception:
+                        pass
 
         if status_callback:
             status_callback(_("OCR Complete.")) # i18n
 
-        if not text:
-            if last_error is not None:
+        run_stats.used_language = best_used_language
+        run_stats.total_seconds = time.perf_counter() - total_start
+        diagnostics_text = ocr_runtime.build_run_diagnostics_text(run_stats)
+        if diagnostics_text:
+            logger.info("OCR diagnostics: %s", diagnostics_text)
+
+        if not best_text:
+            if last_error:
                 msg = _("OCR completed with warnings: {details}").format(
                     details=str(last_error)[:200] + "..."
                 )
@@ -1112,23 +1264,25 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
                     "OCR completed, but no text was recognized. "
                     "Try clearer source images, higher resolution, and 'Accuracy' preset."
                 )
-            return {"success": True, "text": "", "message": msg} # i18n
+            return {
+                "success": True,
+                "text": "",
+                "message": msg,
+                "stats": run_stats.to_dict(),
+                "diagnostics": diagnostics_text,
+            }
 
         logger.info(
-            f"Tesseract image_to_string successful. Output length: {len(text)}"
+            f"Tesseract subprocess OCR successful. Output length: {len(best_text)}"
         )
-        return {"success": True, "text": text, "message": _("OCR successful.")} # i18n
+        return {
+            "success": True,
+            "text": best_text,
+            "message": _("OCR successful."),
+            "stats": run_stats.to_dict(),
+            "diagnostics": diagnostics_text,
+        }
 
-    except pytesseract.TesseractNotFoundError:
-        msg = _("Tesseract is not installed or not in your PATH. Please check settings.") # i18n
-        logger.error(f"TesseractNotFoundError during OCR: {msg} (Effective path used: {effective_tess_path})")
-        if status_callback: status_callback(_("Error: {message}").format(message=msg)) # i18n
-        return {"success": False, "text": None, "message": msg}
-    except pytesseract.TesseractError as tess_err:
-        msg = _("Tesseract error: {error_details}").format(error_details=str(tess_err)[:200]+"...") # i18n
-        logger.error(f"TesseractError during OCR: {msg}", exc_info=True)
-        if status_callback: status_callback(_("Error: {message}").format(message=msg)) # i18n
-        return {"success": False, "text": None, "message": msg}
     except FileNotFoundError:
         msg = _("Image file not found for OCR (it may have been a temporary file that was removed prematurely).") # i18n
         logger.error(f"FileNotFoundError during OCR. Expected image at: {final_image_for_ocr if 'final_image_for_ocr' in locals() else 'Unknown'}", exc_info=True)
@@ -1142,14 +1296,17 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
         if status_callback: status_callback(_("Error: {message}").format(message=msg)) # i18n
         return {"success": False, "text": None, "message": msg}
     finally:
-        # Clean up the final processed image if it was a temporary file
-        if final_image_for_ocr and final_image_for_ocr.startswith(tempfile.gettempdir()): # Check final_image_for_ocr directly
+        if (
+            final_image_for_ocr
+            and final_image_for_ocr != temp_image_to_ocr
+            and final_image_for_ocr.startswith(tempfile.gettempdir())
+            and os.path.exists(final_image_for_ocr)
+        ):
             logger.debug(f"Cleaning up processed temp image: {final_image_for_ocr}")
-            try: os.remove(final_image_for_ocr)
+            try:
+                os.remove(final_image_for_ocr)
             except OSError as e_rem_final:
-                 logger.warning(f"Could not remove processed temp image '{final_image_for_ocr}': {e_rem_final}")
-                 pass
-        # Ensure original temp file for selection is cleaned if not already handled and different from final
+                logger.warning(f"Could not remove processed temp image '{final_image_for_ocr}': {e_rem_final}")
         if original_image_path_for_cleanup and os.path.exists(original_image_path_for_cleanup) and \
            original_image_path_for_cleanup != final_image_for_ocr and \
            original_image_path_for_cleanup.startswith(tempfile.gettempdir()):
@@ -1159,42 +1316,117 @@ def perform_ocr(ctx, frame, source_type, image_path_or_selection_options, ocr_op
                  logger.warning(f"Could not remove original temp image (final pass) '{original_image_path_for_cleanup}': {e_rem_orig_final}")
                  pass 
 
-def get_available_languages():
-    """Returns a list of available Tesseract languages."""
+def get_runtime_psm_modes(ctx=None, session=None):
+    """Return current PSM labels, preferring the local Tesseract help output."""
+    runtime_session = session
+    if runtime_session is None:
+        runtime_session = OCRSession(_find_tesseract_executable(ctx=ctx))
+    if not runtime_session or not runtime_session.tesseract_path:
+        return dict(constants.TESSERACT_PSM_MODES)
+
+    descriptions = _extract_mode_descriptions([runtime_session.tesseract_path, "--help-psm"])
+    if not descriptions:
+        return dict(constants.TESSERACT_PSM_MODES)
+
+    runtime_map = {}
+    for mode, fallback_text in constants.TESSERACT_PSM_MODES.items():
+        description = descriptions.get(mode)
+        if description:
+            description = _clean_mode_description(description)
+            if mode == "0":
+                description = "{description} Diagnostic mode; no OCR text output.".format(
+                    description=description.rstrip(".")
+                )
+            elif mode == "2" and "diagnostic mode" not in description.lower():
+                description = "{description} Diagnostic mode; not implemented for text output.".format(
+                    description=description.rstrip(".")
+                )
+            runtime_map[mode] = "{mode}: {description}".format(mode=mode, description=description)
+        else:
+            runtime_map[mode] = fallback_text
+    return runtime_map
+
+
+def get_supported_oem_modes(ctx=None, session=None):
+    """Return a support map for OEM modes under the current runtime."""
+    runtime_session = session
+    if runtime_session is None:
+        runtime_session = OCRSession(_find_tesseract_executable(ctx=ctx))
+    if not runtime_session or not runtime_session.tesseract_path:
+        return {mode: True for mode in constants.TESSERACT_OEM_MODES}
+
+    descriptions = _extract_mode_descriptions([runtime_session.tesseract_path, "--help-oem"])
+    support = {}
+    for mode in constants.TESSERACT_OEM_MODES:
+        support[mode] = mode in descriptions if descriptions else True
+
+    legacy_probe = _probe_legacy_oem_support(runtime_session)
+    for mode, is_supported in legacy_probe.items():
+        if mode in support and not is_supported:
+            support[mode] = False
+    return support
+
+
+def get_runtime_oem_modes(ctx=None, session=None):
+    """Return OEM labels, annotating modes that cannot be honored."""
+    runtime_session = session
+    if runtime_session is None:
+        runtime_session = OCRSession(_find_tesseract_executable(ctx=ctx))
+    descriptions = {}
+    if runtime_session and runtime_session.tesseract_path:
+        descriptions = _extract_mode_descriptions([runtime_session.tesseract_path, "--help-oem"])
+    support = get_supported_oem_modes(ctx=ctx, session=runtime_session)
+
+    runtime_map = {}
+    for mode, fallback_text in constants.TESSERACT_OEM_MODES.items():
+        description = descriptions.get(mode)
+        if description:
+            description = _clean_mode_description(description)
+            label = "{mode}: {description}".format(mode=mode, description=description)
+        else:
+            label = fallback_text
+        if not support.get(mode, True):
+            label = "{label} (unsupported by current traineddata/runtime)".format(label=label)
+        runtime_map[mode] = label
+    return runtime_map
+
+
+def get_available_languages(ctx=None, session=None):
+    """Return installed Tesseract languages using the CLI directly."""
+    runtime_session = session
+    if runtime_session is None:
+        runtime_session = OCRSession(_find_tesseract_executable(ctx=ctx))
+    if not runtime_session or not runtime_session.tesseract_path:
+        return [constants.DEFAULT_OCR_LANGUAGE]
+
+    if runtime_session.available_languages:
+        return list(runtime_session.available_languages)
+
     try:
-        # Ensure Pytesseract is available
-        if not PYTESSERACT_AVAILABLE:
-            logger.warning("Pytesseract not available, cannot get languages")
-            return ["eng"]  # Default fallback
-        
-        # Initialize if needed
-        if not _initialize_pytesseract():
-            logger.warning("Could not initialize Pytesseract")
-            return ["eng"]  # Default fallback
-        
-        # Get available languages from Tesseract
-        langs = pytesseract.get_languages(config='')
-        
-        # Filter out empty strings and sort
-        available_langs = [lang for lang in langs if lang.strip()]
-        available_langs.sort()
-        
-        # Ensure English is first if available
+        result = _run_tesseract_subprocess(
+            [runtime_session.tesseract_path, "--list-langs"],
+            session=runtime_session,
+            timeout=15,
+        )
+        output = result.stdout or result.stderr or ""
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        if lines and lines[0].lower().startswith("list of available languages"):
+            lines = lines[1:]
+        available_langs = sorted(dedupe for dedupe in lines if dedupe)
         if "eng" in available_langs:
             available_langs.remove("eng")
             available_langs.insert(0, "eng")
-        
-        logger.debug(f"Available Tesseract languages: {available_langs}")
-        return available_langs if available_langs else ["eng"]
-        
+        runtime_session.available_languages = available_langs or [constants.DEFAULT_OCR_LANGUAGE]
+        return list(runtime_session.available_languages)
     except Exception as e:
         logger.warning(f"Could not detect available languages: {e}")
-        return ["eng"]  # Default fallback
+        return [constants.DEFAULT_OCR_LANGUAGE]
 
-def is_language_available(language_code):
+
+def is_language_available(language_code, ctx=None, session=None):
     """Check if a specific language pack is available."""
     try:
-        available = get_available_languages()
+        available = get_available_languages(ctx=ctx, session=session)
         return language_code in available
     except Exception as e:
         logger.warning(f"Error checking language availability: {e}")

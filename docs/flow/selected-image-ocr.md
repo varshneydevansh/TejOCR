@@ -26,8 +26,9 @@ Selection guard: is_graphic_object_selected()
                      -> engine.extract_text_from_selected_image()
                            -> _get_image_from_selection()
                            -> _export_graphic_to_file()
+                           -> resolve bounded execution plan
                            -> _preprocess_image()
-                           -> OCR attempts (PSM/OEM chain)
+                           -> exact attempt + optional recovery
                      -> output.handle_ocr_output(... insertion_anchor + replacement_target)
                      -> success notification
 ```
@@ -44,20 +45,21 @@ flowchart TD
   H --> I["engine.extract_text_from_selected_image"]
   I --> J["_get_image_from_selection"]
   J --> K["_export_graphic_to_file"]
-  K --> L["_preprocess_image"]
-  L --> M["OCR attempt loop"]
-  M --> N["handle_ocr_output(anchor,target)"]
-  N --> O{output mode}
-  O -->|at_cursor| P["_resolve_insertion_cursor/_insert_text_at_cursor"]
-  O -->|new_text_box| Q["create_text_box_with_text"]
-  O -->|clipboard| R["copy_text_to_clipboard"]
-  O -->|replace_image| S["_replace_image_with_text"]
-  D --> T["Stop"]
-  P --> U["Success"]
-  Q --> U
+  K --> L["resolve bounded execution plan"]
+  L --> M["_preprocess_image"]
+  M --> N["exact attempt + optional recovery"]
+  N --> O["handle_ocr_output(anchor,target)"]
+  O --> P{output mode}
+  P -->|at_cursor| Q["_resolve_insertion_cursor/_insert_text_at_cursor"]
+  P -->|new_text_box| R["create_text_box_with_text"]
+  P -->|clipboard| S["copy_text_to_clipboard"]
+  P -->|replace_image| T["_replace_image_with_text"]
+  D --> X["Stop"]
+  Q --> U["Success"]
   R --> U
   S --> U
-  D --> U
+  T --> U
+  X --> U
 ```
 
 ## Important output semantics for selected-image flow
@@ -74,4 +76,3 @@ flowchart TD
   B -->|no| D["cursor fallback path"]
   D --> E["insert at cursor or doc end"]
 ```
-

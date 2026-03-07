@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.1.8"
+EXTENSION_VERSION = "0.1.9"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 
@@ -30,6 +30,7 @@ CFG_KEY_LAST_OUTPUT_MODE = "LastOutputMode" # For OCR Options Dialog
 CFG_KEY_DEFAULT_SCALE = "DefaultScaleFactor"
 CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT = "ShowPreviewBeforeOutput" # For preview/edit before inserting OCR text
 CFG_KEY_MERGE_BATCH_RESULTS = "MergeBatchResults"
+CFG_KEY_HIDDEN_OCR_EXECUTOR = "HiddenOcrExecutor"
 
 # --- Default Values ---
 DEFAULT_OCR_LANGUAGE = "eng"  # Default to English
@@ -47,9 +48,9 @@ DEFAULT_TESSERACT_PATH = "" # Empty, to trigger auto-detection or user input
 # --- Tesseract PSM (Page Segmentation Modes) --- 
 # (Value: Description for UI)
 TESSERACT_PSM_MODES = {
-    "0": "0: Orientation and script detection (OSD) only.",
+    "0": "0: Orientation and script detection only. Diagnostic mode; no OCR text output.",
     "1": "1: Automatic page segmentation with OSD.",
-    "2": "2: Automatic page segmentation, but no OSD, or OCR.",
+    "2": "2: Automatic page segmentation, but no OSD, or OCR. Diagnostic mode; not implemented for text output.",
     "3": "3: Fully automatic page segmentation, but no OSD. (Default)",
     "4": "4: Assume a single column of text of variable sizes.",
     "5": "5: Assume a single uniform block of vertically aligned text.",
@@ -74,7 +75,7 @@ DEFAULT_OCR_PRESET = OCR_PRESET_BALANCED
 OCR_QUALITY_PRESETS = {
     OCR_PRESET_FAST: {
         "label": "Fast",
-        "description": "Faster extraction with minimal preprocessing",
+        "description": "Single exact OCR pass with minimal preprocessing",
         "psm": "11",
         "oem": "3",
         "scale": "1.0",
@@ -85,7 +86,7 @@ OCR_QUALITY_PRESETS = {
     },
     OCR_PRESET_BALANCED: {
         "label": "Balanced",
-        "description": "Recommended default mix of speed and quality",
+        "description": "Exact OCR pass plus one smart recovery if output is weak",
         "psm": "3",
         "oem": "3",
         "scale": "1.0",
@@ -96,7 +97,7 @@ OCR_QUALITY_PRESETS = {
     },
     OCR_PRESET_ACCURATE: {
         "label": "Accuracy",
-        "description": "Higher quality using stronger preprocessing",
+        "description": "Exact OCR pass plus one enhanced preprocessing recovery",
         "psm": "6",
         "oem": "3",
         "scale": "1.5",
@@ -108,6 +109,11 @@ OCR_QUALITY_PRESETS = {
 }
 
 OCR_PRESET_CHOICES = (OCR_PRESET_FAST, OCR_PRESET_BALANCED, OCR_PRESET_ACCURATE, OCR_PRESET_CUSTOM)
+
+OCR_EXECUTOR_MODERN = "modern"
+OCR_EXECUTOR_LEGACY = "legacy"
+OCR_EXECUTOR_CHOICES = (OCR_EXECUTOR_MODERN, OCR_EXECUTOR_LEGACY)
+DEFAULT_OCR_EXECUTOR = OCR_EXECUTOR_MODERN
 
 # --- Tesseract OEM (OCR Engine Modes) --- 
 # (Value: Description for UI)

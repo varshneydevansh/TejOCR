@@ -5,6 +5,7 @@ This folder contains all deep documentation for the extension.
 ## Quick Start
 
 - [README (project entry)](../README.md)
+- [CHANGELOG](../CHANGELOG.md)
 - [Architecture overview](architecture/overview.md)
 - [Dispatch and runtime flow](architecture/dispatch-flow.md)
 - [Method call map](reference/method-map.md)
@@ -12,6 +13,9 @@ This folder contains all deep documentation for the extension.
 - [Output modes](reference/output-modes.md)
 - [OCR presets and engine tuning](reference/ocr-options-and-engine-tuning.md)
 - [Build and release](dev/build-release.md)
+- [OCR hardening checklist](dev/ocr-hardening-checklist.md)
+- [UI alignment plan](dev/tejocr-ui-alignment-plan.md)
+- [Security and risk review](dev/security-review.md)
 - [Packaging and metadata validation](dev/metadata-and-packaging.md)
 - [Troubleshooting installation/license issues](troubleshooting/installation.md)
 - [UI fallback behavior](troubleshooting/dialog-fallbacks.md)

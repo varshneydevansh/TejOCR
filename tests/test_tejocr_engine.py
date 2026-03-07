@@ -1,192 +1,270 @@
- # This Source Code Form is subject to the terms of the Mozilla Public
+# This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-#
-# © 2025 Devansh (Author of TejOCR)
 
-import unittest
-from unittest.mock import patch, MagicMock, mock_open
 import os
-import tempfile
-
-# Add the parent directory of 'python' to sys.path to allow sibling imports if necessary
-# This is often needed when running tests directly if the project isn't installed as a package.
 import sys
-# Assuming this test file is in tests/ and the code is in python/tejocr/
-# We need to go up one level from tests/ to TejOCR.oxt/, then into python/
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir) # Goes to TejOCR.oxt/
-sys.path.insert(0, os.path.join(project_root, 'python'))
+import tempfile
+import types
+import unittest
+from unittest.mock import Mock, patch
 
-from tejocr import tejocr_engine
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+PYTHON_ROOT = os.path.join(PROJECT_ROOT, "python")
+if PYTHON_ROOT not in sys.path:
+    sys.path.insert(0, PYTHON_ROOT)
+
+
+def _install_uno_stubs():
+    if "uno" not in sys.modules:
+        uno = types.ModuleType("uno")
+        uno.Any = lambda *_args: _args[-1] if _args else None
+        uno.getConstantByName = lambda _name: None
+        uno.systemPathToFileUrl = lambda value: value
+        uno.fileUrlToSystemPath = lambda value: value
+        uno.createUnoStruct = lambda _name: types.SimpleNamespace()
+        sys.modules["uno"] = uno
+    if "unohelper" not in sys.modules:
+        unohelper = types.ModuleType("unohelper")
+        unohelper.Base = object
+        sys.modules["unohelper"] = unohelper
+
+
+_install_uno_stubs()
+
 from tejocr import constants
-from tejocr import uno_utils # For things like create_temp_file, though it might also need mocks
+from tejocr import tejocr_engine
 
-# Mock the logger used within tejocr_engine and other modules if it's called during tests
-# This prevents log file creation during tests unless specifically intended.
-@patch('tejocr.uno_utils.get_logger')
+
 class TestTejocrEngine(unittest.TestCase):
-
-    def setUp(self):
-        # Create a temporary directory for test files if needed
-        self.test_dir = tempfile.TemporaryDirectory()
-        self.mock_ctx = MagicMock() # Mock for UNO context
-        self.mock_frame = MagicMock() # Mock for LO frame
-
-    def tearDown(self):
-        self.test_dir.cleanup()
-
-    @patch('tejocr.tejocr_engine.PILLOW_AVAILABLE', True)
-    @patch('tejocr.tejocr_engine.Image') # Mock Pillow's Image module
-    def test_preprocess_image_grayscale(self, MockImage, mock_logger):
-        mock_img_instance = MockImage.open.return_value
-        mock_img_instance.format = 'PNG'
-        
-        # Create a dummy input image path
-        dummy_image_path = os.path.join(self.test_dir.name, "test.png")
-        with open(dummy_image_path, 'w') as f: f.write("dummy_content")
-
-        processed_path = tejocr_engine._preprocess_image(dummy_image_path, grayscale=True)
-        
-        MockImage.open.assert_called_once_with(dummy_image_path)
-        mock_img_instance.ImageOps.grayscale.assert_called_once()
-        mock_img_instance.save.assert_called_once()
-        self.assertNotEqual(processed_path, dummy_image_path) # Should save to a new file
-        self.assertTrue(os.path.exists(processed_path))
-
-    @patch('tejocr.tejocr_engine.PILLOW_AVAILABLE', True)
-    @patch('tejocr.tejocr_engine.Image')
-    def test_preprocess_image_binarize_otsu_placeholder(self, MockImage, mock_logger):
-        mock_img_instance = MockImage.open.return_value
-        mock_img_instance.format = 'JPEG'
-        mock_gray_img = MagicMock()
-        mock_img_instance.ImageOps.grayscale.return_value = mock_gray_img
-
-        dummy_image_path = os.path.join(self.test_dir.name, "test.jpg")
-        with open(dummy_image_path, 'w') as f: f.write("dummy_content")
-
-        processed_path = tejocr_engine._preprocess_image(dummy_image_path, binarize_method='otsu')
-
-        MockImage.open.assert_called_once_with(dummy_image_path)
-        # It should grayscale first (even if grayscale=False, binarize='otsu' implies it)
-        mock_img_instance.ImageOps.grayscale.assert_called_once()
-        mock_gray_img.convert.assert_called_with('1') # Check that basic bilevel conversion is called
-        mock_img_instance.save.assert_called_once()
-        self.assertNotEqual(processed_path, dummy_image_path)
-        self.assertTrue(os.path.exists(processed_path))
-
-    @patch('tejocr.tejocr_engine.PILLOW_AVAILABLE', False)
-    def test_preprocess_image_pillow_not_available(self, mock_logger):
-        dummy_image_path = "test_path.png"
-        processed_path = tejocr_engine._preprocess_image(dummy_image_path, grayscale=True)
-        self.assertEqual(processed_path, dummy_image_path) # Should return original path
-
-    @patch('tejocr.tejocr_engine.pytesseract')
-    @patch('tejocr.uno_utils.find_tesseract_executable')
-    def test_check_tesseract_path_success(self, mock_find_tess_exec, mock_pytesseract, mock_logger):
-        mock_find_tess_exec.return_value = "/usr/bin/tesseract" # Mock a found path
-        mock_pytesseract.get_tesseract_version.return_value = "5.0.0"
-        
-        result = tejocr_engine.check_tesseract_path("ignored_path", self.mock_ctx, self.mock_frame, show_success=True)
-        
-        self.assertTrue(result)
-        mock_find_tess_exec.assert_called_once_with("ignored_path", self.mock_ctx)
-        mock_pytesseract.get_tesseract_version.assert_called_once()
-        # Check if show_message_box was called (indirectly, via uno_utils)
-        # This requires uno_utils.show_message_box to be mockable or to check logger output
-
-    @patch('tejocr.tejocr_engine.pytesseract')
-    @patch('tejocr.uno_utils.find_tesseract_executable')
-    @patch('tejocr.uno_utils.show_message_box') # Mock show_message_box directly
-    def test_check_tesseract_path_not_found(self, mock_show_msg_box, mock_find_tess_exec, mock_pytesseract, mock_logger):
-        mock_find_tess_exec.return_value = None # Tesseract not found by helper
-        
-        result = tejocr_engine.check_tesseract_path(None, self.mock_ctx, self.mock_frame)
-        
-        self.assertFalse(result)
-        mock_show_msg_box.assert_called_once() # Should show a message
-
-    @patch('tejocr.tejocr_engine.pytesseract')
-    @patch('tejocr.uno_utils.find_tesseract_executable')
-    @patch('tejocr.uno_utils.show_message_box')
-    def test_check_tesseract_path_pytesseract_error(self, mock_show_msg_box, mock_find_tess_exec, mock_pytesseract, mock_logger):
-        mock_find_tess_exec.return_value = "/fake/tesseract"
-        mock_pytesseract.get_tesseract_version.side_effect = pytesseract.TesseractNotFoundError
-        
-        result = tejocr_engine.check_tesseract_path("/fake/tesseract", self.mock_ctx, self.mock_frame)
-        
-        self.assertFalse(result)
-        # Potentially two calls: one from find_tesseract_executable if path invalid, one from check_tesseract_path itself
-        self.assertGreaterEqual(mock_show_msg_box.call_count, 1) 
-
-    # More tests needed for perform_ocr
-    # These are more complex due to dependencies on _get_image_from_selection, _preprocess_image,
-    # pytesseract.image_to_string, and file operations.
-    # We'd need to mock these extensively.
-
-    @patch('tejocr.tejocr_engine.PYTESSERACT_AVAILABLE', True)
-    @patch('tejocr.tejocr_engine.check_tesseract_path', return_value=True) # Assume Tesseract is OK
-    @patch('tejocr.tejocr_engine._get_image_from_selection')
-    @patch('tejocr.tejocr_engine._preprocess_image', side_effect=lambda x, *args, **kwargs: x) # Bypass preprocessing
-    @patch('tejocr.tejocr_engine.pytesseract.image_to_string')
-    @patch('tejocr.tejocr_engine.Image.open') # Mock PIL.Image.open
-    def test_perform_ocr_selected_image_success(self, mock_pil_image_open, mock_image_to_string, mock_preprocess, mock_get_selection, mock_check_tess, mock_logger):
-        mock_get_selection.return_value = "/tmp/selected_image.png"
-        mock_image_to_string.return_value = "Recognized Text"
-        mock_pil_image_open.return_value = MagicMock() # Return a mock image object
-
-        ocr_options = {
-            'lang': 'eng', 'psm': constants.DEFAULT_PSM_MODE, 'oem': constants.DEFAULT_OEM_MODE,
-            'grayscale': False, 'binarize': False
+    def _session(self, **overrides):
+        data = {
+            "ready": True,
+            "path_message": "Tesseract ready",
+            "available_languages": ["eng", "hin"],
+            "oem_support": {"0": True, "1": True, "2": True, "3": True},
+            "tesseract_path": "/usr/bin/tesseract",
+            "version": "tesseract 5.5.1",
         }
-        result = tejocr_engine.perform_ocr(self.mock_ctx, self.mock_frame, 'selected', None, ocr_options)
+        data.update(overrides)
+        return types.SimpleNamespace(**data)
+
+    def _temp_image(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        handle.close()
+        self.addCleanup(lambda: os.path.exists(handle.name) and os.remove(handle.name))
+        return handle.name
+
+    def test_perform_ocr_uses_cli_runtime_without_pytesseract(self):
+        image_path = self._temp_image()
+        session = self._session()
+
+        with patch.object(tejocr_engine, "PYTESSERACT_AVAILABLE", False), \
+             patch.object(tejocr_engine, "_prepare_image_for_attempt", return_value=(image_path, 0.01)), \
+             patch.object(
+                 tejocr_engine,
+                 "_run_cli_ocr_attempt",
+                 return_value={
+                     "text": "Hello world from OCR",
+                     "error": "",
+                     "returncode": 0,
+                     "used_language": "eng",
+                     "seconds": 0.02,
+                 },
+             ):
+            result = tejocr_engine.perform_ocr(
+                None,
+                None,
+                "file",
+                image_path,
+                {"preset": constants.OCR_PRESET_BALANCED, "lang": "eng"},
+                session=session,
+            )
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["text"], "Recognized Text")
-        mock_get_selection.assert_called_once_with(self.mock_frame, self.mock_ctx)
-        mock_preprocess.assert_called_once_with("/tmp/selected_image.png", False, None)
-        mock_image_to_string.assert_called_once()
+        self.assertEqual(result["text"], "Hello world from OCR")
+        self.assertIn("Requested:", result["diagnostics"])
+        self.assertEqual(len(result["stats"]["attempts"]), 1)
 
-    @patch('tejocr.tejocr_engine.PYTESSERACT_AVAILABLE', True)
-    @patch('tejocr.tejocr_engine.check_tesseract_path', return_value=True)
-    @patch('os.path.isfile', return_value=True) # Assume image_path is a valid file
-    @patch('tejocr.tejocr_engine._preprocess_image', side_effect=lambda x, *args, **kwargs: x)
-    @patch('tejocr.tejocr_engine.pytesseract.image_to_string')
-    @patch('tejocr.tejocr_engine.Image.open')
-    def test_perform_ocr_file_success(self, mock_pil_image_open, mock_image_to_string, mock_preprocess, mock_isfile, mock_check_tess, mock_logger):
-        test_image_path = "/path/to/user_image.png"
-        mock_image_to_string.return_value = "Text From File"
-        mock_pil_image_open.return_value = MagicMock()
+    def test_balanced_mode_runs_one_recovery_attempt_for_low_signal_output(self):
+        image_path = self._temp_image()
+        session = self._session()
+        attempt_results = [
+            {
+                "text": "tiny",
+                "error": "",
+                "returncode": 0,
+                "used_language": "eng",
+                "seconds": 0.02,
+            },
+            {
+                "text": "Recovered text with enough signal",
+                "error": "",
+                "returncode": 0,
+                "used_language": "eng",
+                "seconds": 0.03,
+            },
+        ]
 
-        ocr_options = {
-            'lang': 'deu', 'psm': '1', 'oem': '1',
-            'grayscale': True, 'binarize': True
-        }
-        result = tejocr_engine.perform_ocr(self.mock_ctx, self.mock_frame, 'file', test_image_path, ocr_options)
+        with patch.object(tejocr_engine, "_prepare_image_for_attempt", return_value=(image_path, 0.0)), \
+             patch.object(tejocr_engine, "_run_cli_ocr_attempt", side_effect=attempt_results) as run_attempt:
+            result = tejocr_engine.perform_ocr(
+                None,
+                None,
+                "file",
+                image_path,
+                {"preset": constants.OCR_PRESET_BALANCED, "lang": "eng", "psm": "3"},
+                session=session,
+            )
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["text"], "Text From File")
-        mock_preprocess.assert_called_once_with(test_image_path, True, 'otsu') # Binarize True maps to 'otsu'
-        mock_image_to_string.assert_called_once()
+        self.assertEqual(result["text"], "Recovered text with enough signal")
+        self.assertEqual(run_attempt.call_count, 2)
+        self.assertEqual(
+            [attempt["label"] for attempt in result["stats"]["attempts"]],
+            ["exact", "recovery"],
+        )
 
-    @patch('tejocr.tejocr_engine.PYTESSERACT_AVAILABLE', False) # Test when pytesseract is globally unavailable
-    def test_perform_ocr_pytesseract_not_available(self, mock_logger):
-        result = tejocr_engine.perform_ocr(self.mock_ctx, self.mock_frame, 'file', 'dummy.png', {})
+    def test_legacy_executor_reports_legacy_attempts(self):
+        image_path = self._temp_image()
+        session = self._session()
+        attempt_results = [
+            {
+                "text": "tiny",
+                "error": "",
+                "returncode": 0,
+                "used_language": "eng",
+                "seconds": 0.02,
+            },
+            {
+                "text": "Legacy fallback recovered enough text",
+                "error": "",
+                "returncode": 0,
+                "used_language": "eng",
+                "seconds": 0.03,
+            },
+        ]
+        legacy_attempts = [
+            tejocr_engine.ocr_runtime.OcrAttemptPlan(
+                label="legacy-1",
+                lang="eng",
+                psm="3",
+                oem="3",
+                scale=1.0,
+                improve_image=False,
+                grayscale=False,
+                binarize=False,
+                invert=False,
+            ),
+            tejocr_engine.ocr_runtime.OcrAttemptPlan(
+                label="legacy-2",
+                lang="eng",
+                psm="11",
+                oem="3",
+                scale=1.0,
+                improve_image=False,
+                grayscale=False,
+                binarize=False,
+                invert=False,
+            ),
+        ]
+
+        with patch.object(tejocr_engine, "_prepare_image_for_attempt", return_value=(image_path, 0.0)), \
+             patch.object(tejocr_engine, "_run_cli_ocr_attempt", side_effect=attempt_results), \
+             patch.object(tejocr_engine, "_build_legacy_attempt_plans", return_value=legacy_attempts):
+            result = tejocr_engine.perform_ocr(
+                None,
+                None,
+                "file",
+                image_path,
+                {
+                    "preset": constants.OCR_PRESET_BALANCED,
+                    "lang": "eng",
+                    "executor_mode": constants.OCR_EXECUTOR_LEGACY,
+                },
+                session=session,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["text"], "Legacy fallback recovered enough text")
+        self.assertEqual(len(result["stats"]["attempts"]), 2)
+        self.assertTrue(result["stats"]["attempts"][0]["label"].startswith("legacy-"))
+        self.assertIn("Executor: legacy", result["diagnostics"])
+
+    def test_unsupported_oem_fails_before_ocr_runs(self):
+        session = self._session(oem_support={"0": False, "1": True, "2": False, "3": True})
+
+        result = tejocr_engine.perform_ocr(
+            None,
+            None,
+            "file",
+            "ignored.png",
+            {
+                "preset": constants.OCR_PRESET_CUSTOM,
+                "lang": "eng",
+                "oem": "0",
+            },
+            session=session,
+        )
+
         self.assertFalse(result["success"])
-        self.assertIn("Pytesseract library not installed", result["message"])
+        self.assertIn("Selected OEM 0 is not supported", result["message"])
 
-    @patch('tejocr.tejocr_engine.PYTESSERACT_AVAILABLE', True)
-    @patch('tejocr.tejocr_engine.check_tesseract_path', return_value=False) # Tesseract check fails
-    def test_perform_ocr_tesseract_check_fails(self, mock_check_tess, mock_logger):
-        result = tejocr_engine.perform_ocr(self.mock_ctx, self.mock_frame, 'file', 'dummy.png', {})
-        self.assertFalse(result["success"])
-        self.assertIn("Tesseract not found or not working", result["message"])
+    def test_is_tesseract_ready_accepts_cli_runtime_without_pytesseract(self):
+        session = self._session()
 
-    # TODO: Add tests for perform_ocr failures (e.g., image extraction fails, pytesseract.image_to_string raises error)
+        with patch.object(tejocr_engine, "create_ocr_session", return_value=session), \
+             patch.object(tejocr_engine, "_has_module", return_value=False):
+            is_ready, message = tejocr_engine.is_tesseract_ready(show_gui_errors=False)
 
-if __name__ == '__main__':
-    # This allows running the tests directly from the command line
-    # Ensure that the imports at the top correctly adjust sys.path
-    # You might need to run as `python -m tests.test_tejocr_engine` from project root
-    # or ensure TejOCR.oxt/python is in PYTHONPATH
+        self.assertTrue(is_ready)
+        self.assertIn("direct CLI OCR active", message)
+
+    def test_oem_probe_image_avoids_font_rendering(self):
+        fake_image = types.SimpleNamespace(save=lambda *_args, **_kwargs: None)
+        fake_draw = types.SimpleNamespace(
+            rectangle=lambda *_args, **_kwargs: None,
+            line=lambda *_args, **_kwargs: None,
+            text=Mock(),
+        )
+
+        with patch.object(tejocr_engine, "PILLOW_AVAILABLE", True), \
+             patch.object(tejocr_engine, "_get_temp_image_path", return_value="/tmp/oem_probe.png"), \
+             patch.object(tejocr_engine.Image, "new", return_value=fake_image), \
+             patch.object(tejocr_engine.ImageDraw, "Draw", return_value=fake_draw):
+            probe_path = tejocr_engine._build_oem_probe_image()
+
+        self.assertEqual(probe_path, "/tmp/oem_probe.png")
+        fake_draw.text.assert_not_called()
+
+    def test_runtime_oem_modes_annotate_unsupported_legacy_modes(self):
+        session = self._session()
+
+        with patch.object(
+            tejocr_engine,
+            "_extract_mode_descriptions",
+            return_value={
+                "0": "tesseract_only Legacy engine only.",
+                "1": "lstm_only Neural nets LSTM engine only.",
+                "2": "tesseract_lstm_combined Legacy + LSTM engines.",
+                "3": "default Default, based on what is available.",
+            },
+        ), patch.object(
+            tejocr_engine,
+            "get_supported_oem_modes",
+            return_value={"0": False, "1": True, "2": False, "3": True},
+        ):
+            modes = tejocr_engine.get_runtime_oem_modes(session=session)
+
+        self.assertIn("unsupported by current traineddata/runtime", modes["0"])
+        self.assertIn("unsupported by current traineddata/runtime", modes["2"])
+        self.assertNotIn("tesseract_only", modes["0"])
+        self.assertNotIn("lstm_only", modes["1"])
+        self.assertNotIn("tesseract_lstm_combined", modes["2"])
+        self.assertNotIn("default Default", modes["3"])
+
+
+if __name__ == "__main__":
     unittest.main()

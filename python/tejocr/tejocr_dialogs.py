@@ -13,6 +13,12 @@ import unohelper
 
 # Standard Python imports
 import os
+import re
+import site
+import subprocess
+import sys
+from importlib import metadata as importlib_metadata
+from importlib import util as importlib_util
 
 # Import UNO interfaces directly from the uno module (safer than com.sun.star imports)
 # These are commonly exposed by the uno module itself
@@ -36,7 +42,7 @@ except ImportError as e:
 # Then your project's modules
 from tejocr import uno_utils
 from tejocr import constants
-from tejocr import tejocr_engine # This also needs correct import order internally
+from tejocr import ocr_runtime
 from tejocr import locale_setup
 
 _ = locale_setup.get_translation_function()
@@ -44,10 +50,100 @@ _ = locale_setup.get_translation_function()
 # Initialize logger for this module
 logger = uno_utils.get_logger("TejOCR.Dialogs")
 
-# We will import tejocr_engine when needed for OCR tasks
+_MODE_ALIAS_RE = re.compile(r"^([a-z0-9_]+)\s+(.+)$")
 
-# Attempt to import pytesseract for language listing, but don't fail if not present yet
-PYTESSERACT_AVAILABLE = False
+
+def _clean_mode_description(description):
+    cleaned = str(description or "").strip()
+    if not cleaned:
+        return cleaned
+
+    match = _MODE_ALIAS_RE.match(cleaned)
+    if not match:
+        return cleaned
+
+    alias, remainder = match.groups()
+    if "_" in alias or alias in {"auto", "default"}:
+        return remainder.strip()
+    return cleaned
+
+
+def _get_runtime_psm_map(ctx=None):
+    tesseract_path = _resolve_tesseract_path(ctx)
+    if not tesseract_path:
+        return dict(constants.TESSERACT_PSM_MODES)
+
+    descriptions = _extract_mode_descriptions([tesseract_path, "--help-psm"])
+    if not descriptions:
+        return dict(constants.TESSERACT_PSM_MODES)
+
+    runtime_map = {}
+    for mode, fallback_text in constants.TESSERACT_PSM_MODES.items():
+        description = descriptions.get(mode)
+        if description:
+            description = _clean_mode_description(description)
+            if mode == "0":
+                description = "{description} Diagnostic mode; no OCR text output.".format(
+                    description=description.rstrip(".")
+                )
+            elif mode == "2" and "diagnostic mode" not in description.lower():
+                description = "{description} Diagnostic mode; not implemented for text output.".format(
+                    description=description.rstrip(".")
+                )
+            runtime_map[mode] = "{mode}: {description}".format(mode=mode, description=description)
+        else:
+            runtime_map[mode] = fallback_text
+    return runtime_map
+
+
+def _get_runtime_oem_map(ctx=None):
+    tesseract_path = _resolve_tesseract_path(ctx)
+    descriptions = _extract_mode_descriptions([tesseract_path, "--help-oem"]) if tesseract_path else {}
+    support = _get_runtime_oem_support(ctx)
+
+    runtime_map = {}
+    for mode, fallback_text in constants.TESSERACT_OEM_MODES.items():
+        description = descriptions.get(mode)
+        if description:
+            description = _clean_mode_description(description)
+            label = "{mode}: {description}".format(mode=mode, description=description)
+        else:
+            label = fallback_text
+        if not support.get(mode, True):
+            label = "{label} (unsupported by current traineddata/runtime)".format(label=label)
+        runtime_map[mode] = label
+    return runtime_map
+
+
+def _get_runtime_oem_support(ctx=None):
+    tesseract_path = _resolve_tesseract_path(ctx)
+    if not tesseract_path:
+        return {mode: True for mode in constants.TESSERACT_OEM_MODES}
+
+    descriptions = _extract_mode_descriptions([tesseract_path, "--help-oem"])
+    if not descriptions:
+        return {mode: True for mode in constants.TESSERACT_OEM_MODES}
+
+    support = {}
+    for mode in constants.TESSERACT_OEM_MODES:
+        support[mode] = mode in descriptions
+    return support
+
+
+def _coerce_supported_oem_value(mode_value, ctx=None, support_map=None, fallback=None):
+    fallback_value = str(fallback or constants.DEFAULT_OEM_MODE).strip() or constants.DEFAULT_OEM_MODE
+    candidate = str(mode_value or fallback_value).strip() or fallback_value
+    if ":" in candidate:
+        candidate = candidate.split(":", 1)[0].strip() or fallback_value
+    if candidate not in constants.TESSERACT_OEM_MODES:
+        candidate = fallback_value
+    return ocr_runtime.coerce_supported_oem(
+        candidate,
+        support_map or _get_runtime_oem_support(ctx),
+        fallback=fallback_value,
+    )
+
+# We will import tejocr_engine when needed for OCR tasks.
 PYTESSERACT_LANGUAGES = {}
 LANG_CODE_TO_NAME = {
     "afr": "Afrikaans", "amh": "Amharic", "ara": "Arabic", "asm": "Assamese",
@@ -82,11 +178,96 @@ LANG_CODE_TO_NAME = {
     "yid": "Yiddish", "yor": "Yoruba",
 }
 
-try:
-    import pytesseract
-    PYTESSERACT_AVAILABLE = True
-except ImportError:
-    logger.warning("Pytesseract not available. Language list will be limited.")
+def _resolve_tesseract_path(ctx=None):
+    configured = ""
+    try:
+        configured = uno_utils.get_setting(
+            constants.CFG_KEY_TESSERACT_PATH,
+            constants.DEFAULT_TESSERACT_PATH,
+            ctx,
+        )
+    except Exception:
+        configured = constants.DEFAULT_TESSERACT_PATH
+    return uno_utils.find_tesseract_executable(configured) or ""
+
+
+def _split_help_mode_line(raw_line):
+    line = str(raw_line or "").strip()
+    if not line or "|" not in line:
+        return None, None
+    left, right = line.split("|", 1)
+    mode = left.strip()
+    if not mode.isdigit():
+        return None, None
+    return mode, right.strip()
+
+
+def _extract_mode_descriptions(command):
+    if not command or not command[0]:
+        return {}
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except Exception:
+        return {}
+
+    output = "\n".join([result.stdout or "", result.stderr or ""]).splitlines()
+    descriptions = {}
+    pending_mode = None
+    for raw_line in output:
+        mode, description = _split_help_mode_line(raw_line)
+        if mode:
+            descriptions[mode] = description
+            pending_mode = mode
+            continue
+        if pending_mode and str(raw_line).startswith(" "):
+            descriptions[pending_mode] = "{current} {extra}".format(
+                current=descriptions[pending_mode],
+                extra=str(raw_line).strip(),
+            ).strip()
+        else:
+            pending_mode = None
+    return descriptions
+
+
+def _get_tesseract_language_map(ctx=None):
+    tesseract_path = _resolve_tesseract_path(ctx)
+    if not tesseract_path:
+        return {k: v for k, v in LANG_CODE_TO_NAME.items()}
+
+    try:
+        result = subprocess.run(
+            [tesseract_path, "--list-langs"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except Exception as error:
+        logger.warning("Could not list Tesseract languages: %s", error)
+        return {k: v for k, v in LANG_CODE_TO_NAME.items()}
+
+    output = result.stdout or result.stderr or ""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if lines and lines[0].lower().startswith("list of available languages"):
+        lines = lines[1:]
+    languages = sorted(dict.fromkeys(line for line in lines if line))
+    if not languages:
+        return {k: v for k, v in LANG_CODE_TO_NAME.items()}
+    return {code: LANG_CODE_TO_NAME.get(code, code) for code in languages}
+
+
+def _package_status(module_name, distribution_name=None):
+    if not importlib_util.find_spec(module_name):
+        return False, ""
+    try:
+        version = importlib_metadata.version(distribution_name or module_name)
+    except Exception:
+        version = ""
+    return True, version
 
 # --- Dialog Base Class (Optional, but can be useful for common functionality) ---
 class BaseDialogHandler(unohelper.Base, XActionListener, XItemListener):
@@ -731,7 +912,7 @@ class OptionsDialogHandler(BaseDialogHandler):
         psm_dropdown = self.get_control("PSMDropdown")
         if psm_dropdown and psm_dropdown.getItemCount() > 0:
             selected_psm_display = psm_dropdown.getSelectedItem()
-            inverted_psm_map = {v: k for k, v in constants.TESSERACT_PSM_MODES.items()}
+            inverted_psm_map = {v: k for k, v in getattr(self, "psm_mode_map", constants.TESSERACT_PSM_MODES).items()}
             self.selected_options["psm"] = inverted_psm_map.get(selected_psm_display, constants.DEFAULT_PSM_MODE)
         else:
             self.selected_options["psm"] = constants.DEFAULT_PSM_MODE
@@ -740,8 +921,14 @@ class OptionsDialogHandler(BaseDialogHandler):
         oem_dropdown = self.get_control("OEMDropdown")
         if oem_dropdown and oem_dropdown.getItemCount() > 0:
             selected_oem_display = oem_dropdown.getSelectedItem()
-            inverted_oem_map = {v: k for k, v in constants.TESSERACT_OEM_MODES.items()}
-            self.selected_options["oem"] = inverted_oem_map.get(selected_oem_display, constants.DEFAULT_OEM_MODE)
+            inverted_oem_map = {v: k for k, v in getattr(self, "oem_mode_map", constants.TESSERACT_OEM_MODES).items()}
+            selected_oem = inverted_oem_map.get(selected_oem_display, constants.DEFAULT_OEM_MODE)
+            selected_oem, _oem_warning = _coerce_supported_oem_value(
+                selected_oem,
+                ctx=self.ctx,
+                fallback=constants.DEFAULT_OEM_MODE,
+            )
+            self.selected_options["oem"] = selected_oem
         else:
             self.selected_options["oem"] = constants.DEFAULT_OEM_MODE
 
@@ -818,10 +1005,12 @@ class OptionsDialogHandler(BaseDialogHandler):
         self._populate_dropdown("LanguageDropdown", langs, constants.CFG_KEY_LAST_SELECTED_LANG, constants.DEFAULT_OCR_LANGUAGE)
 
     def _populate_psm_dropdown(self):
-        self._populate_dropdown("PSMDropdown", constants.TESSERACT_PSM_MODES, "LastPSMMode", constants.DEFAULT_PSM_MODE)
+        self.psm_mode_map = _get_runtime_psm_map(self.ctx)
+        self._populate_dropdown("PSMDropdown", self.psm_mode_map, "LastPSMMode", constants.DEFAULT_PSM_MODE)
 
     def _populate_oem_dropdown(self):
-        self._populate_dropdown("OEMDropdown", constants.TESSERACT_OEM_MODES, "LastOEMMode", constants.DEFAULT_OEM_MODE)
+        self.oem_mode_map = _get_runtime_oem_map(self.ctx)
+        self._populate_dropdown("OEMDropdown", self.oem_mode_map, "LastOEMMode", constants.DEFAULT_OEM_MODE)
 
     def _populate_dropdown(self, control_name, items_map, current_value_key, default_value):
         dropdown = self.get_control(control_name)
@@ -855,31 +1044,8 @@ class OptionsDialogHandler(BaseDialogHandler):
 
     def _get_tesseract_languages(self):
         global PYTESSERACT_LANGUAGES
-        if PYTESSERACT_AVAILABLE and not PYTESSERACT_LANGUAGES:
-            try:
-                tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, self.ctx)
-                tess_exec = uno_utils.find_tesseract_executable(tess_path_cfg, self.ctx)
-                
-                if tess_exec:
-                    # Temporarily set tesseract_cmd for get_languages, then revert
-                    original_cmd = pytesseract.pytesseract.tesseract_cmd
-                    pytesseract.pytesseract.tesseract_cmd = tess_exec
-                    try:
-                        langs = pytesseract.get_languages(config="--list-langs") # some versions might need config
-                        PYTESSERACT_LANGUAGES = {code: LANG_CODE_TO_NAME.get(code, code) for code in sorted(list(set(langs)))}
-                    except Exception as e:
-                        logger.warning(f"Pytesseract get_languages error: {e}. Falling back.", exc_info=True)
-                        PYTESSERACT_LANGUAGES = {k: v for k, v in LANG_CODE_TO_NAME.items()} # Fallback
-                    finally:
-                        pytesseract.pytesseract.tesseract_cmd = original_cmd # Restore
-                else:
-                    PYTESSERACT_LANGUAGES = {k: v for k, v in LANG_CODE_TO_NAME.items()} # Fallback
-            except Exception as e:
-                logger.error(f"Error getting Tesseract languages: {e}", exc_info=True)
-                PYTESSERACT_LANGUAGES = {k: v for k, v in LANG_CODE_TO_NAME.items()} # Fallback on any error
-        elif not PYTESSERACT_LANGUAGES: # If pytesseract wasn't available or already tried and failed
-             logger.info("Pytesseract not available or languages not fetched, using fallback list.")
-             PYTESSERACT_LANGUAGES = {k: v for k, v in LANG_CODE_TO_NAME.items()} # Fallback
+        if not PYTESSERACT_LANGUAGES:
+            PYTESSERACT_LANGUAGES = _get_tesseract_language_map(self.ctx)
         return PYTESSERACT_LANGUAGES
 
 # --- Settings Dialog Handler ---
@@ -893,6 +1059,10 @@ class SettingsDialogHandler(BaseDialogHandler):
         self.dependency_status = None # Cache dependency check results
         self._settings_languages_cache = {}
         self._output_mode_code_order = []
+        self._all_lang_keys = []
+        self._all_lang_map = {}
+        self._visible_lang_keys = []
+        self._selected_codes = {constants.DEFAULT_OCR_LANGUAGE}
 
     def _create_dialog(self, parent_frame):
         """Try the new full settings dialog first, then fall back to legacy dialog."""
@@ -1068,6 +1238,9 @@ class SettingsDialogHandler(BaseDialogHandler):
                 f"{python_status} | {pdf_status}",
                 status_color,
             )
+            summary_label = self.get_control("SettingsStatusLabel")
+            if summary_label:
+                summary_label.setText(self.dependency_status.get("summary", "Dependency status refreshed"))
                     
         except Exception as e:
             logger.error(f"Error checking dependencies in settings: {e}", exc_info=True)
@@ -1090,12 +1263,15 @@ class SettingsDialogHandler(BaseDialogHandler):
         current_default_lang = uno_utils.get_setting(constants.CFG_KEY_DEFAULT_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
         if not current_default_lang:
             current_default_lang = uno_utils.get_setting(constants.CFG_KEY_LAST_SELECTED_LANG, constants.DEFAULT_OCR_LANGUAGE, self.ctx)
+        current_default_lang = self._normalize_language_list(current_default_lang)
         if not current_default_lang:
             current_default_lang = constants.DEFAULT_OCR_LANGUAGE
 
         self._all_lang_keys = list(langs.keys())
         self._all_lang_map = langs
-        self._selected_codes = set(current_default_lang.replace(',', '+').split('+'))
+        self._selected_codes = {
+            token for token in current_default_lang.split("+") if token
+        } or {constants.DEFAULT_OCR_LANGUAGE}
         self._populate_language_listbox()
         
         self.initial_settings[constants.CFG_KEY_DEFAULT_LANG] = current_default_lang
@@ -1149,13 +1325,13 @@ class SettingsDialogHandler(BaseDialogHandler):
         )
         self._populate_dropdown_settings(
             "DefaultPSMDropdown",
-            constants.TESSERACT_PSM_MODES,
+            _get_runtime_psm_map(self.ctx),
             constants.CFG_KEY_DEFAULT_PSM,
             constants.DEFAULT_PSM_MODE,
         )
         self._populate_dropdown_settings(
             "DefaultOEMDropdown",
-            constants.TESSERACT_OEM_MODES,
+            _get_runtime_oem_map(self.ctx),
             constants.CFG_KEY_DEFAULT_OEM,
             constants.DEFAULT_OEM_MODE,
         )
@@ -1191,6 +1367,11 @@ class SettingsDialogHandler(BaseDialogHandler):
             uno_utils.get_setting(constants.CFG_KEY_DEFAULT_OEM, constants.DEFAULT_OEM_MODE, self.ctx),
             constants.TESSERACT_OEM_MODES,
             constants.DEFAULT_OEM_MODE,
+        )
+        self.initial_settings[constants.CFG_KEY_DEFAULT_OEM], _oem_warning = _coerce_supported_oem_value(
+            self.initial_settings[constants.CFG_KEY_DEFAULT_OEM],
+            ctx=self.ctx,
+            fallback=constants.DEFAULT_OEM_MODE,
         )
         self.initial_settings[constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT] = self._bool_to_state(preview)
         self.initial_settings[constants.CFG_KEY_MERGE_BATCH_RESULTS] = self._bool_to_state(merge_batch)
@@ -1281,34 +1462,9 @@ class SettingsDialogHandler(BaseDialogHandler):
             self._select_dropdown_item(dropdown, selected_pos)
 
     def _get_tesseract_languages_for_settings(self):
-        # This is similar to _get_tesseract_languages in OptionsDialogHandler
-        # but kept separate to manage its own potential cache or state if needed.
-        # For now, it can reuse the global PYTESSERACT_LANGUAGES for simplicity, but ideally, it should be independent.
-        # Let's assume for now it can use a fresh call or a short-lived cache.
         cached_langs = getattr(self, "_settings_languages_cache", None)
-        if PYTESSERACT_AVAILABLE and not cached_langs:
-            try:
-                tess_path_cfg = uno_utils.get_setting(constants.CFG_KEY_TESSERACT_PATH, constants.DEFAULT_TESSERACT_PATH, self.ctx)
-                tess_exec = uno_utils.find_tesseract_executable(tess_path_cfg)
-                if tess_exec:
-                    original_cmd = pytesseract.pytesseract.tesseract_cmd
-                    pytesseract.pytesseract.tesseract_cmd = tess_exec
-                    try:
-                        langs = pytesseract.get_languages(config="--list-langs")
-                        cached_langs = {code: LANG_CODE_TO_NAME.get(code, code) for code in sorted(list(set(langs)))}
-                    except Exception as e:
-                        logger.warning(f"SettingsDialog: Pytesseract get_languages error: {e}. Falling back.", exc_info=True)
-                        cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
-                    finally:
-                        pytesseract.pytesseract.tesseract_cmd = original_cmd
-                else:
-                    cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
-            except Exception as e:
-                logger.error(f"SettingsDialog: Error getting Tesseract languages: {e}", exc_info=True)
-                cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
-        elif not cached_langs:
-            logger.info("SettingsDialog: Pytesseract not available or languages not fetched, using fallback list.")
-            cached_langs = {k: v for k, v in LANG_CODE_TO_NAME.items()}
+        if not cached_langs:
+            cached_langs = _get_tesseract_language_map(self.ctx)
         self._settings_languages_cache = cached_langs
         self.available_languages_map_settings = cached_langs
         return self._settings_languages_cache
@@ -1330,7 +1486,7 @@ class SettingsDialogHandler(BaseDialogHandler):
             item_keys = list(items_map.keys())
             texts = []
             for i, key in enumerate(item_keys):
-                display_text = f"{items_map[key]} ({key})"
+                display_text = str(items_map[key])
                 texts.append(display_text)
                 if str(key) == str(stored_value):
                     selected_pos = i
@@ -1639,9 +1795,6 @@ class SettingsDialogHandler(BaseDialogHandler):
             setup_handler.show()
             # Refresh our status labels after setup dialog closes
             self._check_and_display_dependencies()
-            status_label = self.get_control("SettingsStatusLabel")
-            if status_label:
-                status_label.setText("Dependencies checked")
         except Exception as e:
             import traceback
             logger.error(f"Failed to open Setup dialog: {e}\n{traceback.format_exc()}")
@@ -1710,13 +1863,13 @@ class SettingsDialogHandler(BaseDialogHandler):
 
 ⚠️ ADVANCED PARAMETERS (PRESET, PSM, OEM):
 • Preset: Chooses a default quality profile for future OCR runs.
-  - Fast: psm=11, oem=3, scale=1.0, pre-processing disabled
-  - Balanced: psm=3, oem=3, scale=1.0, grayscale only (Recommended)
-  - Accuracy: psm=6, oem=3, scale=1.5, grayscale + binarize on
-  - Custom: Manual mode. PSM/OEM are taken from the boxes you select below.
+  - Fast: one exact attempt, no enhanced pass, PDF default 200 DPI
+  - Balanced: one exact attempt plus one recovery attempt when output is weak
+  - Accuracy: one exact attempt plus one enhanced-preprocessing recovery, PDF default 300 DPI
+  - Custom: exact manual PSM/OEM/scale/preprocessing with no silent override
 
 • PSM (Page Segmentation Mode): Layout behavior (0-13)
-  - 0: OSD (Orientation and Script Detection) only
+  - 0: OSD only (diagnostic; no OCR text output)
   - 3: Auto layout (Recommended default)
   - 6: Assume a single uniform text block
 
@@ -1725,6 +1878,7 @@ class SettingsDialogHandler(BaseDialogHandler):
   - 1: LSTM engine only
   - 2: Legacy + LSTM engines combined
   - 3: Auto (Recommended default)
+  - Unsupported OEM modes are marked in the UI and fall back to a supported mode when saved as defaults.
 
 💡 HOW IT IS USED:
 • These settings are saved and applied automatically as defaults for new OCR runs.
@@ -1734,6 +1888,7 @@ class SettingsDialogHandler(BaseDialogHandler):
 • You can select multiple image files or one/more PDFs in the "OCR Image/PDF from File" run.
 • Check 'Merge bulk/PDF into single output' to combine all recognized text at once with page headers.
 • Requires `pdftoppm` (poppler) or `mutool` installed for PDF support.
+• PDFs are processed page-by-page, starting at 200 DPI for Fast/Balanced and 300 DPI for Accuracy.
 • When merge is disabled, each image or each PDF page is treated as a separate OCR result and inserted
   using the selected output mode."""
         
@@ -1913,10 +2068,16 @@ Details: {message}""",
                     changes_made = True
 
             if oem_control:
+                runtime_oem_map = _get_runtime_oem_map(self.ctx)
                 new_oem = self._coerce_mode_value(
-                    self._extract_dropdown_key(oem_control, constants.TESSERACT_OEM_MODES, constants.DEFAULT_OEM_MODE),
+                    self._extract_dropdown_key(oem_control, runtime_oem_map, constants.DEFAULT_OEM_MODE),
                     constants.TESSERACT_OEM_MODES,
                     constants.DEFAULT_OEM_MODE,
+                )
+                new_oem, _oem_warning = _coerce_supported_oem_value(
+                    new_oem,
+                    ctx=self.ctx,
+                    fallback=constants.DEFAULT_OEM_MODE,
                 )
                 if new_oem != self.initial_settings.get(constants.CFG_KEY_DEFAULT_OEM):
                     uno_utils.set_setting(constants.CFG_KEY_DEFAULT_OEM, new_oem, self.ctx)
@@ -2221,7 +2382,9 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         else:
             pdf_renderer_status = "PDF Renderer: Not found"
 
-        install_plan = self._collect_pdf_install_plan(ds) if not pdf_renderer_ok else []
+        command_candidates = list(ds.get("setup_commands") or [])
+        if not command_candidates and not pdf_renderer_ok:
+            command_candidates = self._collect_pdf_install_plan(ds)
 
         # Parse per-package lines from python_packages string
         pkg_lines = ds.get('python_packages', '').split('\n')
@@ -2260,47 +2423,78 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                 pass
 
         next_steps = ds.get("next_steps", "") if isinstance(ds.get("next_steps"), str) else ""
-        command_candidates = [] if pdf_renderer_ok else install_plan
 
         if pdf_renderer_ok:
-            self._copy_payload = ""
-            self._install_command = ""
-            self._copy_payload_commands = []
-        else:
+            logger.debug("PDF renderer already available during setup diagnostics.")
+
+        if command_candidates:
             self._copy_payload_commands = command_candidates
             self._install_command = command_candidates[0] if command_candidates else ""
             self._copy_payload = self._build_command_list_text(command_candidates)
+        else:
+            self._copy_payload = ""
+            self._install_command = ""
+            self._copy_payload_commands = []
 
         details_lines = []
-        if not pdf_renderer_ok:
-            details_lines.append("PDF OCR (PDF files) needs a PDF renderer.")
-            if status_hint:
-                details_lines.append(f"Current check: {status_hint}")
-            if command_candidates:
-                details_lines.append("")
-                details_lines.append("Install command(s) to enable PDF OCR:")
-                details_lines.extend(f" - {command}" for command in command_candidates)
-            else:
-                details_lines.append(
-                    "No renderer install command detected for your current runtime."
+        missing_components = []
+        if not ds.get("tesseract_ok", False):
+            missing_components.append("Tesseract OCR")
+        missing_python_packages = list(ds.get("python_missing_packages") or [])
+        if missing_python_packages:
+            missing_components.append(
+                "LibreOffice Python packages: {packages}".format(
+                    packages=", ".join(missing_python_packages)
                 )
+            )
+        if not pdf_renderer_ok:
+            missing_components.append("PDF renderer for PDF OCR")
+
+        if missing_components:
+            details_lines.append("Missing components:")
+            details_lines.extend(" - {item}".format(item=item) for item in missing_components)
         else:
-            details_lines.append("PDF renderer is available.")
+            details_lines.append("All core OCR dependencies are available.")
+
+        details_lines.append("")
+        if ds.get("tesseract_ok", False):
+            details_lines.append("Tesseract OCR is available.")
+        else:
+            tesseract_commands = list(ds.get("tesseract_install_commands") or [])
+            if tesseract_commands:
+                details_lines.append("Install Tesseract for this device:")
+                details_lines.extend(" - {cmd}".format(cmd=cmd) for cmd in tesseract_commands)
+
+        if missing_python_packages:
+            details_lines.append("Install missing LibreOffice Python packages:")
+            if ds.get("python_install_command"):
+                details_lines.append(" - {cmd}".format(cmd=ds.get("python_install_command")))
+
+        if pdf_renderer_ok:
             details_lines.append(
-                f"Detected engine: {pdf_renderer_engine}"
+                f"PDF renderer detected: {pdf_renderer_engine}"
                 if pdf_renderer_engine else "PDF renderer: Available"
             )
+        else:
+            details_lines.append("PDF OCR (PDF files) still needs a renderer.")
+            if status_hint:
+                details_lines.append(f"Current check: {status_hint}")
+
+        if command_candidates:
+            details_lines.append("")
+            details_lines.append("Command(s) you can copy and run on this device:")
+            details_lines.extend(f" - {command}" for command in command_candidates)
+        if next_steps:
+            details_lines.append("")
+            details_lines.append(next_steps)
 
         details_text = "\n".join(details_lines).strip()
 
         try:
             cmd_field = self.dialog.getControl("InstallCommandField")
             helper_field = self.dialog.getControl("InstallInstructionsField")
-            command_count = len(self._copy_payload_commands)
 
-            if pdf_renderer_ok:
-                self._copy_payload = ""
-                self._copy_payload_commands = []
+            if not command_candidates:
                 if cmd_field:
                     cmd_field.setText("No install command required.")
             else:
@@ -2327,7 +2521,7 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         except Exception:
             pass
 
-        can_copy_command = bool(self._copy_payload and self._copy_payload.strip()) and not pdf_renderer_ok
+        can_copy_command = bool(self._copy_payload and self._copy_payload.strip())
         payload_lines = [line for line in self._copy_payload.split("\n") if line.strip()]
         payload_count = len(payload_lines)
 
@@ -2345,26 +2539,26 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                     copy_btn.setText("Copy Command")
             recheck_btn = self.dialog.getControl("ReCheckButton")
             if recheck_btn:
-                recheck_btn.setText("Re-Check")
+                recheck_btn.setText("Validate")
                 recheck_btn.setEnable(True)
         except Exception:
             pass
 
-        if pdf_renderer_ok:
-            self._set_copy_status("Dependency check complete: PDF renderer is available.", "ok")
+        if not missing_components:
+            self._set_copy_status("Dependency check complete: all required components are available.", "ok")
         elif can_copy_command:
             if payload_count > 1:
                 self._set_copy_status(
-                    "Dependency check complete. Copy the recommended commands to install a PDF renderer.",
+                    "Dependency check complete. Copy the recommended commands for this device.",
                     "warn",
                 )
             else:
                 self._set_copy_status(
-                    "Dependency check complete. Copy the recommended command to install a PDF renderer.",
+                    "Dependency check complete. Copy the recommended command for this device.",
                     "warn",
                 )
         else:
-            self._set_copy_status("Dependency check complete: PDF renderer is still missing.", "warn")
+            self._set_copy_status("Dependency check complete: setup is still incomplete.", "warn")
 
     def _set_copy_status(self, text, level="info"):
         """Update the status text shown beneath install actions."""
@@ -2497,10 +2691,10 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                 self._run_check()
             finally:
                 if recheck_btn:
-                    recheck_btn.setText("Re-Check")
+                    recheck_btn.setText("Validate")
                     self._set_control_feedback(
                         recheck_btn,
-                        text="Re-Check",
+                        text="Validate",
                         enabled=True,
                         bg_color=self.COLOR_BTN_PRIMARY,
                         fg_color=self.COLOR_TEXT_ON_DARK,
@@ -2621,140 +2815,24 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
 # --- Global Dialog Functions ---
 
 def _get_lo_python_path():
-    """Dynamically detect the running LibreOffice's Python executable for pip commands.
-    
-    Walks up from sys.executable to find the LibreOfficePython.framework python3 binary.
-    Works for both production (/Applications/LibreOffice.app) and dev builds.
+    """Return a safe Python executable for runtime package install commands.
+
+    This delegates to the hardened PDF/runtime resolver so the dialog layer never
+    executes LibreOffice's `Contents/Resources/python` launcher script, which can
+    be killed by macOS codesigning checks.
     """
-    import sys
-    import os
-    import glob
-    import shutil
-    import subprocess
-    
-    _exe = os.path.expanduser(os.path.abspath(sys.executable or ""))
+    try:
+        from tejocr import tejocr_pdf
 
-    def _is_python_executable(path):
-        if not path or not os.path.isfile(path):
-            return False
-        base = os.path.basename(path).lower()
-        if base in {"soffice", "soffice.bin", "soffice.exe"}:
-            return False
-        if not (base == "python" or base.startswith("python") or "python" in base.lower()):
-            return False
-        if not os.access(path, os.X_OK):
-            return False
-        return True
+        resolver = getattr(tejocr_pdf, "_resolve_python_executable", None)
+        if callable(resolver):
+            resolved = str(resolver() or "").strip()
+            if resolved:
+                return resolved
+    except Exception:
+        logger.debug("Falling back to generic python command for dialog pip helpers.", exc_info=True)
 
-    def _is_functional_python_executable(path):
-        """Return True only for real Python binaries that can report a version."""
-        if not _is_python_executable(path):
-            return False
-        try:
-            result = subprocess.run(
-                [path, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            output = (result.stdout or "") + (result.stderr or "")
-            return result.returncode == 0 and "python" in output.lower()
-        except Exception:
-            return False
-
-    def _add_candidate(candidates, path):
-        if not path:
-            return
-        path = os.path.normpath(path)
-        if _is_python_executable(path) and path not in candidates:
-            candidates.append(path)
-
-    def _add_dir_candidates(candidates, base_dir):
-        # macOS and binary bundle variants.
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "Frameworks", "LibreOfficePython.framework", "Versions", "Current", "bin", "python3"),
-        )
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "Resources", "python3"),
-        )
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "Resources", "python"),
-        )
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "program", "python3"),
-        )
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "program", "python"),
-        )
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "Programs", "python3"),
-        )
-        _add_candidate(
-            candidates,
-            os.path.join(base_dir, "Programs", "python"),
-        )
-        for match in glob.glob(
-            os.path.join(base_dir, "Frameworks", "LibreOfficePython.framework", "Versions", "*", "bin", "python*")
-        ):
-            _add_candidate(candidates, match)
-
-    candidates = []
-    exe_name = os.path.basename(_exe).lower()
-    exe_parts = _exe.split(os.sep)
-
-    # If sys.executable points directly to soffice, resolve from its bundle.
-    if exe_name in {"soffice", "soffice.bin", "soffice.exe"} and "Contents" in exe_parts:
-        contents_index = exe_parts.index("Contents")
-        contents_path = os.sep.join(exe_parts[:contents_index + 1])
-        _add_dir_candidates(candidates, contents_path)
-
-    # If already running python from a valid binary path, prefer it.
-    if _is_python_executable(_exe):
-        _add_candidate(candidates, _exe)
-
-    # Walk up from executable path and try to resolve nearby LO layouts.
-    walk_path = _exe
-    for _ in range(20):
-        walk_parent = os.path.dirname(walk_path)
-        if walk_parent == walk_path:
-            break
-        if "Contents" in walk_parent:
-            parent_parts = walk_parent.split(os.sep)
-            if "Contents" in parent_parts:
-                contents_index = parent_parts.index("Contents")
-                contents_path = os.sep.join(parent_parts[:contents_index + 1])
-                _add_dir_candidates(candidates, contents_path)
-        walk_path = walk_parent
-
-    # Common installation roots
-    for base in [
-        "/Applications/LibreOffice.app/Contents",
-        "/Applications/LibreOfficeDev.app/Contents",
-        os.path.join(os.path.dirname(_exe), "Contents"),
-        os.path.dirname(os.path.dirname(_exe)),
-    ]:
-        if os.path.isdir(base):
-            _add_dir_candidates(candidates, base)
-
-    # Last resort: PATH-based Python detection
-    for path in [shutil.which("python3"), shutil.which("python"), "/usr/bin/python3", "/usr/bin/python"]:
-        if path:
-            _add_candidate(candidates, path)
-
-    for candidate in candidates:
-        if _is_functional_python_executable(candidate):
-            return candidate
-
-    # Final fallback: avoid returning soffice, return a valid python command if possible.
-    if _is_functional_python_executable(_exe):
-        return _exe
-    return ""
+    return "python3"
 
 
 def _build_pip_command(python_path):
@@ -3016,6 +3094,53 @@ def _renderer_install_hints_for_platform():
     return ["brew install poppler", "apt-get install poppler-utils"]
 
 
+def _tesseract_install_commands_for_platform():
+    """Return OS-specific install commands for Tesseract itself."""
+    import platform
+
+    normalized_system = (platform.system() or "").lower()
+    if normalized_system == "darwin":
+        return ["brew install tesseract", "brew install tesseract-lang"]
+    if normalized_system == "windows":
+        return ["choco install tesseract"]
+    if normalized_system == "linux":
+        return ["sudo apt install tesseract-ocr tesseract-ocr-eng"]
+    return ["brew install tesseract", "sudo apt install tesseract-ocr tesseract-ocr-eng"]
+
+
+def _refresh_dependency_import_state():
+    """Refresh import state so in-session installs are visible without restarting."""
+    try:
+        import importlib
+        importlib.invalidate_caches()
+    except Exception:
+        pass
+
+    site_dirs = []
+    try:
+        site_dirs.extend(site.getsitepackages() or [])
+    except Exception:
+        pass
+    try:
+        user_site = site.getusersitepackages()
+        if user_site:
+            site_dirs.append(user_site)
+    except Exception:
+        pass
+
+    seen = set()
+    for candidate in site_dirs:
+        clean = os.path.abspath(os.path.expanduser(str(candidate or "").strip()))
+        if not clean or clean in seen or not os.path.isdir(clean):
+            continue
+        seen.add(clean)
+        try:
+            site.addsitedir(clean)
+        except Exception:
+            if clean not in sys.path:
+                sys.path.append(clean)
+
+
 def _runtime_binary_search_paths():
     """Paths checked when probing for PDF rendering binaries in runtime sessions."""
     return (
@@ -3200,11 +3325,9 @@ def _extract_pdf2image_command_from_text(text):
 
 def _check_dependencies():
     """Check status of all OCR dependencies and provide user guidance."""
-    import subprocess
-    import sys
-    import os
-    import glob
     import platform
+
+    _refresh_dependency_import_state()
     
     # Dynamically detect the running LibreOffice's Python for pip commands
     pip_python = _get_lo_python_path()
@@ -3223,6 +3346,10 @@ def _check_dependencies():
         'pdf_renderer_hints': [],
         'pdf_renderer_status': '',
         'pdf_renderer_error': '',
+        'python_missing_packages': [],
+        'python_install_command': '',
+        'tesseract_install_commands': [],
+        'setup_commands': [],
     }
 
     def _default_pdf_hints(pip_cmd):
@@ -3335,45 +3462,37 @@ def _check_dependencies():
     # Check Python packages with detailed diagnostics
     python_packages = []
     
-    # Check NumPy first since it's required for pytesseract
-    numpy_available = False
-    try:
-        import numpy
-        python_packages.append(f"numpy: {numpy.__version__} (OK)")
-        numpy_available = True
-    except ImportError:
+    numpy_available, numpy_version = _package_status("numpy", "numpy")
+    if numpy_available:
+        python_packages.append(
+            "numpy: {version} (OK)".format(version=numpy_version or "installed")
+        )
+    else:
         python_packages.append("numpy: Not found (required for pytesseract)")
-        numpy_available = False
-    
-    # Check pytesseract using the new engine initialization
-    pytesseract_available = False
-    try:
-        from tejocr import tejocr_engine
-        if tejocr_engine._initialize_pytesseract():
-            python_packages.append("pytesseract: Available and working (OK)")
-            pytesseract_available = True
+
+    pytesseract_available, pytesseract_version = _package_status("pytesseract", "pytesseract")
+    if pytesseract_available:
+        if numpy_available:
+            python_packages.append(
+                "pytesseract: {version} (OK)".format(
+                    version=pytesseract_version or "installed"
+                )
+            )
         else:
-            if numpy_available:
-                python_packages.append("pytesseract: Available but not working (check tesseract installation)")
-            else:
-                python_packages.append("pytesseract: Cannot load due to missing numpy")
-            pytesseract_available = False
-    except Exception as e:
-        error_msg = str(e)[:50]
-        if "numpy" in error_msg.lower():
-            python_packages.append("pytesseract: Failed due to missing numpy")
+            python_packages.append("pytesseract: Installed but numpy is missing")
+    else:
+        if numpy_available:
+            python_packages.append("pytesseract: Not found")
         else:
-            python_packages.append(f"pytesseract: Error checking - {error_msg}")
-        pytesseract_available = False
-    
-    # Check PIL/Pillow
-    try:
-        import PIL
-        python_packages.append(f"Pillow: {PIL.__version__} (OK)")
-        pillow_available = True
-    except ImportError:
+            python_packages.append("pytesseract: Cannot load due to missing numpy")
+
+    pillow_available, pillow_version = _package_status("PIL", "Pillow")
+    if pillow_available:
+        python_packages.append(
+            "Pillow: {version} (OK)".format(version=pillow_version or "installed")
+        )
+    else:
         python_packages.append("Pillow: Not found in LibreOffice Python")
-        pillow_available = False
     
     # Check UNO - Should always be available in LibreOffice
     try:
@@ -3394,11 +3513,45 @@ def _check_dependencies():
     
     logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, numpy_available={numpy_available}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
     
+    python_missing = []
+    if not numpy_available:
+        python_missing.append("numpy")
+    if not pytesseract_available:
+        python_missing.append("pytesseract")
+    if not pillow_available:
+        python_missing.append("pillow")
+
+    python_install_command = ""
+    if python_missing:
+        python_install_command = "{cmd} {packages}".format(
+            cmd=pip_cmd,
+            packages=" ".join(python_missing),
+        )
+
+    tesseract_install_commands = [] if tesseract_ok else _tesseract_install_commands_for_platform()
+    setup_commands = []
+    seen_commands = set()
+
+    def _add_setup_command(command):
+        clean = _normalize_command_for_copy(command)
+        if not clean:
+            clean = str(command or "").strip()
+        if not clean:
+            return
+        key = clean.lower()
+        if key in seen_commands:
+            return
+        seen_commands.add(key)
+        setup_commands.append(clean)
+
+    for command in tesseract_install_commands:
+        _add_setup_command(command)
+    if python_install_command:
+        _add_setup_command(python_install_command)
+
     core_ready = (
         tesseract_ok
-        and numpy_available
-        and pytesseract_available
-        and pillow_available
+        and not python_missing
     )
     pdf_renderer_ready = bool(pdf_status.get("available"))
     # Use the more accurate variables from above
@@ -3413,18 +3566,10 @@ PDF OCR (PDF files) requires a PDF renderer."""
         
     elif tesseract_ok and (pytesseract_available or pillow_available or numpy_available):
         status['summary'] = "Partially ready -- some Python packages missing"
-        missing = []
-        if not numpy_available:
-            missing.append("numpy")
-        if not pytesseract_available:
-            missing.append("pytesseract") 
-        if not pillow_available:
-            missing.append("Pillow")
-        
-        status['next_steps'] = f"""Install missing packages: {', '.join(missing)}
+        status['next_steps'] = f"""Install missing packages: {', '.join(python_missing)}
 
 Run in Terminal:
-{pip_cmd} {' '.join(missing)}
+{python_install_command}
 
 Restart LibreOffice after installation."""
         
@@ -3433,18 +3578,23 @@ Restart LibreOffice after installation."""
         status['next_steps'] = f"""Install Python packages for LibreOffice:
 
 Run in Terminal:
-{pip_cmd} numpy pytesseract pillow
+{python_install_command or f"{pip_cmd} numpy pytesseract pillow"}
 
 Restart LibreOffice after installation."""
         
     else:
         status['summary'] = "Setup needed -- dependencies not installed"
-        status['next_steps'] = """Quick Setup:
-1. Install Tesseract OCR
-2. Install Python packages
-3. Restart LibreOffice
-
-See the Install Guide for your platform."""
+        quick_steps = ["Quick Setup:"]
+        if tesseract_install_commands:
+            quick_steps.append("1. Install Tesseract OCR:")
+            quick_steps.extend("   {cmd}".format(cmd=cmd) for cmd in tesseract_install_commands)
+        if python_install_command:
+            quick_steps.append("2. Install Python packages:")
+            quick_steps.append("   {cmd}".format(cmd=python_install_command))
+        quick_steps.append("3. Restart LibreOffice if the packages still do not appear in this session.")
+        quick_steps.append("")
+        quick_steps.append("See the Install Guide for your platform.")
+        status['next_steps'] = "\n".join(quick_steps)
 
     if not pdf_status["available"]:
         missing_pdf_message = "PDF OCR (PDF files) also needs a PDF renderer:"
@@ -3476,6 +3626,13 @@ See the Install Guide for your platform."""
             )
         if pdf_status.get("error"):
             status['next_steps'] += "\n\nCurrent check: {error}".format(error=pdf_status["error"])
+        for command in pdf_renderer_commands:
+            _add_setup_command(command)
+
+    status['python_missing_packages'] = list(python_missing)
+    status['python_install_command'] = python_install_command
+    status['tesseract_install_commands'] = list(tesseract_install_commands)
+    status['setup_commands'] = list(setup_commands)
     
     # Platform-specific installation guide
     system = platform.system().lower()
@@ -3556,12 +3713,12 @@ def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None)
     try:
         if ocr_source_type == "selected":
             message = f"{constants.EXTENSION_FULL_NAME} - OCR Selected Image\n\nProcessing selected image OCR.\n\nThe full OCR options dialog is not available in this runtime.\nClick OK to continue with stored defaults."
-        elif ocr_source_type == "file": 
+        elif ocr_source_type == "file":
             message = f"{constants.EXTENSION_FULL_NAME} - OCR Image/PDF from File\n\nProcessing file-based OCR.\n\nYou can OCR image files and PDFs in this mode.\nClick OK to continue with stored defaults."
-    else:
-        message = f"{constants.EXTENSION_FULL_NAME} - {ocr_source_type}\n\nFallback OCR mode is active.\nFeature dialogs are currently unavailable."
+        else:
+            message = f"{constants.EXTENSION_FULL_NAME} - {ocr_source_type}\n\nFallback OCR mode is active.\nFeature dialogs are currently unavailable."
 
-    logger.info(f"OCR dialog message displayed: {ocr_source_type}")
+        logger.info(f"OCR dialog message displayed: {ocr_source_type}")
         
         # Try ultra-basic message box without complex constants
         try:
@@ -3685,12 +3842,12 @@ def show_settings_dialog(ctx, parent_frame):
                     message,
                     "errorbox",
                     parent_frame=parent_frame,
-                ctx=ctx,
-            )
-        else:
-            logger.debug(message)
-    except Exception:
-        logger.debug("Could not display settings unavailable dialog. Falling back to console output.")
+                    ctx=ctx,
+                )
+            else:
+                logger.debug(message)
+        except Exception:
+            logger.debug("Could not display settings unavailable dialog. Falling back to console output.")
         return False
     except Exception as e:
         logger.error(f"show_settings_dialog failed: {e}", exc_info=True)

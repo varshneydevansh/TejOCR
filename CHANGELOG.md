@@ -12,6 +12,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-03-11 - Setup Diagnostics Polish, Clipboard Hardening & PDF Runtime Fixes
+
+### Added
+- Added a Windows-first setup helper script:
+  - [scripts/tejocr_windows_bootstrap.ps1](scripts/tejocr_windows_bootstrap.ps1)
+- Added richer `Setup & Diagnostics` actions:
+  - `Copy Support Snapshot`
+  - `Save Script...`
+  - `Open Install Guide`
+- Added test coverage for:
+  - setup dialog command generation,
+  - clipboard fallback behavior,
+  - multi-flavor text transfer,
+  - UTF-8-safe OCR/PDF subprocess decoding.
+
+### Changed
+- `Setup & Diagnostics` now treats the dependency surface more truthfully:
+  - `Tesseract` is the core OCR requirement,
+  - `Pillow` is recommended for preprocessing,
+  - `numpy` and `pytesseract` are optional compatibility extras,
+  - PDF runtime guidance is separated from core image OCR readiness.
+- Settings readiness now shows independent status for:
+  - `Tesseract`
+  - `PDF`
+  - `Extras (optional)`
+- Install guidance now makes LibreOffice Python explicit, especially for Windows and first-time users.
+- Platform reference and support snapshot text were reformatted for readability and copy/export workflows.
+
+### Fixed
+- Fixed a PDF/runtime failure caused by ASCII decoding of subprocess output; OCR/PDF subprocess paths now decode as UTF-8 with replacement instead of failing on non-ASCII bytes.
+- Fixed clipboard robustness for setup/support copy flows by:
+  - advertising multiple plain-text clipboard flavors in UNO,
+  - adding stronger macOS clipboard fallbacks (`pbcopy`, then `osascript`).
+- Fixed setup/status messaging drift where Settings could imply missing core readiness while Setup & Diagnostics showed Tesseract/PDF as available.
+- Fixed install/troubleshooting docs and metadata guidance around package/license errors and platform-specific setup commands.
+
 ## [0.2.0] - 2026-03-07 - UI Consolidation, Packaging Fixes & Writer Output Polish
 
 ### Added

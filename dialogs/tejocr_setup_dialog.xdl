@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE dlg:window PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "dialog.dtd">
-<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSetupDialog" dlg:left="120" dlg:top="80" dlg:width="620" dlg:height="430" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR — Setup &amp; Diagnostics">
+<dlg:window xmlns:dlg="http://openoffice.org/2000/dialog" xmlns:script="http://openoffice.org/2000/script" dlg:id="TejOCRSetupDialog" dlg:left="120" dlg:top="80" dlg:width="620" dlg:height="458" dlg:closeable="true" dlg:moveable="true" dlg:title="TejOCR — Setup &amp; Diagnostics">
   <dlg:bulletinboard>
 
     <!-- === Component Status Section === -->
@@ -27,10 +27,14 @@
     <!-- === Action Buttons === -->
     <dlg:fixedline dlg:id="SectionActions" dlg:tab-index="12" dlg:left="10" dlg:top="348" dlg:width="600" dlg:height="10" />
     <dlg:text dlg:id="CopyStatusLabel" dlg:tab-index="13" dlg:left="20" dlg:top="360" dlg:width="580" dlg:height="14" dlg:value=""/>
-    
-    <dlg:button dlg:id="CopyCommandButton" dlg:tab-index="14" dlg:left="20" dlg:top="380" dlg:width="180" dlg:height="20" dlg:value="Copy Command to Clipboard"/>
-    <dlg:button dlg:id="ReCheckButton" dlg:tab-index="15" dlg:left="210" dlg:top="380" dlg:width="150" dlg:height="20" dlg:value="Validate / Refresh"/>
-    <dlg:button dlg:id="CloseSetupButton" dlg:tab-index="16" dlg:left="450" dlg:top="380" dlg:width="150" dlg:height="20" dlg:button-type="cancel" dlg:value="Close"/>
+
+    <dlg:button dlg:id="CopyCommandButton" dlg:tab-index="14" dlg:left="20" dlg:top="382" dlg:width="165" dlg:height="20" dlg:value="Copy Command to Clipboard"/>
+    <dlg:button dlg:id="SaveScriptButton" dlg:tab-index="15" dlg:left="195" dlg:top="382" dlg:width="120" dlg:height="20" dlg:value="Save Script..."/>
+    <dlg:button dlg:id="CopySnapshotButton" dlg:tab-index="16" dlg:left="325" dlg:top="382" dlg:width="140" dlg:height="20" dlg:value="Copy Support Snapshot"/>
+    <dlg:button dlg:id="OpenGuideButton" dlg:tab-index="17" dlg:left="475" dlg:top="382" dlg:width="125" dlg:height="20" dlg:value="Open Install Guide"/>
+
+    <dlg:button dlg:id="ReCheckButton" dlg:tab-index="18" dlg:left="325" dlg:top="410" dlg:width="135" dlg:height="20" dlg:value="Validate / Refresh"/>
+    <dlg:button dlg:id="CloseSetupButton" dlg:tab-index="19" dlg:left="470" dlg:top="410" dlg:width="130" dlg:height="20" dlg:button-type="cancel" dlg:value="Close"/>
 
   </dlg:bulletinboard>
 </dlg:window>

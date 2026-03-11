@@ -6,7 +6,7 @@
   <p>OCR inside Writer, with predictable output behavior</p>
 
   [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/varshneydevansh/TejOCR)
-  [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
+  [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
   [![License](https://img.shields.io/badge/license-MPL%202.0-green.svg)](LICENSE)
   [![LibreOffice](https://img.shields.io/badge/libreoffice-4.0+-7f52ff.svg)](https://www.libreoffice.org/)
   [![Repository Size](https://img.shields.io/github/repo-size/varshneydevansh/TejOCR?color=orange)](https://github.com/varshneydevansh/TejOCR)
@@ -19,20 +19,21 @@ TejOCR is a **LibreOffice Writer extension** that performs OCR from:
 
 The extension inserts recognized text based on the selected output mode with fallbacks for UI or session capability differences.
 
-## What's New In 0.2.0
+## What's New In 0.2.1
 
-- `OCR Complete` is now a structured dialog instead of a dense result dump:
-  - grouped sections,
-  - better requested/effective diagnostics,
-  - cleaner language display,
-  - scrollable source lists for larger batches.
-- OCR-inserted Writer text now defaults to `6 pt` for cursor insertion, text-box output, and replace-image flows.
-- Package/install metadata is corrected for stricter LibreOffice environments, including the Windows license-path failure class.
-- Release docs now include:
-  - [CHANGELOG](CHANGELOG.md)
-  - [OCR hardening checklist](docs/dev/ocr-hardening-checklist.md)
-  - [UI alignment plan](docs/dev/tejocr-ui-alignment-plan.md)
-  - [Security and risk review](docs/dev/security-review.md)
+- `Setup & Diagnostics` is more robust and more honest about what is actually required:
+  - LibreOffice Python is called out explicitly,
+  - `Tesseract` and `PDF` readiness are separated from optional Python extras,
+  - support snapshots and exportable setup scripts are built into the dialog.
+
+- PDF/runtime behavior is safer:
+  - OCR/PDF subprocess output is decoded as UTF-8 with replacement,
+  - non-ASCII stderr/stdout no longer breaks PDF OCR with ASCII decode crashes.
+- Platform docs were tightened, especially for Windows LibreOffice Python and PDF renderer setup.
+- Prior UI work from `0.2.0` remains intact:
+  - structured `OCR Complete`,
+  - polished Settings/Help/Setup surfaces,
+  - `6 pt` Writer OCR output default.
 
 ## UI snapshots
 
@@ -196,7 +197,7 @@ flowchart LR
 
 ## Install
 
-1. Install `TejOCR-0.2.0.oxt` from extension manager.
+1. Install `TejOCR-0.2.1.oxt` from extension manager.
 2. Restart LibreOffice.
 3. Open **TejOCR → Settings** and verify dependency status.
 
@@ -206,16 +207,29 @@ flowchart LR
 
 - LibreOffice 4.0+
 - Tesseract (`tesseract` command installed)
-- LibreOffice Python packages:
+- LibreOffice Python runtime awareness:
+  - install TejOCR Python packages in LibreOffice's Python, not your system Python
+- Recommended LibreOffice Python package:
+  - `pillow`
+- Optional LibreOffice Python compatibility packages:
   - `numpy`
   - `pytesseract`
-  - `pillow`
+- Optional PDF fallback package:
+  - `pdf2image`
 
 ### Platform commands
 
 - **macOS**: `brew install tesseract`
 - **Linux**: `sudo apt install tesseract-ocr tesseract-ocr-eng`
-- **Windows**: install Tesseract (UB Mannheim), then install python deps in LibreOffice Python.
+- **Windows**: install Tesseract (UB Mannheim), then use Setup & Diagnostics or the Windows guide to bootstrap `pip` in LibreOffice Python if needed.
+
+Windows-first helper script:
+
+- [scripts/tejocr_windows_bootstrap.ps1](scripts/tejocr_windows_bootstrap.ps1)
+  - bootstraps `pip` in LibreOffice Python,
+  - installs `pillow`,
+  - optionally installs `pdf2image`, `numpy`, and `pytesseract`,
+  - checks `tesseract`, `pdftoppm`, and `mutool`.
 
 If detection fails, set full Tesseract executable path in Settings.
 
@@ -243,7 +257,9 @@ If detection fails, set full Tesseract executable path in Settings.
 
 ### Dependency errors
 
-- Missing python packages: install in LibreOffice Python and restart.
+- Missing Python packages: install them in LibreOffice Python and use `Validate / Refresh` in Setup & Diagnostics.
+- Need exact commands for your machine: open `Setup & Diagnostics`, then use `Copy Command`, `Save Script...`, or `Open Install Guide`.
+- Reporting a setup issue: use `Copy Support Snapshot` from `Setup & Diagnostics` and paste that into the GitHub issue or forum post.
 - Missing Tesseract path: verify with Settings and environment/path.
 
 ### Inserted text lands at document end

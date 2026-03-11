@@ -91,16 +91,16 @@ def _get_tesseract_setup_guide():
     try:
         from tejocr import tejocr_pdf
         package_cmd = tejocr_pdf.get_runtime_pip_install_command(
-            ["numpy", "pytesseract", "pillow"],
+            ["pillow"],
             upgrade=True,
         )
     except Exception:
-        package_cmd = f'"{sys.executable}" -m pip install -U numpy pytesseract pillow'
+        package_cmd = f'"{sys.executable}" -m pip install -U pillow'
     if name == "darwin":
-        return "Install Tesseract:\n  brew install tesseract\nInstall Python dependencies in LibreOffice Python:\n%s" % package_cmd
+        return "Install Tesseract:\n  brew install tesseract\nInstall recommended preprocessing package in LibreOffice Python:\n%s" % package_cmd
     if name == "windows":
-        return "Install Tesseract:\n  1) Download and install from UB-Mannheim:\n     https://github.com/UB-Mannheim/tesseract/wiki\nInstall Python dependencies in LibreOffice Python:\n%s" % package_cmd
-    return "Install Tesseract:\n  sudo apt install tesseract-ocr tesseract-ocr-eng\nInstall Python dependencies in LibreOffice Python:\n%s" % package_cmd
+        return "Install Tesseract:\n  1) Download and install from UB-Mannheim:\n     https://github.com/UB-Mannheim/tesseract/wiki\nInstall recommended preprocessing package in LibreOffice Python:\n%s" % package_cmd
+    return "Install Tesseract:\n  sudo apt install tesseract-ocr tesseract-ocr-eng\nInstall recommended preprocessing package in LibreOffice Python:\n%s" % package_cmd
 
 
 def _build_dependency_diagnostics(ctx=None):

@@ -20,6 +20,17 @@ from tejocr import tejocr_pdf
 
 
 class TestTejocrPdf(unittest.TestCase):
+    def test_run_command_forces_utf8_decoding(self):
+        with patch.object(tejocr_pdf.subprocess, "run", return_value=type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()) as run_mock:
+            ok, output = tejocr_pdf._run_command(["pdftoppm", "-h"])
+
+        self.assertTrue(ok)
+        self.assertEqual(output, "")
+        kwargs = run_mock.call_args.kwargs
+        self.assertTrue(kwargs["text"])
+        self.assertEqual(kwargs["encoding"], "utf-8")
+        self.assertEqual(kwargs["errors"], "replace")
+
     def test_renderer_status_uses_fast_path_when_pdftoppm_exists(self):
         with patch.object(tejocr_pdf, "_resolve_command", side_effect=lambda name: "/usr/bin/pdftoppm" if name == "pdftoppm" else None), \
              patch("os.access", return_value=True), \

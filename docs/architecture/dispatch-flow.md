@@ -102,7 +102,9 @@ flowchart TD
 ```text
 before OCR execution:
   -> dependency checks
-     -> numpy/pytesseract/pillow availability
+     -> LibreOffice Python + pip status
+     -> pillow/pdf2image availability
+     -> optional numpy/pytesseract compatibility extras
      -> tesseract executable/path check
   -> if missing:
      -> friendly error + settings path
@@ -116,4 +118,3 @@ flowchart LR
   B -->|missing| C["notify + settings route"]
   B -->|ok| D["perform OCR"]
 ```
-

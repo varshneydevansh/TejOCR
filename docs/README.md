@@ -6,6 +6,7 @@ This folder contains all deep documentation for the extension.
 
 - [README (project entry)](../README.md)
 - [CHANGELOG](../CHANGELOG.md)
+- [0.2.1 release delta](releases/0.2.1.md)
 - [0.2.0 release delta](releases/0.2.0.md)
 - [Architecture overview](architecture/overview.md)
 - [Dispatch and runtime flow](architecture/dispatch-flow.md)

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <ns0:description xmlns:ns0="http://openoffice.org/extensions/description/2006" xmlns:ns1="http://www.w3.org/1999/xlink">
 
-    <ns0:version value="0.2.0" />
+    <ns0:version value="0.2.1" />
     <ns0:identifier value="org.libreoffice.TejOCR" />
 
     <ns0:display-name>

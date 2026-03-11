@@ -76,10 +76,10 @@ def _lo_python_dependency_command():
     try:
         from tejocr import tejocr_pdf
         return tejocr_pdf.get_runtime_pip_install_command(
-            ["numpy", "pytesseract", "pillow"]
+            ["pillow"]
         )
     except Exception:
-        return f'"{sys.executable}" -m pip install numpy pytesseract pillow'
+        return f'"{sys.executable}" -m pip install pillow'
 
 
 def _tesseract_install_recommendation():
@@ -309,6 +309,8 @@ def _run_tesseract_subprocess(command, session=None, timeout=120):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
         timeout=timeout,
         env=_tesseract_env(session),
@@ -735,7 +737,7 @@ def check_tesseract_path(tesseract_path, ctx=None, parent_frame=None, show_succe
         # Test the tesseract executable
         import subprocess
         result = subprocess.run([candidate_path, '--version'], 
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         
         if result.returncode == 0:
             version_info = result.stdout.strip().split('\n')[0] if result.stdout.strip() else "Version info unavailable"

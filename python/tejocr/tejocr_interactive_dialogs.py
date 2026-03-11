@@ -313,27 +313,27 @@ def _runtime_python_package_command(packages, upgrade=False):
 def _format_tesseract_install_help():
     name = (platform.system() or "").lower()
     package_cmd = _runtime_python_package_command(
-        ["numpy", "pytesseract", "pillow"],
+        ["pillow"],
         upgrade=True,
     )
     if name == "darwin":
         return (
             "Install Tesseract:\n"
             "  brew install tesseract\n"
-            "Install Python dependencies in LibreOffice Python:\n"
+            "Install recommended preprocessing package in LibreOffice Python:\n"
             "%s" % package_cmd
         )
     if name == "windows":
         return (
             "Install Tesseract:\n"
             "  https://github.com/UB-Mannheim/tesseract/wiki\n"
-            "Install Python dependencies in LibreOffice Python:\n"
+            "Install recommended preprocessing package in LibreOffice Python:\n"
             "%s" % package_cmd
         )
     return (
         "Install Tesseract:\n"
         "  sudo apt install tesseract-ocr tesseract-ocr-eng\n"
-        "Install Python dependencies in LibreOffice Python:\n"
+        "Install recommended preprocessing package in LibreOffice Python:\n"
         "%s" % package_cmd
     )
 
@@ -1959,7 +1959,7 @@ def show_interactive_settings_dialog(ctx, parent_frame=None):
                                 "For more languages: https://tesseract-ocr.github.io/tessdoc/"
                             ).format(
                                 command=_runtime_python_package_command(
-                                    ["numpy", "pytesseract", "pillow"],
+                                    ["pillow"],
                                     upgrade=True,
                                 )
                             )

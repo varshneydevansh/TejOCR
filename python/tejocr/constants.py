@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.2.0"
+EXTENSION_VERSION = "0.2.1"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 

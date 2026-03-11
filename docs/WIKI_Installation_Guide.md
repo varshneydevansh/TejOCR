@@ -99,7 +99,12 @@ brew install tesseract-lang
 
 ## Install LibreOffice Python Dependencies
 
-TejOCR runs in LibreOffice’s embedded Python runtime, so dependencies must be installed there.
+TejOCR runs in LibreOffice’s embedded Python runtime, so dependencies must be installed there, not in your system Python.
+For the current OCR pipeline:
+
+- `pillow` is the recommended LibreOffice Python package for preprocessing and image handling.
+- `pdf2image` is optional and only used as a PDF compatibility fallback.
+- `numpy` and `pytesseract` are optional compatibility extras; the modern OCR path uses the Tesseract CLI directly.
 
 ### Quick path discovery
 
@@ -114,7 +119,7 @@ Open a terminal and run:
 If this path exists, install:
 
 ```bash
-"/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3" -m pip install numpy pytesseract pillow
+"/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3" -m pip install pillow
 ```
 
 #### Windows (CMD/PowerShell)
@@ -123,8 +128,29 @@ If this path exists, install:
 "C:\Program Files\LibreOffice\program\python.exe" --version
 ```
 
+If `pip` is not available in LibreOffice Python yet, bootstrap it first in PowerShell:
+
+```powershell
+cd "C:\Program Files\LibreOffice\program"
+(Invoke-WebRequest -Uri https://bootstrap.pypa.io/get-pip.py -UseBasicParsing).Content | .\python.exe -
+```
+
+Then install the recommended package:
+
 ```cmd
-"C:\Program Files\LibreOffice\program\python.exe" -m pip install numpy pytesseract pillow
+"C:\Program Files\LibreOffice\program\python.exe" -m pip install pillow
+```
+
+Windows helper script in this repository:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\tejocr_windows_bootstrap.ps1
+```
+
+Optional PDF + compatibility extras:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\tejocr_windows_bootstrap.ps1 -InstallPdfFallback -InstallCompatExtras
 ```
 
 #### Linux
@@ -138,7 +164,13 @@ Common paths vary by distribution:
 Find the exact binary, then:
 
 ```bash
-/path/to/libreoffice/python -m pip install numpy pytesseract pillow
+/path/to/libreoffice/python -m pip install pillow
+```
+
+Optional compatibility extras:
+
+```bash
+/path/to/libreoffice/python -m pip install numpy pytesseract
 ```
 
 ### Use repository helper script
@@ -159,7 +191,8 @@ Use TejOCR UI:
 2. Go to **Tools → TejOCR → Settings**.
 3. Confirm:
    - Tesseract status shows installed version
-   - Python dependency status shows NumPy, Pytesseract, Pillow as available
+   - Setup & Diagnostics shows the LibreOffice Python path being checked
+   - Python dependency status shows Pillow as available if preprocessing is desired
    - PDF renderer status row in Setup & Diagnostics
 
 Use CLI quick check:
@@ -261,7 +294,11 @@ The diagnostics screen now follows this behavior:
 Dependency check requested
   |
   +-- Tesseract checked from stored path (fallback to PATH)
-  +-- Python package checks (numpy / pytesseract / pillow)
+  +-- LibreOffice Python path + pip check
+  +-- Python package checks:
+  |      - pillow (recommended preprocessing)
+  |      - pdf2image (optional PDF fallback)
+  |      - numpy / pytesseract (optional compatibility extras)
   +-- PDF renderer check:
   |      - success -> status becomes "pdf2image + poppler" / "pdftoppm" / "mutool"
   |      - fail    -> status becomes "Not found" with explicit missing component
@@ -293,6 +330,9 @@ flowchart TD
 - **One or more commands needed:** the button label now shows how many commands are available (for example: `Copy Command(s) (3)`).
 - **Copy action status:** button text changes from `Copy Command` (or `Copy Command(s) (N)`) → `Copying...` and then to `Copied ✓` / `Copied N ✓` on success.
 - **Copy behavior:** when multiple install commands are needed (for example, OS hint + runtime pip path), the command payload is deduplicated, line-separated, and copied as a single clipboard block.
+- **Save Script...:** exports the same remediation plan as a `.ps1` on Windows or `.sh` on macOS/Linux.
+- **Copy Support Snapshot:** copies a compact environment snapshot for GitHub issues, forum posts, or mailing list help requests.
+- **Open Install Guide:** opens the TejOCR install/troubleshooting guide directly from the setup dialog.
 - **Re-check behavior:** Re-check runs immediately in-session, re-queries the active LibreOffice Python runtime, and updates renderer checks and button states without requiring dialog reopen.
 - **Command payload:** full shell commands are copied line-by-line with platform/runtime exactness; includes spaces and interpreter path quoting when needed.
 - **Re-Check semantics:** `Re-Check` immediately recalculates the diagnostic state in-session and updates labels/status without reopening the Settings dialog.
@@ -616,7 +656,8 @@ The commands below are the practical defaults used by TejOCR users.
 | Task | Command |
 |---|---|
 | Install OCR engine | `brew install tesseract` |
-| Install LO Python dependencies | `/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract pillow` |
+| Install recommended LO Python package | `/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install pillow` |
+| Install optional compatibility extras | `/Applications/LibreOffice.app/Contents/Frameworks/LibreOfficePython.framework/Versions/Current/bin/python3 -m pip install numpy pytesseract` |
 | Check OCR path | `which tesseract` |
 
 ### Windows
@@ -624,7 +665,9 @@ The commands below are the practical defaults used by TejOCR users.
 | Task | Command |
 |---|---|
 | Install OCR engine | Download and install from [UB-Mannheim release page](https://github.com/UB-Mannheim/tesseract/wiki) |
-| Install LO Python dependencies | `"C:\\Program Files\\LibreOffice\\program\\python.exe" -m pip install numpy pytesseract pillow` |
+| Bootstrap pip in LO Python (PowerShell) | `cd "C:\Program Files\LibreOffice\program"` then `(Invoke-WebRequest -Uri https://bootstrap.pypa.io/get-pip.py -UseBasicParsing).Content | .\python.exe -` |
+| Install recommended LO Python package | `"C:\\Program Files\\LibreOffice\\program\\python.exe" -m pip install pillow` |
+| Install optional compatibility extras | `"C:\\Program Files\\LibreOffice\\program\\python.exe" -m pip install numpy pytesseract` |
 | Check OCR path | `where tesseract` |
 
 ### Debian / Ubuntu
@@ -658,7 +701,7 @@ which tesseract
 python3 -c "import sys,subprocess; print(sys.executable)"
 ```
 
-Then run pip via that exact interpreter for `numpy`, `pytesseract`, and `pillow`.
+Then run pip via that exact interpreter for `pillow`, and only add `numpy` / `pytesseract` if you specifically need the compatibility path.
 
 For exact OCR command references and project links:
 

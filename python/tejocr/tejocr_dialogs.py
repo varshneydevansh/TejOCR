@@ -1226,6 +1226,55 @@ class SettingsDialogHandler(BaseDialogHandler):
                 except Exception:
                     pass
 
+    def _apply_dependency_status_labels(self, status):
+        """Apply a dependency-status payload to the Settings header labels."""
+        status = status or {}
+
+        tess_ok = bool(status.get('tesseract_ok', False))
+        if tess_ok:
+            self._set_label("TesseractStatusLabel", "Tesseract: Available", self.COLOR_GREEN)
+        else:
+            self._set_label("TesseractStatusLabel", "Tesseract: Not found", self.COLOR_RED)
+
+        n = bool(status.get('numpy_ok', False))
+        p = bool(status.get('pytesseract_ok', False))
+        pil = bool(status.get('pillow_ok', False))
+        count = sum([n, p, pil])
+        pdf_ok = bool(status.get('pdf_renderer_available', False))
+        extras_status = "Extras: {count}/3".format(count=count)
+
+        pdf_label = self.get_control("PdfStatusLabel")
+        pdf_color = self.COLOR_GREEN if pdf_ok else self.COLOR_AMBER
+        if pdf_label:
+            self._set_label("PdfStatusLabel", "PDF: ok" if pdf_ok else "PDF: missing", pdf_color)
+        else:
+            pdf_status = "PDF: ok" if pdf_ok else "PDF: missing"
+
+        if count >= 3:
+            extras_color = self.COLOR_GREEN
+        else:
+            extras_color = self.COLOR_AMBER
+
+        python_label = self.get_control("PythonPackagesStatusLabel")
+        if python_label:
+            if pdf_label:
+                self._set_label(
+                    "PythonPackagesStatusLabel",
+                    f"{extras_status} (optional)",
+                    extras_color,
+                )
+            else:
+                fallback_color = self.COLOR_GREEN if tess_ok and pdf_ok else (self.COLOR_AMBER if tess_ok or pdf_ok or count > 0 else self.COLOR_RED)
+                self._set_label(
+                    "PythonPackagesStatusLabel",
+                    f"{extras_status} (optional) | {pdf_status}",
+                    fallback_color,
+                )
+
+        summary_label = self.get_control("SettingsStatusLabel")
+        if summary_label:
+            summary_label.setText(status.get("summary", "Dependency status refreshed"))
+
     def _check_and_display_dependencies(self):
         """Check all dependencies and update the status labels with color."""
         logger.info("Checking dependencies for Settings dialog...")
@@ -1244,46 +1293,7 @@ class SettingsDialogHandler(BaseDialogHandler):
                 pass
 
             self.dependency_status = _check_dependencies()
-            
-            # Tesseract status
-            tess_ok = self.dependency_status.get('tesseract_ok', False)
-            if tess_ok:
-                self._set_label("TesseractStatusLabel",
-                                "Tesseract: Available", self.COLOR_GREEN)
-            else:
-                self._set_label("TesseractStatusLabel",
-                                "Tesseract: Not found", self.COLOR_RED)
-            
-            # Python packages status
-            n   = self.dependency_status.get('numpy_ok', False)
-            p   = self.dependency_status.get('pytesseract_ok', False)
-            pil = self.dependency_status.get('pillow_ok', False)
-            count = sum([n, p, pil])
-            pdf_ok = bool(self.dependency_status.get('pdf_renderer_available', False))
-            pdf_status = "PDF: ok" if pdf_ok else "PDF: missing"
-
-            if count >= 3:
-                python_status = "Py: 3/3"
-            elif count > 0:
-                python_status = f"Py: {count}/3"
-            else:
-                python_status = "Py: 0/3"
-
-            if pdf_ok and count >= 3:
-                status_color = self.COLOR_GREEN
-            elif count == 0 and not pdf_ok:
-                status_color = self.COLOR_RED
-            else:
-                status_color = self.COLOR_AMBER
-
-            self._set_label(
-                "PythonPackagesStatusLabel",
-                f"{python_status} | {pdf_status}",
-                status_color,
-            )
-            summary_label = self.get_control("SettingsStatusLabel")
-            if summary_label:
-                summary_label.setText(self.dependency_status.get("summary", "Dependency status refreshed"))
+            self._apply_dependency_status_labels(self.dependency_status)
                     
         except Exception as e:
             logger.error(f"Error checking dependencies in settings: {e}", exc_info=True)
@@ -1941,7 +1951,11 @@ class SettingsDialogHandler(BaseDialogHandler):
             setup_handler = TejOCRSetupDialogHandler(self.ctx, self.parent_frame)
             setup_handler.show()
             # Refresh our status labels after setup dialog closes
-            self._check_and_display_dependencies()
+            if setup_handler.dependency_status:
+                self.dependency_status = setup_handler.dependency_status
+                self._apply_dependency_status_labels(self.dependency_status)
+            else:
+                self._check_and_display_dependencies()
         except Exception as e:
             import traceback
             logger.error(f"Failed to open Setup dialog: {e}\n{traceback.format_exc()}")
@@ -2897,12 +2911,21 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
     COLOR_AMBER = 0xCC8800
     _SETUP_COMMAND_BY_NAME = {
         "CopyCommandButton": "copy_command",
+        "SaveScriptButton": "save_script",
+        "CopySnapshotButton": "copy_snapshot",
+        "OpenGuideButton": "open_guide",
         "ReCheckButton": "recheck",
         "CloseSetupButton": "close_setup",
         "copyCommand": "copy_command",
+        "savescriptbutton": "save_script",
         "copycommandbutton": "copy_command",
+        "copysnapshotbutton": "copy_snapshot",
+        "openguidebutton": "open_guide",
         "recheckbutton": "recheck",
         "closesetupbutton": "close_setup",
+        "savescript": "save_script",
+        "copysnapshot": "copy_snapshot",
+        "openguide": "open_guide",
         "recheck": "recheck",
         "close": "close_setup",
     }
@@ -2911,6 +2934,17 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         "copycommand": "copy_command",
         "copy command": "copy_command",
         "copycommandbutton": "copy_command",
+        "save": "save_script",
+        "save_script": "save_script",
+        "savescript": "save_script",
+        "save script": "save_script",
+        "savescriptbutton": "save_script",
+        "copysnapshot": "copy_snapshot",
+        "copy snapshot": "copy_snapshot",
+        "copysnapshotbutton": "copy_snapshot",
+        "openguide": "open_guide",
+        "open guide": "open_guide",
+        "openguidebutton": "open_guide",
         "recheck": "recheck",
         "re-check": "recheck",
         "recheckbutton": "recheck",
@@ -2930,6 +2964,10 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         self._install_command = ""
         self._copy_payload = ""
         self._copy_payload_commands = []
+        self._script_payload = ""
+        self._script_filename = ""
+        self._support_snapshot = ""
+        self._install_guide_url = "https://github.com/varshneydevansh/TejOCR/blob/main/docs/troubleshooting/installation.md"
 
     def _collect_pdf_install_plan(self, status_payload):
         """Build deterministic install commands required for PDF OCR."""
@@ -2986,6 +3024,9 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
 
         # Attach button listeners
         for btn_name, cmd in [("CopyCommandButton", "copy_command"),
+                              ("SaveScriptButton", "save_script"),
+                              ("CopySnapshotButton", "copy_snapshot"),
+                              ("OpenGuideButton", "open_guide"),
                               ("ReCheckButton", "recheck"),
                               ("CloseSetupButton", "close_setup")]:
             try:
@@ -3038,6 +3079,33 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                 fd = copy_model.FontDescriptor
                 fd.Weight = BOLD
                 copy_model.FontDescriptor = fd
+
+            save_script = self.dialog.getControl("SaveScriptButton")
+            if save_script:
+                save_model = save_script.getModel()
+                save_model.BackgroundColor = getattr(self, "COLOR_BTN_SUCCESS", 0x22C55E)
+                save_model.TextColor = getattr(self, "COLOR_TEXT_ON_DARK", 0xFFFFFF)
+                fd = save_model.FontDescriptor
+                fd.Weight = BOLD
+                save_model.FontDescriptor = fd
+
+            copy_snapshot = self.dialog.getControl("CopySnapshotButton")
+            if copy_snapshot:
+                snapshot_model = copy_snapshot.getModel()
+                snapshot_model.BackgroundColor = getattr(self, "COLOR_BTN_DARK", 0x333333)
+                snapshot_model.TextColor = getattr(self, "COLOR_TEXT_ON_DARK", 0xFFFFFF)
+                fd = snapshot_model.FontDescriptor
+                fd.Weight = BOLD
+                snapshot_model.FontDescriptor = fd
+
+            open_guide = self.dialog.getControl("OpenGuideButton")
+            if open_guide:
+                guide_model = open_guide.getModel()
+                guide_model.BackgroundColor = getattr(self, "COLOR_BTN_WARNING", 0xF59E0B)
+                guide_model.TextColor = getattr(self, "COLOR_TEXT_ON_DARK", 0xFFFFFF)
+                fd = guide_model.FontDescriptor
+                fd.Weight = BOLD
+                guide_model.FontDescriptor = fd
                 
         except Exception as e:
             logger.debug(f"Setup dialog modern styling failed: {e}")
@@ -3047,6 +3115,8 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         self._set_copy_status("Running dependency checks...", "info")
         self._copy_payload = ""
         self._install_command = ""
+        self._script_payload = ""
+        self._script_filename = ""
         # Ensure runtime PATH is fresh for PDF renderer probes during active
         # LibreOffice sessions.
         try:
@@ -3083,6 +3153,7 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
 
         self.dependency_status = _check_dependencies()
         ds = self.dependency_status or {}
+        self._support_snapshot = self._build_support_snapshot(ds)
         status_hint = (ds.get("pdf_renderer_error") or "").strip()
 
         # Always re-scan the runtime for renderer binaries to avoid stale cached status after
@@ -3134,39 +3205,69 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         if not command_candidates and not pdf_renderer_ok:
             command_candidates = self._collect_pdf_install_plan(ds)
 
-        # Parse per-package lines from python_packages string
-        pkg_lines = ds.get('python_packages', '').split('\n')
-        pkg_map = {}
-        for line in pkg_lines:
-            lower = line.lower()
-            if 'numpy' in lower:
-                pkg_map['numpy'] = line
-            elif 'pytesseract' in lower:
-                pkg_map['pytesseract'] = line
-            elif 'pillow' in lower or 'pil' in lower:
-                pkg_map['pillow'] = line
-
-        # Color each component row
+        # Color each component row using the new runtime model.
         rows = [
-            ("TesseractRow", ds.get('tesseract_ok', False),
-             f"✅ Tesseract OCR: {ds.get('tesseract', 'Unknown')}" if ds.get('tesseract_ok') else f"❌ Tesseract OCR: Not found"),
-            ("NumpyRow", ds.get('numpy_ok', False),
-             f"✅ {pkg_map.get('numpy')}" if ds.get('numpy_ok') else f"❌ Numpy: Missing"),
-            ("PytesseractRow", ds.get('pytesseract_ok', False),
-             f"✅ {pkg_map.get('pytesseract')}" if ds.get('pytesseract_ok') else f"❌ Pytesseract: Missing"),
-            ("PillowRow", ds.get('pillow_ok', False),
-             f"✅ {pkg_map.get('pillow')}" if ds.get('pillow_ok') else f"❌ Pillow: Missing"),
-            ("PdfRendererRow", pdf_renderer_ok,
-             f"✅ {pdf_renderer_status}" if pdf_renderer_ok else f"⚠ {pdf_renderer_status}"),
-            ("UnoRow", True, "✅ uno: Built-in (always available)"),
+            (
+                "TesseractRow",
+                "ok" if ds.get("tesseract_ok", False) else "error",
+                (
+                    f"✅ Tesseract OCR: {ds.get('tesseract_version', 'Available')} | {ds.get('tesseract_path_label', 'Available in PATH')}"
+                    if ds.get("tesseract_ok", False)
+                    else "❌ Tesseract OCR: Not found"
+                ),
+            ),
+            (
+                "NumpyRow",
+                "ok" if ds.get("lo_python_path_resolved", False) else "warn",
+                "✅ LibreOffice Python: {path}".format(
+                    path=ds.get("lo_python_path_display") or "Auto-detect unavailable; falling back to generic python command"
+                ),
+            ),
+            (
+                "PytesseractRow",
+                "ok" if ds.get("pip_ok", False) else "warn",
+                (
+                    "✅ pip in LibreOffice Python: {version}".format(
+                        version=ds.get("pip_version") or "available"
+                    )
+                    if ds.get("pip_ok", False)
+                    else "⚠ pip in LibreOffice Python: not detected (bootstrap may be required before installing extras)"
+                ),
+            ),
+            (
+                "PillowRow",
+                "ok" if ds.get("pillow_ok", False) else "warn",
+                (
+                    "✅ Pillow: {version} (advanced image preprocessing available)".format(
+                        version=ds.get("pillow_version") or "installed"
+                    )
+                    if ds.get("pillow_ok", False)
+                    else "⚠ Pillow: not installed (core OCR still works; preprocessing features are reduced)"
+                ),
+            ),
+            (
+                "PdfRendererRow",
+                "ok" if pdf_renderer_ok else "warn",
+                f"✅ {pdf_renderer_status}" if pdf_renderer_ok else f"⚠ {pdf_renderer_status}",
+            ),
+            (
+                "UnoRow",
+                "ok" if ds.get("optional_compat_ready", False) else "warn",
+                ds.get("optional_compat_label") or "ℹ Compatibility extras: optional",
+            ),
         ]
 
-        for ctrl_name, is_ok, text in rows:
+        for ctrl_name, level, text in rows:
             try:
                 ctrl = self.dialog.getControl(ctrl_name)
                 if ctrl:
                     ctrl.setText(text)
-                    ctrl.getModel().TextColor = self.COLOR_GREEN if is_ok else self.COLOR_RED
+                    color = self.COLOR_AMBER
+                    if level == "ok":
+                        color = self.COLOR_GREEN
+                    elif level == "error":
+                        color = self.COLOR_RED
+                    ctrl.getModel().TextColor = color
             except Exception:
                 pass
 
@@ -3179,64 +3280,121 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
             self._copy_payload_commands = command_candidates
             self._install_command = command_candidates[0] if command_candidates else ""
             self._copy_payload = self._build_command_list_text(command_candidates)
+            self._script_payload, self._script_filename = _build_setup_script_payload(command_candidates)
         else:
             self._copy_payload = ""
             self._install_command = ""
             self._copy_payload_commands = []
+            self._script_payload = ""
+            self._script_filename = ""
 
-        details_lines = []
+        detail_sections = []
+
+        def _append_detail_section(title, lines):
+            clean_lines = [str(line).rstrip() for line in (lines or []) if str(line or "").strip()]
+            if not clean_lines:
+                return
+            detail_sections.append("{title}\n{body}".format(
+                title=str(title or "").strip(),
+                body="\n".join(clean_lines),
+            ))
+
         missing_components = []
         if not ds.get("tesseract_ok", False):
             missing_components.append("Tesseract OCR")
-        missing_python_packages = list(ds.get("python_missing_packages") or [])
-        if missing_python_packages:
-            missing_components.append(
-                "LibreOffice Python packages: {packages}".format(
-                    packages=", ".join(missing_python_packages)
-                )
-            )
         if not pdf_renderer_ok:
             missing_components.append("PDF renderer for PDF OCR")
 
+        optional_components = []
+        if not ds.get("pip_ok", False):
+            optional_components.append("pip bootstrap in LibreOffice Python")
+        if not ds.get("pillow_ok", False):
+            optional_components.append("Pillow for preprocessing")
+        optional_missing_packages = list(ds.get("optional_missing_packages") or [])
+        if optional_missing_packages:
+            optional_components.append(
+                "Compatibility packages: {packages}".format(
+                    packages=", ".join(optional_missing_packages)
+                )
+            )
+
         if missing_components:
-            details_lines.append("Missing components:")
-            details_lines.extend(" - {item}".format(item=item) for item in missing_components)
-        else:
-            details_lines.append("All core OCR dependencies are available.")
-
-        details_lines.append("")
-        if ds.get("tesseract_ok", False):
-            details_lines.append("Tesseract OCR is available.")
-        else:
-            tesseract_commands = list(ds.get("tesseract_install_commands") or [])
-            if tesseract_commands:
-                details_lines.append("Install Tesseract for this device:")
-                details_lines.extend(" - {cmd}".format(cmd=cmd) for cmd in tesseract_commands)
-
-        if missing_python_packages:
-            details_lines.append("Install missing LibreOffice Python packages:")
-            if ds.get("python_install_command"):
-                details_lines.append(" - {cmd}".format(cmd=ds.get("python_install_command")))
-
-        if pdf_renderer_ok:
-            details_lines.append(
-                f"PDF renderer detected: {pdf_renderer_engine}"
-                if pdf_renderer_engine else "PDF renderer: Available"
+            _append_detail_section(
+                "REQUIRED NOW",
+                ["- {item}".format(item=item) for item in missing_components],
             )
         else:
-            details_lines.append("PDF OCR (PDF files) still needs a renderer.")
+            _append_detail_section("REQUIRED NOW", ["- Image OCR is ready."])
+
+        runtime_lines = [
+            "- Python:",
+            "  {path}".format(path=ds.get("lo_python_path_display") or "Unknown"),
+        ]
+        if ds.get("pip_ok", False):
+            runtime_lines.append("- pip: {version}".format(version=ds.get("pip_version") or "available"))
+        else:
+            runtime_lines.append("- pip: not detected in this runtime")
+        _append_detail_section("LIBREOFFICE RUNTIME", runtime_lines)
+
+        if not ds.get("tesseract_ok", False):
+            tesseract_commands = list(ds.get("tesseract_install_commands") or [])
+            if tesseract_commands:
+                tesseract_lines = []
+                for index, cmd in enumerate(tesseract_commands, start=1):
+                    tesseract_lines.append("- Command {idx}:".format(idx=index))
+                    tesseract_lines.append("  {cmd}".format(cmd=cmd))
+                _append_detail_section("INSTALL TESSERACT FOR THIS DEVICE", tesseract_lines)
+
+        if optional_components:
+            _append_detail_section(
+                "RECOMMENDED / OPTIONAL SETUP",
+                ["- {item}".format(item=item) for item in optional_components],
+            )
+
+        python_install_commands = list(ds.get("python_install_commands") or [])
+        if python_install_commands:
+            package_lines = []
+            for index, cmd in enumerate(python_install_commands, start=1):
+                package_lines.append("- Command {idx}:".format(idx=index))
+                package_lines.append("  {cmd}".format(cmd=cmd))
+            _append_detail_section("LIBREOFFICE PYTHON PACKAGE COMMANDS", package_lines)
+
+        pip_bootstrap_commands = list(ds.get("pip_bootstrap_commands") or [])
+        if pip_bootstrap_commands:
+            bootstrap_lines = []
+            for index, cmd in enumerate(pip_bootstrap_commands, start=1):
+                bootstrap_lines.append("- Step {idx}:".format(idx=index))
+                bootstrap_lines.append("  {cmd}".format(cmd=cmd))
+            _append_detail_section("IF pip IS MISSING, RUN", bootstrap_lines)
+
+        if pdf_renderer_ok:
+            _append_detail_section(
+                "PDF STATUS",
+                [
+                    "- {status}".format(
+                        status=(
+                            "PDF renderer detected: {engine}".format(engine=pdf_renderer_engine)
+                            if pdf_renderer_engine else "PDF renderer: Available"
+                        )
+                    )
+                ],
+            )
+        else:
+            pdf_status_lines = ["- PDF OCR (PDF files) still needs a renderer."]
             if status_hint:
-                details_lines.append(f"Current check: {status_hint}")
+                pdf_status_lines.append("- Current check: {status}".format(status=status_hint))
+            _append_detail_section("PDF STATUS", pdf_status_lines)
 
         if command_candidates:
-            details_lines.append("")
-            details_lines.append("Command(s) you can copy and run on this device:")
-            details_lines.extend(f" - {command}" for command in command_candidates)
+            copy_lines = []
+            for index, command in enumerate(command_candidates, start=1):
+                copy_lines.append("- Command {idx}:".format(idx=index))
+                copy_lines.append("  {command}".format(command=command))
+            _append_detail_section("READY-TO-COPY COMMANDS", copy_lines)
         if next_steps:
-            details_lines.append("")
-            details_lines.append(next_steps)
+            _append_detail_section("NEXT STEPS", next_steps.splitlines())
 
-        details_text = "\n".join(details_lines).strip()
+        details_text = "\n\n".join(detail_sections).strip()
 
         try:
             cmd_field = self.dialog.getControl("InstallCommandField")
@@ -3297,6 +3455,18 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                     )
                 else:
                     copy_btn.setText("Copy Command to Clipboard")
+            save_btn = self.dialog.getControl("SaveScriptButton")
+            if save_btn:
+                save_btn.setEnable(can_copy_command and bool(self._script_payload.strip()))
+                save_btn.setText("Save Script...")
+            snapshot_btn = self.dialog.getControl("CopySnapshotButton")
+            if snapshot_btn:
+                snapshot_btn.setEnable(bool(self._support_snapshot.strip()))
+                snapshot_btn.setText("Copy Support Snapshot")
+            guide_btn = self.dialog.getControl("OpenGuideButton")
+            if guide_btn:
+                guide_btn.setEnable(bool(self._install_guide_url))
+                guide_btn.setText("Open Install Guide")
             recheck_btn = self.dialog.getControl("ReCheckButton")
             if recheck_btn:
                 recheck_btn.setText("Validate / Refresh")
@@ -3304,7 +3474,12 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         except Exception:
             pass
 
-        if not missing_components:
+        if not missing_components and optional_components:
+            self._set_copy_status(
+                "Core OCR is ready. Optional Python extras are still missing.",
+                "warn",
+            )
+        elif not missing_components:
             self._set_copy_status("Dependency check complete: all required components are available.", "ok")
         elif can_copy_command:
             if payload_count > 1:
@@ -3383,11 +3558,26 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
             return
 
         copy_btn = None
+        save_btn = None
+        snapshot_btn = None
+        guide_btn = None
         recheck_btn = None
         try:
             copy_btn = self.dialog.getControl("CopyCommandButton")
         except Exception:
             copy_btn = None
+        try:
+            save_btn = self.dialog.getControl("SaveScriptButton")
+        except Exception:
+            save_btn = None
+        try:
+            snapshot_btn = self.dialog.getControl("CopySnapshotButton")
+        except Exception:
+            snapshot_btn = None
+        try:
+            guide_btn = self.dialog.getControl("OpenGuideButton")
+        except Exception:
+            guide_btn = None
         try:
             recheck_btn = self.dialog.getControl("ReCheckButton")
         except Exception:
@@ -3432,10 +3622,107 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
                     except Exception:
                         pass
             else:
-                self._set_copy_status("Copy failed. Use fallback text shown below.", "error")
+                self._set_copy_status("Copy failed. Select the text above and copy it manually.", "error")
                 if copy_btn:
                     copy_btn.setText("Copy Command to Clipboard")
                     self._restore_control_feedback_state(copy_btn, baseline)
+            return
+
+        if command == "copy_snapshot":
+            baseline = self._capture_control_feedback_state(snapshot_btn)
+            if snapshot_btn:
+                snapshot_btn.setFocus()
+            self._set_control_feedback(
+                snapshot_btn,
+                text="Copying...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            self._set_copy_status("Copying support snapshot...", "info")
+            copied = self._copy_text_to_clipboard(
+                self._support_snapshot,
+                "No support snapshot is available to copy.",
+            )
+            if copied:
+                self._set_copy_status("Copied support snapshot to clipboard.", "ok")
+                if snapshot_btn:
+                    self._restore_control_feedback_state(snapshot_btn, baseline)
+                    snapshot_btn.setText("Copied ✓")
+                    snapshot_btn.setEnable(True)
+                    try:
+                        snapshot_btn.getModel().BackgroundColor = self.COLOR_GREEN
+                    except Exception:
+                        pass
+            else:
+                self._set_copy_status("Support snapshot copy failed.", "error")
+                if snapshot_btn:
+                    self._restore_control_feedback_state(snapshot_btn, baseline)
+            return
+
+        if command == "open_guide":
+            baseline = self._capture_control_feedback_state(guide_btn)
+            self._set_control_feedback(
+                guide_btn,
+                text="Opening...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_WARNING,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            self._set_copy_status("Opening install guide...", "info")
+            opened = self._open_install_guide()
+            if opened:
+                self._set_copy_status("Opened install guide in your browser.", "ok")
+                if guide_btn:
+                    self._restore_control_feedback_state(guide_btn, baseline)
+                    guide_btn.setText("Opened ✓")
+                    guide_btn.setEnable(True)
+            else:
+                self._set_copy_status("Could not open browser. Copy the install guide URL instead.", "warn")
+                copied = self._copy_text_to_clipboard(
+                    self._install_guide_url,
+                    "Install guide URL is not available.",
+                )
+                if copied:
+                    self._set_copy_status("Browser open failed. Copied install guide URL instead.", "warn")
+                if guide_btn:
+                    self._restore_control_feedback_state(guide_btn, baseline)
+            return
+
+        if command == "save_script":
+            baseline = self._capture_control_feedback_state(save_btn)
+            self._set_control_feedback(
+                save_btn,
+                text="Saving...",
+                enabled=False,
+                bg_color=self.COLOR_BTN_SUCCESS,
+                fg_color=self.COLOR_TEXT_ON_DARK,
+            )
+            self._set_copy_status("Preparing setup script export...", "info")
+            try:
+                saved_path = self._save_script_to_disk()
+                if saved_path:
+                    self._set_copy_status(
+                        "Saved setup script: {path}".format(path=saved_path),
+                        "ok",
+                    )
+                    if save_btn:
+                        self._restore_control_feedback_state(save_btn, baseline)
+                        save_btn.setText("Saved ✓")
+                        save_btn.setEnable(True)
+                        try:
+                            save_btn.getModel().BackgroundColor = self.COLOR_GREEN
+                        except Exception:
+                            pass
+                else:
+                    self._set_copy_status("Script export cancelled.", "warn")
+                    if save_btn:
+                        self._restore_control_feedback_state(save_btn, baseline)
+            except Exception as export_error:
+                logger.error("Failed to export setup script: %s", export_error, exc_info=True)
+                self._set_copy_status("Script export failed.", "error")
+                if save_btn:
+                    self._restore_control_feedback_state(save_btn, baseline)
             return
 
         if command == "recheck":
@@ -3482,25 +3769,40 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
 
     def _copy_to_clipboard(self):
         """Copy install command to system clipboard using OS utilities."""
-        import subprocess
-        import sys
-
         command_lines = list(self._copy_payload_commands) if self._copy_payload_commands else []
         if not command_lines and self._install_command:
             command_lines = [self._install_command]
         elif not command_lines and self._copy_payload:
             command_lines = [self._copy_payload]
+        return self._copy_lines_to_clipboard(
+            command_lines,
+            "No install command available to copy.",
+            normalize_commands=True,
+        )
+
+    def _copy_text_to_clipboard(self, text, empty_message="Nothing available to copy."):
+        payload = str(text or "").strip()
+        return self._copy_lines_to_clipboard(
+            [payload] if payload else [],
+            empty_message,
+            normalize_commands=False,
+        )
+
+    def _copy_lines_to_clipboard(self, command_lines, empty_message, normalize_commands):
+        """Copy provided text lines to the system clipboard using UNO or OS fallbacks."""
+        import os
+        import shutil
+        import subprocess
+        import sys
 
         normalized_lines = []
         seen = set()
         for line in command_lines:
-            candidate = _normalize_command_for_copy(line)
-            if not candidate:
-                continue
+            candidate = _normalize_command_for_copy(line) if normalize_commands else str(line or "")
             candidate = candidate.strip()
             if not candidate:
                 continue
-            key = candidate.lower()
+            key = candidate.lower() if normalize_commands else candidate
             if key in seen:
                 continue
             seen.add(key)
@@ -3509,7 +3811,7 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
         text = "\n".join(normalized_lines).strip()
 
         if not text:
-            self._set_copy_status("No install command available to copy.", "warn")
+            self._set_copy_status(empty_message, "warn")
             return False
 
         copied = False
@@ -3530,43 +3832,184 @@ class TejOCRSetupDialogHandler(BaseDialogHandler):
             except Exception as clipboard_error:
                 logger.debug(f"UNO clipboard copy failed, trying OS fallback: {clipboard_error}")
 
-            # Fallback path for environments where UNO clipboard is unavailable
+            # Fallback path for environments where UNO clipboard is unavailable.
+            # Use absolute command paths where possible because LibreOffice app
+            # bundles often run with a reduced PATH.
             if not copied:
                 if sys.platform == "darwin":
                     # macOS
-                    proc = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-                    proc.communicate(text.encode("utf-8"))
-                    copied = proc.returncode == 0
+                    pbcopy_candidates = []
+                    for candidate in ("/usr/bin/pbcopy", shutil.which("pbcopy"), "/bin/pbcopy"):
+                        if candidate and candidate not in pbcopy_candidates:
+                            pbcopy_candidates.append(candidate)
+                    for candidate in pbcopy_candidates:
+                        try:
+                            result = subprocess.run(
+                                [candidate],
+                                input=text.encode("utf-8"),
+                                capture_output=True,
+                                check=False,
+                            )
+                            if result.returncode == 0:
+                                copied = True
+                                break
+                        except FileNotFoundError:
+                            continue
                 elif sys.platform.startswith("linux"):
                     # Linux — try xclip first, then xsel
-                    for cmd in [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]:
+                    for cmd in (
+                        ([shutil.which("xclip") or "xclip", "-selection", "clipboard"]),
+                        ([shutil.which("xsel") or "xsel", "--clipboard", "--input"]),
+                    ):
                         try:
-                            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-                            proc.communicate(text.encode("utf-8"))
-                            if proc.returncode == 0:
+                            result = subprocess.run(
+                                cmd,
+                                input=text.encode("utf-8"),
+                                capture_output=True,
+                                check=False,
+                            )
+                            if result.returncode == 0:
                                 copied = True
                                 break
                         except FileNotFoundError:
                             continue
                 elif sys.platform == "win32":
-                    proc = subprocess.Popen(["clip.exe"], stdin=subprocess.PIPE)
-                    proc.communicate(text.encode("utf-8"))
-                    copied = proc.returncode == 0
+                    clip_candidates = []
+                    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+                    for candidate in (os.path.join(system_root, "System32", "clip.exe"), shutil.which("clip.exe"), "clip.exe"):
+                        if candidate and candidate not in clip_candidates:
+                            clip_candidates.append(candidate)
+                    for candidate in clip_candidates:
+                        try:
+                            result = subprocess.run(
+                                [candidate],
+                                input=text.encode("utf-8"),
+                                capture_output=True,
+                                check=False,
+                            )
+                            if result.returncode == 0:
+                                copied = True
+                                break
+                        except FileNotFoundError:
+                            continue
                 elif sys.platform.startswith("cygwin"):
-                    proc = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
-                    proc.communicate(text.encode("utf-8"))
-                    copied = proc.returncode == 0
+                    for candidate in (shutil.which("clip"), "clip"):
+                        if not candidate:
+                            continue
+                        try:
+                            result = subprocess.run(
+                                [candidate],
+                                input=text.encode("utf-8"),
+                                capture_output=True,
+                                check=False,
+                            )
+                            if result.returncode == 0:
+                                copied = True
+                                break
+                        except FileNotFoundError:
+                            continue
             logger.debug(f"Copy command succeeded: {copied}")
         except Exception as e:
             logger.error(f"Clipboard subprocess failed: {e}", exc_info=True)
             copied = False
 
         if not copied:
-            self._set_copy_status("Copy failed. Use fallback text shown below.", "error")
+            self._set_copy_status("Copy failed. Select the text above and copy it manually.", "error")
             uno_utils.show_message_box("Copy",
                 f"Could not access clipboard.\n\nPlease select and copy manually:\n{text}",
                 "infobox", parent_frame=self.parent_frame, ctx=self.ctx)
         return copied
+
+    def _build_support_snapshot(self, status_payload):
+        """Build a compact support snapshot users can share in issues or forums."""
+        import platform
+
+        ds = status_payload or {}
+        lines = [
+            "TejOCR Setup Snapshot",
+            "Summary: {summary}".format(summary=ds.get("summary") or "Unknown"),
+            "Platform: {platform}".format(platform=platform.platform()),
+            "LibreOffice Python: {path}".format(path=ds.get("lo_python_path_display") or "Unknown"),
+            "pip: {status}".format(
+                status=("available ({version})".format(version=ds.get("pip_version") or "version unknown")
+                        if ds.get("pip_ok", False)
+                        else "not detected")
+            ),
+            "Tesseract: {status}".format(
+                status=("available ({version})".format(version=ds.get("tesseract_version") or "installed")
+                        if ds.get("tesseract_ok", False)
+                        else "missing")
+            ),
+            "Pillow: {status}".format(
+                status=("installed ({version})".format(version=ds.get("pillow_version") or "installed")
+                        if ds.get("pillow_ok", False)
+                        else "missing")
+            ),
+            "pdf2image: {status}".format(
+                status="installed" if ds.get("pdf2image_ok", False) else "missing"
+            ),
+            "PDF renderer: {status}".format(
+                status=(ds.get("pdf_renderer_status") or "Unknown")
+            ),
+            "Compatibility extras: {status}".format(
+                status=(ds.get("optional_compat_label") or "Unknown")
+            ),
+        ]
+
+        commands = list(ds.get("setup_commands") or [])
+        if commands:
+            lines.append("")
+            lines.append("Recommended commands:")
+            lines.extend(" - {command}".format(command=command) for command in commands)
+
+        next_steps = (ds.get("next_steps") or "").strip()
+        if next_steps:
+            lines.append("")
+            lines.append("Guidance:")
+            lines.append(next_steps)
+
+        return "\n".join(lines).strip()
+
+    def _open_install_guide(self):
+        """Open the install guide in the default browser, with a copy fallback."""
+        url = str(self._install_guide_url or "").strip()
+        if not url:
+            return False
+        try:
+            import webbrowser
+            return bool(webbrowser.open(url))
+        except Exception:
+            logger.debug("Failed to open install guide URL.", exc_info=True)
+            return False
+
+    def _save_script_to_disk(self):
+        """Export the current remediation commands to a shell/PowerShell script."""
+        payload = (self._script_payload or "").strip()
+        if not payload:
+            return ""
+
+        folder_picker = uno_utils.create_instance("com.sun.star.ui.dialogs.FolderPicker", self.ctx)
+        if not folder_picker:
+            raise RuntimeError("Folder picker is not available in this LibreOffice session.")
+
+        try:
+            folder_picker.setTitle("Choose a folder for the TejOCR setup script")
+        except Exception:
+            pass
+
+        if folder_picker.execute() != uno_utils.OK_BUTTON:
+            return ""
+
+        selected_dir = folder_picker.getDirectory()
+        target_dir = unohelper.fileUrlToSystemPath(selected_dir) if selected_dir else ""
+        if not target_dir:
+            return ""
+
+        filename = self._script_filename or _default_setup_script_filename()
+        output_path = os.path.join(target_dir, filename)
+        with open(output_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+        return output_path
 
     def disposing(self, event):
         pass
@@ -3605,12 +4048,141 @@ def _build_pip_command(python_path):
     base = os.path.basename(python_path).lower()
     if not (base == "python" or base.startswith("python") or "python" in base):
         return "python3 -m pip install"
-    if os.name == "nt":
-        return f'"{python_path}" -m pip install' if " " in python_path else f"{python_path} -m pip install"
+    looks_like_windows = bool(re.match(r"^[A-Za-z]:\\", str(python_path or "")))
+    if os.name == "nt" or looks_like_windows:
+        if " " in python_path:
+            return f'& "{python_path}" -m pip install'
+        return f"& {python_path} -m pip install"
     try:
         return f"{shlex.quote(python_path)} -m pip install"
     except Exception:
         return f'"{python_path}" -m pip install' if " " in python_path else f"{python_path} -m pip install"
+
+
+def _build_python_package_install_command(packages, python_path=None):
+    """Return a runtime-specific package install command."""
+    clean_packages = [str(package).strip() for package in (packages or []) if str(package).strip()]
+    command = _build_pip_command(python_path or _get_lo_python_path())
+    if clean_packages:
+        command += " " + " ".join(clean_packages)
+    return command
+
+
+def _detect_pip_status(python_path=None):
+    """Return whether pip is available in the active LibreOffice Python runtime."""
+    python_path = python_path or _get_lo_python_path()
+    available, version = _package_status("pip", "pip")
+    if available:
+        return {"available": True, "version": version, "path": python_path}
+    try:
+        from tejocr import tejocr_pdf
+
+        checker = getattr(tejocr_pdf, "_is_python_with_pip", None)
+        if callable(checker) and checker(python_path):
+            return {"available": True, "version": "", "path": python_path}
+    except Exception:
+        logger.debug("pip runtime probe fallback failed.", exc_info=True)
+    return {"available": False, "version": "", "path": python_path}
+
+
+def _pip_bootstrap_commands_for_platform(python_path=None):
+    """Return best-effort pip bootstrap commands for the active OS."""
+    import platform
+
+    python_path = python_path or _get_lo_python_path()
+    system = (platform.system() or "").lower()
+    if system == "windows":
+        raw_python = str(python_path or "").strip()
+        lo_dir = raw_python.replace("/", "\\").rsplit("\\", 1)[0] or r"C:\Program Files\LibreOffice\program"
+        exe_name = raw_python.replace("\\", "/").split("/")[-1] or "python.exe"
+        local_exe = ".\\{name}".format(name=exe_name)
+        return [
+            'cd "{path}"'.format(path=lo_dir),
+            "(Invoke-WebRequest -Uri https://bootstrap.pypa.io/get-pip.py -UseBasicParsing).Content | {exe} -".format(
+                exe=local_exe
+            ),
+        ]
+
+    bootstrap_cmd = "{python} -m ensurepip --upgrade".format(
+        python=_build_pip_command(python_path).rsplit(" -m pip install", 1)[0]
+    )
+    return [bootstrap_cmd]
+
+
+def _default_setup_script_filename():
+    import platform
+
+    system = (platform.system() or "").lower()
+    if system == "windows":
+        return "tejocr-setup.ps1"
+    return "tejocr-setup.sh"
+
+
+def _build_setup_script_payload(commands):
+    """Build an exportable setup script for the current platform."""
+    import platform
+
+    normalized_commands = []
+    seen = set()
+    for command in commands or []:
+        clean = _normalize_command_for_copy(command)
+        if not clean:
+            clean = str(command or "").strip()
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized_commands.append(clean)
+
+    if not normalized_commands:
+        return "", ""
+
+    system = (platform.system() or "").lower()
+    if system == "windows":
+        lines = [
+            "# TejOCR setup helper for LibreOffice PowerShell",
+            "$ErrorActionPreference = 'Stop'",
+            "",
+        ]
+        for command in normalized_commands:
+            lines.append(command)
+            lines.append("")
+        return "\n".join(lines).rstrip() + "\n", _default_setup_script_filename()
+
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -e",
+        "",
+        "# TejOCR setup helper for LibreOffice",
+        "",
+    ]
+    for command in normalized_commands:
+        lines.append(command)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n", _default_setup_script_filename()
+
+
+def _format_setup_steps(title, steps):
+    """Format setup guidance as spaced step blocks for plain-text dialogs."""
+    blocks = [str(title or "").strip()]
+    step_no = 1
+    for raw_title, raw_lines in steps or []:
+        lines = [str(line).rstrip() for line in (raw_lines or []) if str(line or "").strip()]
+        if not lines:
+            continue
+        heading = str(raw_title or "").strip()
+        if heading:
+            blocks.append("")
+            blocks.append("{idx}. {heading}".format(idx=step_no, heading=heading))
+        else:
+            blocks.append("")
+            blocks.append("{idx}.".format(idx=step_no))
+        for line in lines:
+            blocks.append("   {line}".format(line=line))
+        step_no += 1
+    return "\n".join(blocks).strip()
 
 
 def _extract_pdf2image_command_from_text_v2(raw_command):
@@ -3669,10 +4241,10 @@ def _extract_pdf2image_command_from_text_v2(raw_command):
             return "{} pdf2image".format(explicit_cmd.strip().strip("\"'"))
 
     patterns = [
-        r"(?P<exe>(?:\"[^\"]+\"|'[^']+'|/[^\s\"']+|\bpython(?:3)?\b))\s+-m\s+pip\s+install\s+pdf2image\b",
-        r"(?P<exe>(?:\"[^\"]+\"|'[^']+'|/[^\s\"']+|\bpython(?:3)?\b))\s+pip\s+install\s+pdf2image\b",
-        r"(?P<exe>\"[^\"]+\"|'[^']+'|[^\s\"']+)\s+-m\s+pip\s+install\s+pdf2image",
-        r"(?P<exe>\"[^\"]+\"|'[^']+'|[^\s\"']+)\s+pip\s+install\s+pdf2image",
+        r"(?:&\s+)?(?P<exe>(?:\"[^\"]+\"|'[^']+'|/[^\s\"']+|\bpython(?:3)?\b))\s+-m\s+pip\s+install\s+pdf2image\b",
+        r"(?:&\s+)?(?P<exe>(?:\"[^\"]+\"|'[^']+'|/[^\s\"']+|\bpython(?:3)?\b))\s+pip\s+install\s+pdf2image\b",
+        r"(?:&\s+)?(?P<exe>\"[^\"]+\"|'[^']+'|[^\s\"']+)\s+-m\s+pip\s+install\s+pdf2image",
+        r"(?:&\s+)?(?P<exe>\"[^\"]+\"|'[^']+'|[^\s\"']+)\s+pip\s+install\s+pdf2image",
     ]
     for pattern in patterns:
         match = re.search(pattern, flattened, flags=re.IGNORECASE)
@@ -4088,12 +4660,12 @@ def _check_dependencies():
     import platform
 
     _refresh_dependency_import_state()
-    
-    # Dynamically detect the running LibreOffice's Python for pip commands
+
     pip_python = _get_lo_python_path()
     pip_cmd = _build_pip_command(pip_python)
+    pip_status = _detect_pip_status(pip_python)
     pdf2image_install_command = f"{pip_cmd} pdf2image"
-    
+
     status = {
         'summary': '',
         'tesseract': '',
@@ -4108,8 +4680,23 @@ def _check_dependencies():
         'pdf_renderer_error': '',
         'python_missing_packages': [],
         'python_install_command': '',
+        'python_install_commands': [],
         'tesseract_install_commands': [],
+        'pip_bootstrap_commands': [],
         'setup_commands': [],
+        'lo_python_path': pip_python,
+        'lo_python_path_display': pip_python or "python3",
+        'lo_python_path_resolved': bool(pip_python and pip_python != "python3"),
+        'pip_ok': pip_status["available"],
+        'pip_version': pip_status["version"],
+        'required_python_packages': [],
+        'optional_missing_packages': [],
+        'optional_compat_ready': False,
+        'optional_compat_label': "",
+        'pdf2image_ok': False,
+        'pillow_version': '',
+        'tesseract_version': '',
+        'tesseract_path_label': '',
     }
 
     def _default_pdf_hints(pip_cmd):
@@ -4216,84 +4803,89 @@ def _check_dependencies():
                 break
         except Exception:
             continue
-    
+
     status['tesseract'] = f"Status: {tesseract_status}\nPath: {tesseract_path}"
-    
-    # Check Python packages with detailed diagnostics
+    status['tesseract_version'] = tesseract_status.replace("Installed ", "").strip() if tesseract_ok else ""
+    status['tesseract_path_label'] = tesseract_path
+
     python_packages = []
-    
+    pillow_available, pillow_version = _package_status("PIL", "Pillow")
+    pdf2image_available, pdf2image_version = _package_status("pdf2image", "pdf2image")
+    pytesseract_available, pytesseract_version = _package_status("pytesseract", "pytesseract")
     numpy_available, numpy_version = _package_status("numpy", "numpy")
-    if numpy_available:
+
+    python_packages.append("LibreOffice Python: {path}".format(path=status['lo_python_path_display']))
+    if pip_status["available"]:
         python_packages.append(
-            "numpy: {version} (OK)".format(version=numpy_version or "installed")
+            "pip: {version} (OK)".format(version=pip_status["version"] or "available")
         )
     else:
-        python_packages.append("numpy: Not found (required for pytesseract)")
+        python_packages.append("pip: Not found in LibreOffice Python")
 
-    pytesseract_available, pytesseract_version = _package_status("pytesseract", "pytesseract")
-    if pytesseract_available:
-        if numpy_available:
-            python_packages.append(
-                "pytesseract: {version} (OK)".format(
-                    version=pytesseract_version or "installed"
-                )
-            )
-        else:
-            python_packages.append("pytesseract: Installed but numpy is missing")
-    else:
-        if numpy_available:
-            python_packages.append("pytesseract: Not found")
-        else:
-            python_packages.append("pytesseract: Cannot load due to missing numpy")
-
-    pillow_available, pillow_version = _package_status("PIL", "Pillow")
     if pillow_available:
         python_packages.append(
-            "Pillow: {version} (OK)".format(version=pillow_version or "installed")
+            "Pillow: {version} (recommended preprocessing; OK)".format(
+                version=pillow_version or "installed"
+            )
         )
     else:
-        python_packages.append("Pillow: Not found in LibreOffice Python")
-    
-    # Check UNO - Should always be available in LibreOffice
-    try:
-        import uno
-        python_packages.append("uno: Available in LibreOffice (OK)")
-        uno_available = True
-    except ImportError:
-        python_packages.append("uno: Not available (unexpected)")
-        uno_available = False
-    
+        python_packages.append("Pillow: Not found (core OCR still works; preprocessing is reduced)")
+
+    if pdf2image_available:
+        python_packages.append(
+            "pdf2image: {version} (optional PDF fallback; OK)".format(
+                version=pdf2image_version or "installed"
+            )
+        )
+    else:
+        python_packages.append("pdf2image: Not found (optional PDF fallback)")
+
+    python_packages.append(
+        "Compatibility extras: pytesseract={pt} | numpy={np}".format(
+            pt=(pytesseract_version or "installed") if pytesseract_available else "not installed",
+            np=(numpy_version or "installed") if numpy_available else "not installed",
+        )
+    )
+
     status['python_packages'] = '\n'.join(python_packages)
-    
-    # Store boolean flags for structured access
     status['tesseract_ok'] = tesseract_ok
     status['numpy_ok'] = numpy_available
     status['pytesseract_ok'] = pytesseract_available
     status['pillow_ok'] = pillow_available
-    
-    logger.debug(f"Dependency check: tesseract_ok={tesseract_ok}, numpy_available={numpy_available}, pytesseract_available={pytesseract_available}, pillow_available={pillow_available}")
-    
-    python_missing = []
-    if not numpy_available:
-        python_missing.append("numpy")
-    if not pytesseract_available:
-        python_missing.append("pytesseract")
-    if not pillow_available:
-        python_missing.append("pillow")
+    status['pillow_version'] = pillow_version or ""
+    status['pdf2image_ok'] = pdf2image_available
 
-    python_install_command = ""
-    # For macOS LibreOffice production installations, `python3 -m pip install` is safest.
-    # We clean the environment for copy commands to detach from LO's virtual env if needed.
-    osx_pip_prefix = "env -i PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin\" " if platform.system().lower() == "darwin" else ""
-    
-    if python_missing:
-        # Use simple 'python3 -m pip install ...' which relies on the OS user's PATH
-        # rather than the deeply nested and potentially sandboxed LO executable.
-        clean_pip_cmd = f"{osx_pip_prefix}python3 -m pip install --user"
-        python_install_command = "{cmd} {packages}".format(
-            cmd=clean_pip_cmd,
-            packages=" ".join(python_missing),
-        )
+    logger.debug(
+        "Dependency check: tesseract_ok=%s, pip_ok=%s, pillow_available=%s, pdf2image_available=%s, pytesseract_available=%s, numpy_available=%s",
+        tesseract_ok,
+        pip_status["available"],
+        pillow_available,
+        pdf2image_available,
+        pytesseract_available,
+        numpy_available,
+    )
+
+    required_python_packages = []
+    recommended_python_packages = []
+    optional_python_packages = []
+
+    if not pillow_available:
+        recommended_python_packages.append("pillow")
+    if not pdf2image_available:
+        optional_python_packages.append("pdf2image")
+    if not pytesseract_available:
+        optional_python_packages.append("pytesseract")
+    if not numpy_available:
+        optional_python_packages.append("numpy")
+
+    python_install_commands = []
+    if pip_status["available"]:
+        if recommended_python_packages:
+            python_install_commands.append(
+                _build_python_package_install_command(recommended_python_packages, pip_python)
+            )
+    else:
+        status['pip_bootstrap_commands'] = _pip_bootstrap_commands_for_platform(pip_python)
 
     tesseract_install_commands = [] if tesseract_ok else _tesseract_install_commands_for_platform()
     setup_commands = []
@@ -4313,56 +4905,39 @@ def _check_dependencies():
 
     for command in tesseract_install_commands:
         _add_setup_command(command)
-    if python_install_command:
-        _add_setup_command(python_install_command)
+    for command in status['pip_bootstrap_commands']:
+        _add_setup_command(command)
+    for command in python_install_commands:
+        _add_setup_command(command)
 
-    core_ready = (
-        tesseract_ok
-        and not python_missing
-    )
+    core_ready = tesseract_ok
     pdf_renderer_ready = bool(pdf_status.get("available"))
-    # Use the more accurate variables from above
     if core_ready and pdf_renderer_ready:
-        status['summary'] = "All dependencies ready. OCR functionality available."
-        status['next_steps'] = """✅ System Ready. All dependencies installed.
-You can use all basic and advanced (PDF) OCR features.
-
-Close this dialog to return to settings."""
+        status['summary'] = "Image + PDF OCR ready."
+        status['next_steps'] = (
+            "✅ Image OCR and PDF OCR are ready in this LibreOffice session.\n"
+            "Optional extras such as Pillow preprocessing and compatibility packages can still be installed later."
+        )
     elif core_ready and not pdf_renderer_ready:
-        status['summary'] = "Core OCR ready; Optional PDF renderer missing."
-        status['next_steps'] = """✅ Core OCR Ready. You can OCR images.
-ℹ️ Note: PDF processing requires an additional renderer.
-
-To enable PDF support, install a renderer (poppler) and pdf2image using the command below."""
-        
-    elif tesseract_ok and (pytesseract_available or pillow_available or numpy_available):
-        status['summary'] = "Partially ready; Python bridge packages missing."
-        status['next_steps'] = f"""⚠️ Action Required: Missing Python Integration Packages ({', '.join(python_missing)}).
-
-Run the command provided below in your system Terminal.
-After installation completes, restart LibreOffice to apply changes."""
-        
-    elif tesseract_ok:
-        status['summary'] = "Tesseract engine ready; Python bridge packages missing."
-        status['next_steps'] = f"""⚠️ Action Required: Missing Python Integration Packages.
-
-Tesseract is installed, but LibreOffice cannot communicate with it.
-Run the command provided below in your system Terminal.
-After installation completes, restart LibreOffice."""
-        
+        status['summary'] = "Image OCR ready; PDF OCR still needs runtime support."
+        status['next_steps'] = (
+            "✅ Image OCR is ready now.\n"
+            "⚠ PDF OCR still needs a renderer toolchain (Poppler or MuPDF) and may also use pdf2image as a compatibility fallback."
+        )
     else:
-        status['summary'] = "Setup Required: Core dependencies missing."
+        status['summary'] = "Setup required: Tesseract OCR is missing."
         quick_steps = ["⚠️ Action Required: OCR Engine not found."]
         quick_steps.append("\nRun the commands below in your system Terminal:")
         if tesseract_install_commands:
             quick_steps.append("1. Install Tesseract OCR Database:")
             quick_steps.extend("   {cmd}".format(cmd=cmd) for cmd in tesseract_install_commands)
-        if python_install_command:
-            quick_steps.append("\n2. Install Python Integration Packages:")
-            quick_steps.append("   {cmd}".format(cmd=python_install_command))
-        quick_steps.append("\nℹ️ Standard Users: The second command installs packages for your account only.")
-        quick_steps.append("ℹ️ Admins: If the first command fails, you may need to prefix it with 'sudo'.")
-        quick_steps.append("\nRestart LibreOffice after the installations complete.")
+        if status['pip_bootstrap_commands']:
+            quick_steps.append("\n2. Bootstrap pip in LibreOffice Python (if needed):")
+            quick_steps.extend("   {cmd}".format(cmd=cmd) for cmd in status['pip_bootstrap_commands'])
+        if python_install_commands:
+            quick_steps.append("\n3. Install recommended LibreOffice Python extras:")
+            quick_steps.extend("   {cmd}".format(cmd=cmd) for cmd in python_install_commands)
+        quick_steps.append("\nRestart LibreOffice after installations or use Validate / Refresh in this dialog.")
         status['next_steps'] = "\n".join(quick_steps)
 
     if not pdf_status["available"]:
@@ -4397,39 +4972,162 @@ After installation completes, restart LibreOffice."""
         for command in pdf_renderer_commands:
             _add_setup_command(command)
 
-    status['python_missing_packages'] = list(python_missing)
-    status['python_install_command'] = python_install_command
+    if not pdf_renderer_ready and pip_status["available"] and not pdf2image_available:
+        pdf2image_command = _build_python_package_install_command(["pdf2image"], pip_python)
+        if pdf2image_command not in python_install_commands:
+            python_install_commands.append(pdf2image_command)
+            _add_setup_command(pdf2image_command)
+
+    compatibility_missing = [pkg for pkg in ("pytesseract", "numpy") if pkg in optional_python_packages]
+    if compatibility_missing and pip_status["available"]:
+        compatibility_command = _build_python_package_install_command(compatibility_missing, pip_python)
+        python_install_commands.append(compatibility_command)
+
+    status['python_missing_packages'] = list(required_python_packages + recommended_python_packages)
+    status['required_python_packages'] = list(required_python_packages)
+    status['optional_missing_packages'] = list(optional_python_packages)
+    status['python_install_command'] = python_install_commands[0] if python_install_commands else ""
+    status['python_install_commands'] = list(dict.fromkeys(python_install_commands))
     status['tesseract_install_commands'] = list(tesseract_install_commands)
     status['setup_commands'] = list(setup_commands)
-    
-    # Platform-specific installation guide - Make it concise as it goes in instructions box or copy text
-    system = platform.system().lower()
-    
-    clean_pip = osx_pip_prefix + "python3 -m pip install --user" if system == "darwin" else "python3 -m pip install"
-    
-    if system == "darwin":  # macOS
-        status['installation_guide'] = f"""macOS Reference:
-1. Core OCR: brew install tesseract tesseract-lang
-2. Bridge: {clean_pip} numpy pytesseract pillow
-3. PDFs (Opt): brew install poppler && {clean_pip} pdf2image"""
-   
-    elif system == "linux":
-        status['installation_guide'] = f"""Linux Reference:
-1. Core OCR: sudo apt install tesseract-ocr tesseract-ocr-all
-2. Bridge: {clean_pip} numpy pytesseract pillow
-3. PDFs (Opt): sudo apt install poppler-utils && {clean_pip} pdf2image"""
-   
-    elif system == "windows":
-        status['installation_guide'] = f"""Windows Reference:
-1. Core OCR: Download installer from UB-Mannheim github
-2. Bridge: {clean_pip} numpy pytesseract pillow
-3. PDFs (Opt): choco install poppler && {clean_pip} pdf2image"""
-   
+
+    status['optional_compat_ready'] = not compatibility_missing
+    if compatibility_missing:
+        status['optional_compat_label'] = "⚠ Compatibility extras (optional): missing {items}".format(
+            items=", ".join(compatibility_missing)
+        )
     else:
-        status['installation_guide'] = f"""Reference:
-1. Core OCR: Install from tesseract-ocr.github.io
-2. Bridge: {clean_pip} numpy pytesseract pillow"""
-    
+        status['optional_compat_label'] = "✅ Compatibility extras (optional): pytesseract and numpy available"
+
+    system = platform.system().lower()
+
+    if system == "darwin":
+        status['installation_guide'] = _format_setup_steps(
+            "macOS Reference",
+            [
+                ("LibreOffice Python used by TejOCR", [
+                    "Path:",
+                    "{python}".format(python=status['lo_python_path_display']),
+                ]),
+                ("Core OCR", [
+                    "Command:",
+                    "brew install tesseract tesseract-lang",
+                ]),
+                ("Recommended preprocessing", [
+                    "Command:",
+                    "{pillow}".format(
+                        pillow=_build_python_package_install_command(["pillow"], pip_python)
+                    ),
+                ]),
+                ("PDF OCR (optional)", [
+                    "Command:",
+                    "brew install poppler",
+                ]),
+                ("PDF Python fallback (optional)", [
+                    "Command:",
+                    "{pdf2image}".format(
+                        pdf2image=_build_python_package_install_command(["pdf2image"], pip_python)
+                    ),
+                ]),
+                ("If pip is missing", [
+                    "Command:",
+                    "{ensurepip}".format(
+                        ensurepip=status['pip_bootstrap_commands'][0] if status['pip_bootstrap_commands'] else "pip already available"
+                    ),
+                ]),
+            ],
+        )
+    elif system == "linux":
+        status['installation_guide'] = _format_setup_steps(
+            "Linux Reference",
+            [
+                ("LibreOffice Python used by TejOCR", [
+                    "Path:",
+                    "{python}".format(python=status['lo_python_path_display']),
+                ]),
+                ("Core OCR", [
+                    "Command:",
+                    "sudo apt install tesseract-ocr tesseract-ocr-all",
+                ]),
+                ("Recommended preprocessing", [
+                    "Command:",
+                    "{pillow}".format(
+                        pillow=_build_python_package_install_command(["pillow"], pip_python)
+                    ),
+                ]),
+                ("PDF OCR (optional)", [
+                    "Command:",
+                    "sudo apt install poppler-utils mupdf-tools",
+                ]),
+                ("PDF Python fallback (optional)", [
+                    "Command:",
+                    "{pdf2image}".format(
+                        pdf2image=_build_python_package_install_command(["pdf2image"], pip_python)
+                    ),
+                ]),
+            ],
+        )
+    elif system == "windows":
+        windows_bootstrap = status['pip_bootstrap_commands']
+        bootstrap_lines = list(windows_bootstrap) if windows_bootstrap else ["pip already available in LibreOffice Python"]
+        status['installation_guide'] = _format_setup_steps(
+            "Windows Reference (PowerShell)",
+            [
+                ("LibreOffice Python used by TejOCR", [
+                    "Path:",
+                    "{python}".format(python=status['lo_python_path_display']),
+                ]),
+                ("Core OCR", [
+                    "Install Tesseract from UB-Mannheim or use:",
+                    "choco install tesseract",
+                ]),
+                ("If pip is missing in LibreOffice Python", bootstrap_lines),
+                ("Recommended preprocessing", [
+                    "Command:",
+                    "{pillow}".format(
+                        pillow=_build_python_package_install_command(["pillow"], pip_python)
+                    ),
+                ]),
+                ("PDF OCR (optional)", [
+                    "Install Poppler, then run:",
+                    "{pdf2image}".format(
+                        pdf2image=_build_python_package_install_command(["pdf2image"], pip_python)
+                    ),
+                ]),
+                ("Compatibility extras only if needed", [
+                    "Command:",
+                    "{compat}".format(
+                        compat=_build_python_package_install_command(["numpy", "pytesseract"], pip_python)
+                    ),
+                ]),
+            ],
+        )
+    else:
+        status['installation_guide'] = _format_setup_steps(
+            "Reference",
+            [
+                ("Core OCR", [
+                    "Install Tesseract for your OS.",
+                ]),
+                ("LibreOffice Python used by TejOCR", [
+                    "Path:",
+                    "{python}".format(python=status['lo_python_path_display']),
+                ]),
+                ("Recommended preprocessing", [
+                    "Command:",
+                    "{pillow}".format(
+                        pillow=_build_python_package_install_command(["pillow"], pip_python)
+                    ),
+                ]),
+                ("PDF Python fallback (optional)", [
+                    "Command:",
+                    "{pdf2image}".format(
+                        pdf2image=_build_python_package_install_command(["pdf2image"], pip_python)
+                    ),
+                ]),
+            ],
+        )
+
     return status
 
 def show_ocr_options_dialog(ctx, parent_frame, ocr_source_type, image_path=None):
@@ -4662,10 +5360,13 @@ QUICK SETUP (macOS):
 2. Install extra languages (optional):
    brew install tesseract-lang
 
-3. Install Python packages:
-   {pip_cmd} numpy pytesseract pillow
+3. Install recommended preprocessing package:
+   {pip_cmd} pillow
 
-4. Restart LibreOffice
+4. Optional compatibility extras:
+   {pip_cmd} numpy pytesseract
+
+5. Restart LibreOffice
 
 OTHER PLATFORMS:
 • Linux: sudo apt install tesseract-ocr tesseract-ocr-all
@@ -4679,7 +5380,7 @@ VERIFICATION:
 
 TROUBLESHOOTING:
 • Ensure Homebrew is installed (macOS)
-• Check Python packages in LibreOffice Python
+• Check packages in LibreOffice Python
 • Restart LibreOffice after installation
 
 Need more help? Check the extension documentation."""

@@ -57,6 +57,15 @@ class TestTejocrEngine(unittest.TestCase):
         self.addCleanup(lambda: os.path.exists(handle.name) and os.remove(handle.name))
         return handle.name
 
+    def test_run_tesseract_subprocess_forces_utf8_decoding(self):
+        with patch.object(tejocr_engine.subprocess, "run", return_value=types.SimpleNamespace()) as run_mock:
+            tejocr_engine._run_tesseract_subprocess(["tesseract", "--version"])
+
+        kwargs = run_mock.call_args.kwargs
+        self.assertTrue(kwargs["text"])
+        self.assertEqual(kwargs["encoding"], "utf-8")
+        self.assertEqual(kwargs["errors"], "replace")
+
     def test_perform_ocr_uses_cli_runtime_without_pytesseract(self):
         image_path = self._temp_image()
         session = self._session()

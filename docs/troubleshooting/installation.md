@@ -13,6 +13,7 @@ TejOCR .oxt install
   -> show extension card / execute commands
 ```
 
+```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Install TejOCR .oxt"] --> B["Parse description.xml"]
@@ -63,6 +64,7 @@ In this repository it must resolve to:
 5. Reinstall + restart LibreOffice.
 ```
 
+```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["License path error"] --> B["quit LibreOffice"]
@@ -106,6 +108,7 @@ Most commonly caused by:
 - `icon` paths are valid and reachable (e.g. `icons/tejocr_48.png`).
 - `version` in description file matches manifest/package release version.
 
+```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1f6feb","primaryTextColor":"#ffffff","primaryBorderColor":"#1347a0","lineColor":"#7c3aed","secondaryColor":"#22c55e","tertiaryColor":"#f59e0b","mainBkg":"#dbeafe","background":"#ffffff","textColor":"#0f172a"}}}%%
 flowchart TD
   A["Raw XML shown in Manager"] --> B{"Fresh package?"}
@@ -155,6 +158,65 @@ Settings command
 - `supports_uno_dialog_model` result
 - `Could not create OCR options dialog` / `fallback form skipped`
 
+## 4a) Installed packages into system Python by mistake
+
+### Symptom
+
+TejOCR still reports missing packages even though `pip install ...` succeeded in a terminal.
+
+### Why this happens
+
+LibreOffice runs TejOCR inside LibreOffice's own Python runtime, not your normal Windows/macOS/Linux Python installation.
+
+### Fix
+
+Always install packages into the interpreter shown by Setup & Diagnostics.
+
+Setup & Diagnostics can now help without leaving LibreOffice:
+
+- `Copy Command to Clipboard`: copies the exact OS-specific remediation commands.
+- `Save Script...`: exports a `.ps1` or `.sh` helper script for the current machine.
+- `Copy Support Snapshot`: copies a compact environment report for GitHub issues or forum posts.
+- `Open Install Guide`: opens the TejOCR install/troubleshooting guide in the browser.
+
+Windows example:
+
+```powershell
+cd "C:\Program Files\LibreOffice\program"
+(Invoke-WebRequest -Uri https://bootstrap.pypa.io/get-pip.py -UseBasicParsing).Content | .\python.exe -
+.\python.exe -m pip install pillow
+.\python.exe -m pip install pdf2image   # optional, only for PDF fallback
+```
+
+Optional compatibility extras:
+
+```powershell
+.\python.exe -m pip install numpy pytesseract
+```
+
+Repository helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\tejocr_windows_bootstrap.ps1
+```
+
+Optional switches:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\tejocr_windows_bootstrap.ps1 -InstallPdfFallback -InstallCompatExtras
+```
+
+### Support snapshot workflow
+
+If setup still fails after following the generated commands:
+
+```text
+1. Open Settings -> Setup & Diagnostics
+2. Click "Copy Support Snapshot"
+3. Paste that snapshot into the GitHub issue / forum / mailing list post
+4. Mention whether Tesseract, pip, and the PDF renderer rows are green or amber
+```
+
 ## 5) macOS crash popup mentioning `LibreOfficePython`
 
 ### Symptom
@@ -197,7 +259,7 @@ not:
 5. If the popup still appears, capture the new crash report and the rebuilt package version.
 ```
 
-## 5) Why replacement mode differs between selected-image and file-image
+## 6) Why replacement mode differs between selected-image and file-image
 
 `replace_image` requires a selected replacement target.
 
@@ -212,7 +274,7 @@ Method flow:
 If users report "replace image" with file path mode, expected behavior is
 stable cursor/text insertion, not in-place replacement.
 
-## 6) Trusted executable path note
+## 7) Trusted executable path note
 
 TejOCR allows a custom Tesseract executable path. That path is treated as trusted.
 
@@ -229,7 +291,7 @@ Recommendation:
 - use custom path only for a known-good local Tesseract install,
 - reset the field to blank if you are not sure.
 
-## 7) Commands
+## 8) Commands
 
 ### Rebuild and package
 
@@ -240,7 +302,7 @@ python3 build_tejocr.py
 ### Remove stale cache (macOS)
 
 ```bash
-rm -rf "~/Library/Application Support/LibreOffice"/*/user/uno_packages/cache/uno_packages/
+rm -rf ~/Library/Application\ Support/LibreOffice/*/user/uno_packages/cache/uno_packages/
 ```
 
 ### Remove stale cache (Linux)
@@ -249,12 +311,18 @@ rm -rf "~/Library/Application Support/LibreOffice"/*/user/uno_packages/cache/uno
 rm -rf ~/.config/libreoffice/*/user/uno_packages/cache/uno_packages/
 ```
 
+### Remove stale cache (Windows PowerShell)
+
+```powershell
+Remove-Item -Recurse -Force "$env:APPDATA\LibreOffice\4\user\uno_packages\cache\uno_packages\*"
+```
+
 Use these commands when:
 - raw XML persists after reinstall,
 - icon/card still stale after upgrade,
 - dependency/metadata UI does not reflect fresh package state.
 
-## 8) Capture data for support
+## 9) Capture data for support
 
 When the issue persists, share:
 - full install exception text,
@@ -265,7 +333,7 @@ When the issue persists, share:
 
 This usually separates metadata descriptor issues from runtime UNO service issues quickly.
 
-## 9) Hidden OCR executor rollback for maintainers
+## 10) Hidden OCR executor rollback for maintainers
 
 For one-release rollout comparisons, TejOCR also supports a hidden executor setting in the fallback settings file:
 

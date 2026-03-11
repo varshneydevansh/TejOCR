@@ -196,6 +196,8 @@ def _is_python_with_pip(path):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=5,
         )
@@ -288,6 +290,8 @@ def _run_command(command, timeout=5):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             timeout=timeout,
         )

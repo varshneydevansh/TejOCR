@@ -246,6 +246,109 @@ class TestTejocrDialogs(unittest.TestCase):
 
         self.assertEqual(resolved, "/safe/libreoffice/python3")
 
+    def test_build_pip_command_uses_powershell_safe_windows_invocation(self):
+        with patch.object(tejocr_dialogs.os, "name", "nt"):
+            command = tejocr_dialogs._build_pip_command(r"C:\Program Files\LibreOffice\program\python.exe")
+
+        self.assertEqual(
+            command,
+            '& "C:\\Program Files\\LibreOffice\\program\\python.exe" -m pip install',
+        )
+
+    def test_windows_pip_bootstrap_commands_use_libreoffice_python_dir(self):
+        with patch("platform.system", return_value="Windows"):
+            commands = tejocr_dialogs._pip_bootstrap_commands_for_platform(
+                r"C:\Program Files\LibreOffice\program\python.exe"
+            )
+
+        self.assertEqual(commands[0], 'cd "C:\\Program Files\\LibreOffice\\program"')
+        self.assertIn("get-pip.py", commands[1])
+        self.assertIn(".\\python.exe -", commands[1])
+
+    def test_build_setup_script_payload_uses_powershell_format_on_windows(self):
+        with patch("platform.system", return_value="Windows"):
+            payload, filename = tejocr_dialogs._build_setup_script_payload(
+                ['choco install tesseract', '& "C:\\LibreOffice\\program\\python.exe" -m pip install pillow']
+            )
+
+        self.assertEqual(filename, "tejocr-setup.ps1")
+        self.assertIn("$ErrorActionPreference = 'Stop'", payload)
+        self.assertIn('choco install tesseract', payload)
+
+    def test_copy_text_to_clipboard_preserves_multiline_snapshot_payload(self):
+        handler = tejocr_dialogs.TejOCRSetupDialogHandler(ctx=None)
+
+        with patch.object(handler, "_copy_lines_to_clipboard", return_value=True) as copier:
+            copied = handler._copy_text_to_clipboard("Line 1\nLine 2")
+
+        self.assertTrue(copied)
+        copier.assert_called_once_with(["Line 1\nLine 2"], "Nothing available to copy.", normalize_commands=False)
+
+    def test_build_support_snapshot_includes_runtime_details_and_commands(self):
+        handler = tejocr_dialogs.TejOCRSetupDialogHandler(ctx=None)
+
+        snapshot = handler._build_support_snapshot({
+            "summary": "Image OCR ready; PDF OCR still needs runtime support.",
+            "lo_python_path_display": r"C:\Program Files\LibreOffice\program\python.exe",
+            "pip_ok": True,
+            "pip_version": "25.0",
+            "tesseract_ok": True,
+            "tesseract_version": "v5.5.2",
+            "pillow_ok": False,
+            "pdf2image_ok": False,
+            "pdf_renderer_status": "PDF Renderer: Not found",
+            "optional_compat_label": "⚠ Compatibility extras (optional): missing numpy",
+            "setup_commands": ['choco install tesseract', '& "C:\\Program Files\\LibreOffice\\program\\python.exe" -m pip install pillow'],
+            "next_steps": "Open Setup & Diagnostics for install commands.",
+        })
+
+        self.assertIn("TejOCR Setup Snapshot", snapshot)
+        self.assertIn(r"LibreOffice Python: C:\Program Files\LibreOffice\program\python.exe", snapshot)
+        self.assertIn("Tesseract: available (v5.5.2)", snapshot)
+        self.assertIn("Pillow: missing", snapshot)
+        self.assertIn("Recommended commands:", snapshot)
+        self.assertIn("Guidance:", snapshot)
+
+    def test_copy_lines_to_clipboard_uses_absolute_pbcopy_fallback_on_macos(self):
+        handler = tejocr_dialogs.TejOCRSetupDialogHandler(ctx=None)
+
+        with patch.object(tejocr_dialogs.uno_utils, "create_instance", return_value=None), \
+             patch("shutil.which", return_value=None), \
+             patch.object(tejocr_dialogs.subprocess, "run", return_value=types.SimpleNamespace(returncode=0, stderr=b"")), \
+             patch.object(sys, "platform", "darwin"):
+            copied = handler._copy_lines_to_clipboard(["echo hello"], "missing", normalize_commands=False)
+
+        self.assertTrue(copied)
+
+    def test_check_dependencies_treats_numpy_and_pytesseract_as_optional(self):
+        def _package_side_effect(module_name, distribution_name=None):
+            mapping = {
+                ("PIL", "Pillow"): (False, ""),
+                ("pdf2image", "pdf2image"): (False, ""),
+                ("pytesseract", "pytesseract"): (False, ""),
+                ("numpy", "numpy"): (False, ""),
+                ("pip", "pip"): (True, "25.0"),
+            }
+            return mapping.get((module_name, distribution_name), (False, ""))
+
+        with patch.object(tejocr_dialogs, "_get_lo_python_path", return_value=r"C:\Program Files\LibreOffice\program\python.exe"), \
+             patch.object(tejocr_dialogs, "_package_status", side_effect=_package_side_effect), \
+             patch.object(tejocr_dialogs, "_refresh_dependency_import_state"), \
+             patch.object(tejocr_dialogs.subprocess, "run", return_value=types.SimpleNamespace(returncode=0, stdout="tesseract 5.5.2\n", stderr="")), \
+             patch.object(tejocr_pdf, "get_pdf_renderer_status", return_value={"available": False, "engine": None, "hints": ["choco install poppler"], "error": ""}), \
+             patch("platform.system", return_value="Windows"):
+            status = tejocr_dialogs._check_dependencies()
+
+        self.assertTrue(status["tesseract_ok"])
+        self.assertTrue(status["pip_ok"])
+        self.assertEqual(status["summary"], "Image OCR ready; PDF OCR still needs runtime support.")
+        self.assertEqual(status["python_missing_packages"], ["pillow"])
+        self.assertIn("numpy", status["optional_missing_packages"])
+        self.assertIn("pytesseract", status["optional_missing_packages"])
+        self.assertIn("pdf2image", status["optional_missing_packages"])
+        self.assertIn('& "C:\\Program Files\\LibreOffice\\program\\python.exe" -m pip install pillow', status["installation_guide"])
+        self.assertIn("Compatibility extras only if needed", status["installation_guide"])
+
     def test_tesseract_language_map_uses_cli_output(self):
         list_langs = "List of available languages in \"/opt/homebrew/share/tessdata/\" (3):\neng\nhin\nscript/Latin\n"
         completed = types.SimpleNamespace(stdout=list_langs, stderr="")
@@ -347,6 +450,75 @@ class TestTejocrDialogs(unittest.TestCase):
         self.assertEqual(controls["SetupButton"].getModel().TextColor, handler.COLOR_TEXT_ON_DARK)
         self.assertEqual(controls["HelpButtonSettings"].getModel().BackgroundColor, handler.COLOR_BTN_WARNING)
         self.assertEqual(controls["HelpButtonSettings"].getModel().TextColor, 0xFFFFFF)
+
+    def test_settings_dependency_summary_labels_optional_python_extras_clearly(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        controls = {
+            "TesseractStatusLabel": _FakeControl(),
+            "PdfStatusLabel": _FakeControl(),
+            "PythonPackagesStatusLabel": _FakeControl(),
+            "SettingsStatusLabel": _FakeControl(),
+        }
+        handler.get_control = controls.get
+
+        dependency_status = {
+            "tesseract_ok": True,
+            "numpy_ok": False,
+            "pytesseract_ok": False,
+            "pillow_ok": False,
+            "pdf_renderer_available": True,
+            "summary": "Image + PDF OCR ready.",
+        }
+
+        with patch.object(tejocr_dialogs, "_check_dependencies", return_value=dependency_status):
+            handler._check_and_display_dependencies()
+
+        self.assertEqual(controls["TesseractStatusLabel"].getText(), "Tesseract: Available")
+        self.assertEqual(controls["PdfStatusLabel"].getText(), "PDF: ok")
+        self.assertEqual(controls["PythonPackagesStatusLabel"].getText(), "Extras: 0/3 (optional)")
+        self.assertEqual(
+            controls["PdfStatusLabel"].getModel().TextColor,
+            handler.COLOR_GREEN,
+        )
+        self.assertEqual(
+            controls["PythonPackagesStatusLabel"].getModel().TextColor,
+            handler.COLOR_AMBER,
+        )
+        self.assertEqual(controls["SettingsStatusLabel"].getText(), "Image + PDF OCR ready.")
+
+    def test_show_setup_reuses_setup_dependency_status_for_settings_labels(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        controls = {
+            "TesseractStatusLabel": _FakeControl(),
+            "PdfStatusLabel": _FakeControl(),
+            "PythonPackagesStatusLabel": _FakeControl(),
+            "SettingsStatusLabel": _FakeControl(),
+        }
+        handler.get_control = controls.get
+
+        fake_status = {
+            "tesseract_ok": True,
+            "numpy_ok": False,
+            "pytesseract_ok": False,
+            "pillow_ok": False,
+            "pdf_renderer_available": True,
+            "summary": "Image + PDF OCR ready.",
+        }
+
+        class _FakeSetupHandler:
+            def __init__(self, *_args, **_kwargs):
+                self.dependency_status = fake_status
+
+            def show(self):
+                return None
+
+        with patch.object(tejocr_dialogs, "TejOCRSetupDialogHandler", _FakeSetupHandler):
+            handler._show_setup()
+
+        self.assertEqual(controls["TesseractStatusLabel"].getText(), "Tesseract: Available")
+        self.assertEqual(controls["PdfStatusLabel"].getText(), "PDF: ok")
+        self.assertEqual(controls["PythonPackagesStatusLabel"].getText(), "Extras: 0/3 (optional)")
+        self.assertEqual(controls["SettingsStatusLabel"].getText(), "Image + PDF OCR ready.")
 
 
 if __name__ == "__main__":

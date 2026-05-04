@@ -12,15 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.2.1] - 2026-03-11 - Setup Diagnostics Polish, Clipboard Hardening & PDF Runtime Fixes
+## [0.2.2] - 2026-03-11 - Setup Diagnostics Polish, Clipboard Hardening & PDF Runtime Fixes
 
 ### Added
+- Added extension UI language selection:
+  - `Auto` follows LibreOffice UI language first, then system locale,
+  - manual selection is available in Settings,
+  - validated catalogs are exposed only when they are loadable and translated.
+- Added Spanish UI translation catalog support from the merged community contribution.
+- Added completed, user-visible UI catalogs for Hindi, French, German, Simplified Chinese, Portuguese (Brazil), Arabic, Bengali, Russian, Japanese, Korean, Indonesian, Turkish, Vietnamese, Italian, Polish, Dutch, Ukrainian, Persian, Urdu, Tamil, Telugu, Marathi, Punjabi, and Swahili.
 - Added a Windows-first setup helper script:
   - [scripts/tejocr_windows_bootstrap.ps1](scripts/tejocr_windows_bootstrap.ps1)
 - Added richer `Setup & Diagnostics` actions:
   - `Copy Support Snapshot`
   - `Save Script...`
   - `Open Install Guide`
+- Added `FilterTube.in (Free Open Source)` to the top-level TejOCR Writer menu.
 - Added test coverage for:
   - setup dialog command generation,
   - clipboard fallback behavior,
@@ -39,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Extras (optional)`
 - Install guidance now makes LibreOffice Python explicit, especially for Windows and first-time users.
 - Platform reference and support snapshot text were reformatted for readability and copy/export workflows.
+- Extension UI language selection now has a taller selector so users can see more language choices at once.
+- Settings now applies the selected extension UI language to XDL-backed labels at runtime instead of leaving the main Settings surface in English.
+- The extension UI language selector was tuned down to a three-row height so it no longer overlaps the OCR language Search / Refresh controls.
+- Hindi Settings copy now uses `निःशुल्क मुक्त-स्रोत` for the FilterTube label, and the Japanese UI-language selector entry now uses `Japanese (ja)` to avoid unreadable tofu boxes on LibreOffice dialog fonts that lack Japanese glyphs.
 
 ### Fixed
 - Fixed a PDF/runtime failure caused by ASCII decoding of subprocess output; OCR/PDF subprocess paths now decode as UTF-8 with replacement instead of failing on non-ASCII bytes.

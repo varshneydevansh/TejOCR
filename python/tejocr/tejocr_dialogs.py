@@ -1059,10 +1059,53 @@ class OptionsDialogHandler(BaseDialogHandler):
 
 # --- Settings Dialog Handler ---
 class SettingsDialogHandler(BaseDialogHandler):
+    SETTINGS_UI_TEXT = {
+        "SectionDependency": "System Readiness",
+        "SetupButton": "Setup & Diagnostics...",
+        "WikiButton": "Open TejOCR Wiki",
+        "FilterTubeButton": "FilterTube.in (Free Open Source)",
+        "FilterTubeTagline2": "  Block/ WHITELIST Anything on YouTube",
+        "SectionPath": "Tesseract Engine Path",
+        "TesseractPathLabel": "Executable path (leave blank for automatic detection):",
+        "BrowseButton": "...",
+        "TestTesseractButton": "Test",
+        "UiLanguageLabel": "Extension UI:",
+        "SectionLanguage": "OCR Languages (Cmd/Ctrl + click to combine multiple)",
+        "SearchLabel": "Search:",
+        "SearchLanguagesButton": "Search",
+        "RefreshLanguagesButtonSettings": "Refresh List",
+        "SelectedLangsLabel": "Selected: (none)",
+        "SectionOutput": "Default Quality & Insertion Settings",
+        "DefaultPresetLabel": "Preset:",
+        "OutputModeLabel": "Output:",
+        "OutputRadioCursor": "Insert at cursor",
+        "OutputRadioTextBox": "Create text box",
+        "OutputRadioReplace": "Replace image",
+        "OutputRadioClipboard": "Copy to clipboard",
+        "DefaultGrayscaleCheckbox": "Grayscale filter",
+        "DefaultBinarizeCheckbox": "Binarize (BW)",
+        "DefaultPreviewCheckbox": "Preview OCR text before insert",
+        "DefaultMergeBatchCheckbox": "Merge bulk/PDF into single output",
+        "SectionParams": "Engine Performance Tuning",
+        "AdvancedParamsButton": "Advanced Engine Parameters (Custom Preset Only)...",
+        "SettingsStatusLabel": "Ready",
+        "HelpButtonSettings": "Help...",
+        "MessageButtonSettings": "A Message",
+        "CancelButton": "Cancel",
+        "SaveButton": "Save",
+    }
+
     def __init__(self, ctx):
         # Use extension URL scheme that LibreOffice recognizes for extension XDL files
         dialog_url = "vnd.sun.star.extension://org.libreoffice.TejOCR/dialogs/tejocr_settings_dialog_full.xdl"
         super().__init__(ctx, dialog_url)
+        try:
+            locale_setup.configure(
+                uno_utils.get_setting(constants.CFG_KEY_UI_LANGUAGE, constants.DEFAULT_UI_LANGUAGE, ctx),
+                ctx=ctx,
+            )
+        except Exception:
+            locale_setup.configure(constants.DEFAULT_UI_LANGUAGE)
         self.initial_settings = {} # To store settings when dialog opens to check for changes
         self.available_languages_map_settings = {} # Separate map for settings dialog
         self.dependency_status = None # Cache dependency check results
@@ -1072,6 +1115,42 @@ class SettingsDialogHandler(BaseDialogHandler):
         self._all_lang_map = {}
         self._visible_lang_keys = []
         self._selected_codes = {constants.DEFAULT_OCR_LANGUAGE}
+
+    def _settings_preset_items(self):
+        return {
+            constants.OCR_PRESET_FAST: _("Fast"),
+            constants.OCR_PRESET_BALANCED: _("Balanced"),
+            constants.OCR_PRESET_ACCURATE: _("Accuracy"),
+            constants.OCR_PRESET_CUSTOM: _("Custom"),
+        }
+
+    def _set_dialog_title(self, title):
+        if not self.dialog:
+            return
+        try:
+            self.dialog.setTitle(title)
+            return
+        except Exception:
+            pass
+        try:
+            self.dialog.getModel().Title = title
+        except Exception:
+            pass
+
+    def _apply_ui_translations(self):
+        """Translate static XDL labels after the selected catalog is configured."""
+        self._set_dialog_title(_("TejOCR Settings"))
+        for control_name, text in self.SETTINGS_UI_TEXT.items():
+            ctrl = self.get_control(control_name)
+            if not ctrl:
+                continue
+            try:
+                ctrl.setText(_(text))
+            except Exception:
+                try:
+                    ctrl.getModel().Label = _(text)
+                except Exception:
+                    pass
 
     def _create_dialog(self, parent_frame):
         """Try the new full settings dialog first, then fall back to legacy dialog."""
@@ -1129,8 +1208,12 @@ class SettingsDialogHandler(BaseDialogHandler):
 
         # Force dropdown controls into compact mode across LO builds
         self._ensure_dropdown_mode("DefaultPresetDropdown")
+        self._ensure_dropdown_mode("UiLanguageDropdown")
 
         self._add_listener_to_control("AdvancedParamsButton", "advanced_params")
+
+        # XDL files are static English; apply the configured UI language at runtime.
+        self._apply_ui_translations()
 
         # Load current settings — wrapped so a failure doesn't prevent dialog display
         try:
@@ -1232,23 +1315,23 @@ class SettingsDialogHandler(BaseDialogHandler):
 
         tess_ok = bool(status.get('tesseract_ok', False))
         if tess_ok:
-            self._set_label("TesseractStatusLabel", "Tesseract: Available", self.COLOR_GREEN)
+            self._set_label("TesseractStatusLabel", _("Tesseract: Available"), self.COLOR_GREEN)
         else:
-            self._set_label("TesseractStatusLabel", "Tesseract: Not found", self.COLOR_RED)
+            self._set_label("TesseractStatusLabel", _("Tesseract: Not found"), self.COLOR_RED)
 
         n = bool(status.get('numpy_ok', False))
         p = bool(status.get('pytesseract_ok', False))
         pil = bool(status.get('pillow_ok', False))
         count = sum([n, p, pil])
         pdf_ok = bool(status.get('pdf_renderer_available', False))
-        extras_status = "Extras: {count}/3".format(count=count)
+        extras_status = _("Extras: {count}/3").format(count=count)
 
         pdf_label = self.get_control("PdfStatusLabel")
         pdf_color = self.COLOR_GREEN if pdf_ok else self.COLOR_AMBER
         if pdf_label:
-            self._set_label("PdfStatusLabel", "PDF: ok" if pdf_ok else "PDF: missing", pdf_color)
+            self._set_label("PdfStatusLabel", _("PDF: ok") if pdf_ok else _("PDF: missing"), pdf_color)
         else:
-            pdf_status = "PDF: ok" if pdf_ok else "PDF: missing"
+            pdf_status = _("PDF: ok") if pdf_ok else _("PDF: missing")
 
         if count >= 3:
             extras_color = self.COLOR_GREEN
@@ -1260,20 +1343,23 @@ class SettingsDialogHandler(BaseDialogHandler):
             if pdf_label:
                 self._set_label(
                     "PythonPackagesStatusLabel",
-                    f"{extras_status} (optional)",
+                    _("{extras_status} (optional)").format(extras_status=extras_status),
                     extras_color,
                 )
             else:
                 fallback_color = self.COLOR_GREEN if tess_ok and pdf_ok else (self.COLOR_AMBER if tess_ok or pdf_ok or count > 0 else self.COLOR_RED)
                 self._set_label(
                     "PythonPackagesStatusLabel",
-                    f"{extras_status} (optional) | {pdf_status}",
+                    _("{extras_status} (optional) | {pdf_status}").format(
+                        extras_status=extras_status,
+                        pdf_status=pdf_status,
+                    ),
                     fallback_color,
                 )
 
         summary_label = self.get_control("SettingsStatusLabel")
         if summary_label:
-            summary_label.setText(status.get("summary", "Dependency status refreshed"))
+            summary_label.setText(_(status.get("summary", "Dependency status refreshed")))
 
     def _check_and_display_dependencies(self):
         """Check all dependencies and update the status labels with color."""
@@ -1298,9 +1384,9 @@ class SettingsDialogHandler(BaseDialogHandler):
         except Exception as e:
             logger.error(f"Error checking dependencies in settings: {e}", exc_info=True)
             self._set_label("TesseractStatusLabel",
-                            "Tesseract: Check failed", self.COLOR_AMBER)
+                            _("Tesseract: Check failed"), self.COLOR_AMBER)
             self._set_label("PythonPackagesStatusLabel",
-                            "Python: Check failed", self.COLOR_AMBER)
+                            _("Python: Check failed"), self.COLOR_AMBER)
 
     def _load_settings(self):
         """Load settings from config and populate dialog controls."""
@@ -1310,6 +1396,14 @@ class SettingsDialogHandler(BaseDialogHandler):
         if path_field: 
             path_field.setText(tesseract_path)
         self.initial_settings[constants.CFG_KEY_TESSERACT_PATH] = tesseract_path
+
+        ui_language = uno_utils.get_setting(
+            constants.CFG_KEY_UI_LANGUAGE,
+            constants.DEFAULT_UI_LANGUAGE,
+            self.ctx,
+        )
+        self._populate_ui_language_dropdown(ui_language)
+        self.initial_settings[constants.CFG_KEY_UI_LANGUAGE] = self._coerce_ui_language_value(ui_language)
 
         # Languages — unified multi-select listbox
         langs = self._get_tesseract_languages_for_settings()
@@ -1364,12 +1458,7 @@ class SettingsDialogHandler(BaseDialogHandler):
         self.initial_settings[constants.CFG_KEY_DEFAULT_BINARIZE] = binarize
 
         # Preset / PSM / OEM / Preview defaults
-        preset_items = {
-            constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
-            constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
-            constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
-            constants.OCR_PRESET_CUSTOM: "Custom",
-        }
+        preset_items = self._settings_preset_items()
         self._populate_dropdown_settings(
             "DefaultPresetDropdown",
             preset_items,
@@ -1422,7 +1511,7 @@ class SettingsDialogHandler(BaseDialogHandler):
         
         status_label = self.get_control("SettingsStatusLabel")
         if status_label:
-            status_label.setText("Settings loaded successfully")
+            status_label.setText(_("Settings loaded successfully"))
         
         # Initialize dynamic hint labels
         self._update_preset_hint()
@@ -1557,6 +1646,53 @@ class SettingsDialogHandler(BaseDialogHandler):
             model.StringItemList = ("Error: Could not load items",)
             model.SelectedItems = (0,)
 
+    def _ui_language_items(self):
+        items = {constants.DEFAULT_UI_LANGUAGE: "Auto (LibreOffice/system)"}
+        for code, label in locale_setup.get_available_ui_languages().items():
+            items[code] = label
+        return items
+
+    def _coerce_ui_language_value(self, value):
+        normalised = str(value or constants.DEFAULT_UI_LANGUAGE).strip().replace("-", "_")
+        if not normalised:
+            return constants.DEFAULT_UI_LANGUAGE
+        if normalised.lower() == constants.DEFAULT_UI_LANGUAGE:
+            return constants.DEFAULT_UI_LANGUAGE
+        available = locale_setup.get_available_ui_languages()
+        if normalised in available:
+            return normalised
+        parent = normalised.split("_", 1)[0].lower()
+        if parent in available:
+            return parent
+        return constants.DEFAULT_UI_LANGUAGE
+
+    def _populate_ui_language_dropdown(self, current_value):
+        dropdown = self.get_control("UiLanguageDropdown")
+        if not dropdown:
+            return
+        items = self._ui_language_items()
+        selected_key = self._coerce_ui_language_value(current_value)
+        model = dropdown.getModel()
+        model.StringItemList = tuple(items.values())
+        try:
+            selected_pos = list(items.keys()).index(selected_key)
+        except ValueError:
+            selected_pos = 0
+        model.SelectedItems = (selected_pos,)
+        try:
+            dropdown.selectItemPos(selected_pos, True)
+        except Exception:
+            pass
+
+    def _get_selected_ui_language(self):
+        return self._coerce_ui_language_value(
+            self._extract_dropdown_key(
+                self.get_control("UiLanguageDropdown"),
+                self._ui_language_items(),
+                constants.DEFAULT_UI_LANGUAGE,
+            )
+        )
+
     def _populate_language_listbox(self, filter_text=""):
         """Populate the unified LanguagesListbox, optionally filtered by search text."""
         lb = self.get_control("LanguagesListbox")
@@ -1619,7 +1755,7 @@ class SettingsDialogHandler(BaseDialogHandler):
             return
         codes = sorted(self._selected_codes) if self._selected_codes else [constants.DEFAULT_OCR_LANGUAGE]
         label.setText(
-            "Selected: {languages}".format(
+            _("Selected: {languages}").format(
                 languages=ocr_runtime.format_language_codes_for_display(
                     "+".join(codes),
                     default_language=constants.DEFAULT_OCR_LANGUAGE,
@@ -1803,10 +1939,10 @@ class SettingsDialogHandler(BaseDialogHandler):
         elif command == "wiki":
             _execute_with_feedback(
                 source_control,
-                "Opening wiki...",
-                "Opening TejOCR wiki...",
+                _("Opening wiki..."),
+                _("Opening TejOCR wiki..."),
                 self._open_wiki,
-                "Wiki opened in browser.",
+                _("Wiki opened in browser."),
                 bg_color=self.COLOR_BTN_PRIMARY,
                 fg_color=self.COLOR_TEXT_ON_DARK,
             )
@@ -1814,10 +1950,10 @@ class SettingsDialogHandler(BaseDialogHandler):
         elif command == "filtertube":
             _execute_with_feedback(
                 source_control,
-                "Opening FilterTube...",
-                "Opening FilterTube site...",
+                _("Opening FilterTube..."),
+                _("Opening FilterTube site..."),
                 self._open_filtertube,
-                "FilterTube opened in browser.",
+                _("FilterTube opened in browser."),
                 bg_color=self.COLOR_BTN_PRIMARY,
                 fg_color=self.COLOR_TEXT_ON_DARK,
             )
@@ -1825,10 +1961,10 @@ class SettingsDialogHandler(BaseDialogHandler):
         elif command == "search_languages":
             _execute_with_feedback(
                 source_control,
-                "Filter",
-                "Filtering languages...",
+                _("Filter"),
+                _("Filtering languages..."),
                 self._filter_languages,
-                "Language filter applied.",
+                _("Language filter applied."),
                 bg_color=self.COLOR_BTN_PRIMARY,
                 fg_color=self.COLOR_TEXT_ON_DARK,
             )
@@ -1882,10 +2018,7 @@ class SettingsDialogHandler(BaseDialogHandler):
             self._extract_dropdown_key(
                 preset_control,
                 {
-                    constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
-                    constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
-                    constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
-                    constants.OCR_PRESET_CUSTOM: "Custom",
+                    **self._settings_preset_items(),
                 },
                 constants.DEFAULT_OCR_PRESET,
             ),
@@ -1897,16 +2030,16 @@ class SettingsDialogHandler(BaseDialogHandler):
         adv_button = self.get_control("AdvancedParamsButton")
 
         if preset_key == constants.OCR_PRESET_FAST:
-            if hint_label: hint_label.setText("Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)")
+            if hint_label: hint_label.setText(_("Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)"))
             if adv_button: adv_button.setEnable(False)
         elif preset_key == constants.OCR_PRESET_BALANCED:
-            if hint_label: hint_label.setText("Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)")
+            if hint_label: hint_label.setText(_("Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)"))
             if adv_button: adv_button.setEnable(False)
         elif preset_key == constants.OCR_PRESET_ACCURATE:
-            if hint_label: hint_label.setText("Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)")
+            if hint_label: hint_label.setText(_("Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)"))
             if adv_button: adv_button.setEnable(False)
         elif preset_key == constants.OCR_PRESET_CUSTOM:
-            if hint_label: hint_label.setText("Custom: Uses your exact PSM/OEM and scaling overrides below.")
+            if hint_label: hint_label.setText(_("Custom: Uses your exact PSM/OEM and scaling overrides below."))
             if adv_button: adv_button.setEnable(True)
 
     def _update_merge_hint(self):
@@ -1920,10 +2053,10 @@ class SettingsDialogHandler(BaseDialogHandler):
             return
 
         if merge_cb.getState():
-            hint_label.setText("Outputs multi-page PDFs as a single consolidated block.")
+            hint_label.setText(_("Outputs multi-page PDFs as a single consolidated block."))
             hint_label.getModel().TextColor = 0x666666  # Subtle grey
         else:
-            hint_label.setText("Outputs each file and PDF page as a separate insertion.")
+            hint_label.setText(_("Outputs each file and PDF page as a separate insertion."))
             hint_label.getModel().TextColor = self.COLOR_BTN_WARNING
 
     def _filter_languages(self):
@@ -2148,13 +2281,14 @@ Details: {message}""",
             preset_control = self.get_control("DefaultPresetDropdown")
             preview_control = self.get_control("DefaultPreviewCheckbox")
             merge_batch_control = self.get_control("DefaultMergeBatchCheckbox")
-            preset_items = {
-                constants.OCR_PRESET_FAST: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_FAST]["label"],
-                constants.OCR_PRESET_BALANCED: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_BALANCED]["label"],
-                constants.OCR_PRESET_ACCURATE: constants.OCR_QUALITY_PRESETS[constants.OCR_PRESET_ACCURATE]["label"],
-                constants.OCR_PRESET_CUSTOM: "Custom",
-            }
+            preset_items = self._settings_preset_items()
             
+            selected_ui_language = self._get_selected_ui_language()
+            if selected_ui_language != self.initial_settings.get(constants.CFG_KEY_UI_LANGUAGE, constants.DEFAULT_UI_LANGUAGE):
+                uno_utils.set_setting(constants.CFG_KEY_UI_LANGUAGE, selected_ui_language, self.ctx)
+                locale_setup.configure(selected_ui_language, ctx=self.ctx)
+                changes_made = True
+
             # Tesseract Path
             new_tesseract_path = self.get_control("TesseractPathTextField").getText().strip()
             if new_tesseract_path != self.initial_settings.get(constants.CFG_KEY_TESSERACT_PATH):
@@ -2251,11 +2385,11 @@ Details: {message}""",
             status_label = self.get_control("SettingsStatusLabel")
             if changes_made:
                 if status_label: 
-                    status_label.setText("Settings saved successfully")
+                    status_label.setText(_("Settings saved successfully"))
                 logger.info("Settings changes saved successfully")
             else:
                 if status_label: 
-                    status_label.setText("No changes to save")
+                    status_label.setText(_("No changes to save"))
             
             return True  # Settings saved successfully
             
@@ -2263,8 +2397,8 @@ Details: {message}""",
             logger.error(f"Error saving settings: {e}", exc_info=True)
             status_label = self.get_control("SettingsStatusLabel")
             if status_label: 
-                status_label.setText("Error saving settings")
-            uno_utils.show_message_box("Save Error", f"Could not save settings: {e}", "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
+                status_label.setText(_("Error saving settings"))
+            uno_utils.show_message_box(_("Save Error"), _("Could not save settings: {error}").format(error=e), "errorbox", parent_frame=self.parent_frame, ctx=self.ctx)
             return False  # Keep dialog open
 
 

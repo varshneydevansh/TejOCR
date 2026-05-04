@@ -1,6 +1,6 @@
 # Dialog Surface Flow
 
-This document covers the user-facing dialog surfaces that changed most in `0.2.0`.
+This document covers the user-facing dialog surfaces that changed most in `0.2.0`, with the `Setup & Diagnostics` refinements that followed in `0.2.2`.
 
 It focuses on:
 

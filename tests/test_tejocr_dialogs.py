@@ -52,7 +52,7 @@ def _install_uno_stubs():
 
 _install_uno_stubs()
 
-from tejocr import tejocr_dialogs, tejocr_pdf
+from tejocr import locale_setup, tejocr_dialogs, tejocr_pdf
 
 
 class _FakeModel:
@@ -98,12 +98,36 @@ class _FakeControl:
 class _FakeDialog:
     def __init__(self, controls):
         self._controls = controls
+        self.title = ""
 
     def getControl(self, name):
         return self._controls.get(name)
 
+    def setTitle(self, title):
+        self.title = title
+
 
 class TestTejocrDialogs(unittest.TestCase):
+    def setUp(self):
+        locale_setup.configure("en")
+        original_get_setting = tejocr_dialogs.uno_utils.get_setting
+
+        def deterministic_get_setting(key, default=None, ctx=None):
+            if key == tejocr_dialogs.constants.CFG_KEY_UI_LANGUAGE:
+                return default
+            return original_get_setting(key, default, ctx)
+
+        self._get_setting_patch = patch.object(
+            tejocr_dialogs.uno_utils,
+            "get_setting",
+            side_effect=deterministic_get_setting,
+        )
+        self._get_setting_patch.start()
+
+    def tearDown(self):
+        self._get_setting_patch.stop()
+        locale_setup.configure("en")
+
     def test_resolve_tesseract_path_uses_single_argument_probe(self):
         with patch.object(tejocr_dialogs.uno_utils, "get_setting", return_value="/custom/tesseract"), \
              patch.object(tejocr_dialogs.uno_utils, "find_tesseract_executable", return_value="/resolved/tesseract") as finder:
@@ -129,6 +153,88 @@ class TestTejocrDialogs(unittest.TestCase):
         handler._update_selected_langs_label()
 
         self.assertEqual(label.getText(), "Selected: [eng]  +  [enm]  +  [hin]")
+
+    def test_ui_language_dropdown_exposes_auto_and_ready_catalogs(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        dropdown = _FakeControl()
+        handler.get_control = lambda name: dropdown if name == "UiLanguageDropdown" else None
+
+        handler._populate_ui_language_dropdown("es")
+
+        self.assertEqual(dropdown.getModel().StringItemList[0], "Auto (LibreOffice/system)")
+        self.assertIn("English", dropdown.getModel().StringItemList)
+        self.assertIn("Español", dropdown.getModel().StringItemList)
+        selected_pos = dropdown.getModel().SelectedItems[0]
+        self.assertEqual(dropdown.getModel().StringItemList[selected_pos], "Español")
+
+    def test_settings_runtime_labels_follow_selected_ui_language(self):
+        try:
+            handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+            locale_setup.configure("hi")
+            controls = {
+                "SectionDependency": _FakeControl(text="System Readiness"),
+                "SaveButton": _FakeControl(text="Save"),
+                "SetupButton": _FakeControl(text="Setup & Diagnostics..."),
+            }
+            handler.dialog = _FakeDialog(controls)
+            handler.get_control = controls.get
+
+            handler._apply_ui_translations()
+
+            self.assertEqual(handler.dialog.title, "तेजओसीआर सेटिंग्स")
+            self.assertEqual(controls["SectionDependency"].getText(), "सिस्टम तैयारी")
+            self.assertEqual(controls["SaveButton"].getText(), "सहेजें")
+            self.assertEqual(controls["SetupButton"].getText(), "सेटअप और निदान...")
+        finally:
+            locale_setup.configure("en")
+
+    def test_settings_save_persists_ui_language_and_reconfigures_translator(self):
+        handler = tejocr_dialogs.SettingsDialogHandler(ctx=None)
+        handler.current_psm = "3"
+        handler.current_oem = "3"
+        handler._selected_codes = {"eng"}
+        handler.initial_settings = {
+            tejocr_dialogs.constants.CFG_KEY_TESSERACT_PATH: "",
+            tejocr_dialogs.constants.CFG_KEY_UI_LANGUAGE: "auto",
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_LANG: "eng",
+            tejocr_dialogs.constants.CFG_KEY_LAST_SELECTED_LANG: "eng",
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_OUTPUT_MODE: tejocr_dialogs.constants.OUTPUT_MODE_CURSOR,
+            tejocr_dialogs.constants.CFG_KEY_LAST_OUTPUT_MODE: tejocr_dialogs.constants.OUTPUT_MODE_CURSOR,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_GRAYSCALE: False,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_BINARIZE: False,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_PRESET: tejocr_dialogs.constants.OCR_PRESET_BALANCED,
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_PSM: "3",
+            tejocr_dialogs.constants.CFG_KEY_DEFAULT_OEM: "3",
+            tejocr_dialogs.constants.CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT: 0,
+            tejocr_dialogs.constants.CFG_KEY_MERGE_BATCH_RESULTS: 0,
+        }
+        spanish_pos = list(handler._ui_language_items()).index("es")
+        controls = {
+            "TesseractPathTextField": _FakeControl(text=""),
+            "UiLanguageDropdown": _FakeControl(selected_positions=(spanish_pos,)),
+            "DefaultGrayscaleCheckbox": _FakeControl(state=0),
+            "DefaultBinarizeCheckbox": _FakeControl(state=0),
+            "DefaultPresetDropdown": _FakeControl(selected_positions=(1,)),
+            "DefaultPreviewCheckbox": _FakeControl(state=0),
+            "DefaultMergeBatchCheckbox": _FakeControl(state=0),
+            "SettingsStatusLabel": _FakeControl(text="Ready"),
+        }
+        handler.get_control = controls.get
+        handler._get_selected_output_mode = lambda: tejocr_dialogs.constants.OUTPUT_MODE_CURSOR
+
+        saved = {}
+
+        def _capture_setting(key, value, _ctx):
+            saved[key] = value
+            return True
+
+        with patch.object(tejocr_dialogs.uno_utils, "set_setting", side_effect=_capture_setting), \
+             patch.object(locale_setup, "configure", wraps=locale_setup.configure) as configure:
+            result = handler._handle_ok_action()
+
+        self.assertTrue(result)
+        self.assertEqual(saved[tejocr_dialogs.constants.CFG_KEY_UI_LANGUAGE], "es")
+        configure.assert_any_call("es", ctx=None)
 
     def test_ocr_complete_dialog_splits_profile_blocks(self):
         main, processing, recognition = tejocr_dialogs.TejOCRCompleteDialogHandler._split_profile_blocks(

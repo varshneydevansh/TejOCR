@@ -21,7 +21,9 @@
     <dlg:textfield dlg:id="TesseractPathTextField" dlg:tab-index="10" dlg:left="20" dlg:top="82" dlg:width="360" dlg:height="14"/>
     <dlg:button dlg:id="BrowseButton" dlg:tab-index="11" dlg:left="385" dlg:top="81" dlg:width="35" dlg:height="16" dlg:value="..."/>
     <dlg:button dlg:id="TestTesseractButton" dlg:tab-index="12" dlg:left="425" dlg:top="81" dlg:width="35" dlg:height="16" dlg:value="Test"/>
-    <dlg:text dlg:id="TesseractTestStatusLabel" dlg:tab-index="13" dlg:left="20" dlg:top="100" dlg:width="430" dlg:height="10" dlg:value=""/>
+    <dlg:text dlg:id="TesseractTestStatusLabel" dlg:tab-index="13" dlg:left="20" dlg:top="100" dlg:width="210" dlg:height="10" dlg:value=""/>
+    <dlg:text dlg:id="UiLanguageLabel" dlg:tab-index="44" dlg:left="240" dlg:top="100" dlg:width="75" dlg:height="10" dlg:value="Extension UI:"/>
+    <dlg:menulist dlg:id="UiLanguageDropdown" dlg:tab-index="45" dlg:left="320" dlg:top="97" dlg:width="130" dlg:height="26" dlg:dropdown="true"/>
 
     <!-- === OCR Languages === -->
     <dlg:fixedline dlg:id="SectionLanguage" dlg:tab-index="14" dlg:left="10" dlg:top="114" dlg:width="450" dlg:height="10" dlg:value="OCR Languages (Cmd/Ctrl + click to combine multiple)"/>

@@ -6,6 +6,7 @@ import os
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +62,25 @@ from tejocr import tejocr_service
 
 
 class TestTejocrServiceFormatting(unittest.TestCase):
+    def test_filtertube_dispatch_url_is_supported(self):
+        service = tejocr_service.TejOCRService(object())
+        url = types.SimpleNamespace(Complete=tejocr_service.DISPATCH_URL_FILTERTUBE)
+
+        self.assertIs(service.queryDispatch(url, "_self", 0), service)
+
+    def test_service_configures_saved_ui_language_on_init(self):
+        ctx = object()
+        with patch.object(tejocr_service.uno_utils, "get_setting", return_value="es") as get_setting, \
+             patch.object(tejocr_service.locale_setup, "configure", wraps=tejocr_service.locale_setup.configure) as configure:
+            tejocr_service.TejOCRService(ctx)
+
+        get_setting.assert_any_call(
+            tejocr_service.constants.CFG_KEY_UI_LANGUAGE,
+            tejocr_service.constants.DEFAULT_UI_LANGUAGE,
+            ctx,
+        )
+        configure.assert_any_call("es", ctx=ctx)
+
     def test_merge_pdf_runtime_hint_keeps_available_renderer_clean(self):
         merged = tejocr_service._merge_pdf_runtime_hint(
             {"available": True, "engine": "pdftoppm", "hints": []},

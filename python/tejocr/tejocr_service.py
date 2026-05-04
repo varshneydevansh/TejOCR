@@ -77,6 +77,7 @@ DISPATCH_URL_OCR_SELECTED = "uno:org.libreoffice.TejOCR.OCRSelectedImage"
 DISPATCH_URL_OCR_FROM_FILE = "uno:org.libreoffice.TejOCR.OCRImageFromFile"
 DISPATCH_URL_SETTINGS = "uno:org.libreoffice.TejOCR.Settings"
 DISPATCH_URL_TOOLBAR_ACTION = "uno:org.libreoffice.TejOCR.ToolbarAction"
+DISPATCH_URL_FILTERTUBE = "uno:org.libreoffice.TejOCR.FilterTube"
 
 IMPLEMENTATION_NAME = "org.libreoffice.TejOCR.PythonService.TejOCRService"
 SERVICE_NAME = "com.sun.star.frame.ProtocolHandler"
@@ -1356,9 +1357,35 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         # self.logger is now an instance variable, initialized from the module-level logger
         # This ensures each instance has a logger, but they all point to the same configured logger.
         self.logger = logger 
+        self._configure_ui_language()
         self.logger.info(f"TejOCRService __init__ called with ctx: {self.ctx is not None}")
         # No deferred imports block here anymore. Modules are loaded by _ensure_modules_loaded.
         self.logger.info("TejOCRService __init__ completed. Modules will be late-loaded.")
+
+    def _configure_ui_language(self):
+        """Load the saved extension UI language before showing user-facing text."""
+        try:
+            ui_language = uno_utils.get_setting(
+                constants.CFG_KEY_UI_LANGUAGE,
+                constants.DEFAULT_UI_LANGUAGE,
+                self.ctx,
+            )
+        except Exception as e:
+            ui_language = constants.DEFAULT_UI_LANGUAGE
+            if self.logger:
+                self.logger.debug(f"Could not read saved UI language; using auto: {e}")
+
+        try:
+            locale_setup.configure(ui_language, ctx=self.ctx)
+            if self.logger:
+                self.logger.debug(
+                    "UI language configured: "
+                    f"requested={locale_setup.get_configured_language()}, "
+                    f"effective={locale_setup.get_effective_language()}"
+                )
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"Could not configure UI language '{ui_language}': {e}")
             
     def initialize(self, args):
         self.logger.info("TejOCRService initializing...")
@@ -1432,7 +1459,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             test_url.Main = DISPATCH_URL_OCR_SELECTED[4:] # Without protocol
 
             # Now test our matching method
-            for cmd in [DISPATCH_URL_OCR_SELECTED, DISPATCH_URL_OCR_FROM_FILE, DISPATCH_URL_SETTINGS, DISPATCH_URL_TOOLBAR_ACTION]:
+            for cmd in [DISPATCH_URL_OCR_SELECTED, DISPATCH_URL_OCR_FROM_FILE, DISPATCH_URL_SETTINGS, DISPATCH_URL_TOOLBAR_ACTION, DISPATCH_URL_FILTERTUBE]:
                 result = self._matches_command_url(test_url, cmd)
                 self.logger.debug(f"_test_url_matching: matching '{test_url.Complete}' against '{cmd}': {result}")
                 
@@ -1470,7 +1497,8 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
         if self._matches_command_url(URL, DISPATCH_URL_OCR_SELECTED) or \
            self._matches_command_url(URL, DISPATCH_URL_OCR_FROM_FILE) or \
            self._matches_command_url(URL, DISPATCH_URL_SETTINGS) or \
-           self._matches_command_url(URL, DISPATCH_URL_TOOLBAR_ACTION):
+           self._matches_command_url(URL, DISPATCH_URL_TOOLBAR_ACTION) or \
+           self._matches_command_url(URL, DISPATCH_URL_FILTERTUBE):
             # We handle these URLs, so return self as the XDispatch object
             dispatch = self 
             self.logger.debug(f"queryDispatch: MATCHED URL '{URL.Complete}', returning self.")
@@ -1487,6 +1515,7 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
 
     def dispatch(self, URL, Arguments):
         self.logger.info(f"Dispatching URL: {URL.Complete if URL else 'None'}")
+        self._configure_ui_language()
         if not self.frame:
             self.frame = uno_utils.get_current_frame(self.ctx)
             if not self.frame:
@@ -1503,7 +1532,8 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             DISPATCH_URL_OCR_SELECTED: lambda: self._ensure_tesseract_is_ready_and_run(self._handle_ocr_selected_image),
             DISPATCH_URL_OCR_FROM_FILE: lambda: self._ensure_tesseract_is_ready_and_run(self._handle_ocr_image_from_file),
             DISPATCH_URL_SETTINGS: self._handle_settings,
-            DISPATCH_URL_TOOLBAR_ACTION: self._handle_toolbar_action # New handler for combined logic
+            DISPATCH_URL_TOOLBAR_ACTION: self._handle_toolbar_action, # New handler for combined logic
+            DISPATCH_URL_FILTERTUBE: self._handle_filtertube,
         }
 
         if URL.Complete in action_map:
@@ -3596,6 +3626,24 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
                 ctx=self.ctx
             )
 
+    def _handle_filtertube(self):
+        """Open the FilterTube project website from the top-level TejOCR menu."""
+        import webbrowser
+
+        url = "https://filtertube.in"
+        try:
+            webbrowser.open(url)
+            self.logger.info("FilterTube site opened from TejOCR menu.")
+        except Exception as e_filtertube:
+            self.logger.error(f"Failed to open FilterTube site: {e_filtertube}", exc_info=True)
+            uno_utils.show_message_box(
+                title=_("FilterTube.in"),
+                message=_("Could not open the browser.\nVisit: {url}").format(url=url),
+                type="infobox",
+                parent_frame=self.frame,
+                ctx=self.ctx,
+            )
+
     def addStatusListener(self, Listener, URL):
         self.logger.debug(f"addStatusListener CALLED for URL: {URL.Complete if URL else 'None'}")
         if not _ensure_modules_loaded(self): 
@@ -3623,8 +3671,9 @@ class TejOCRService(unohelper.Base, XServiceInfo, XDispatchProvider, XDispatch, 
             self.logger.debug(f"Status for OCR_SELECTED: IsEnabled={status_event.IsEnabled}")
 
         elif self._matches_command_url(URL, DISPATCH_URL_OCR_FROM_FILE) or \
-             self._matches_command_url(URL, DISPATCH_URL_SETTINGS):
-            # OCR from File and Settings are always enabled if the service is active and document is TextDocument
+             self._matches_command_url(URL, DISPATCH_URL_SETTINGS) or \
+             self._matches_command_url(URL, DISPATCH_URL_FILTERTUBE):
+            # OCR from File, Settings, and FilterTube are always enabled in a Writer document.
             status_event.IsEnabled = True 
             self.logger.debug(f"Status for {URL.Complete}: IsEnabled=True (always on for TextDocument)")
 

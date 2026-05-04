@@ -8,7 +8,7 @@
 """Constants used throughout the TejOCR extension."""
 
 # --- Version Information ---
-EXTENSION_VERSION = "0.2.1"
+EXTENSION_VERSION = "0.2.2"
 EXTENSION_NAME = "TejOCR"
 EXTENSION_FULL_NAME = f"{EXTENSION_NAME} v{EXTENSION_VERSION}"
 
@@ -31,9 +31,12 @@ CFG_KEY_DEFAULT_SCALE = "DefaultScaleFactor"
 CFG_KEY_SHOW_PREVIEW_BEFORE_OUTPUT = "ShowPreviewBeforeOutput" # For preview/edit before inserting OCR text
 CFG_KEY_MERGE_BATCH_RESULTS = "MergeBatchResults"
 CFG_KEY_HIDDEN_OCR_EXECUTOR = "HiddenOcrExecutor"
+CFG_KEY_UI_LANGUAGE = "UiLanguage"
 
 # --- Default Values ---
 DEFAULT_OCR_LANGUAGE = "eng"  # Default to English
+DEFAULT_UI_LANGUAGE = "auto"
+TEXT_DOMAIN = "tejocr"
 DEFAULT_PREPROC_GRAYSCALE = False
 DEFAULT_PREPROC_BINARIZE = False
 DEFAULT_PREPROC_INVERT = False

@@ -6,7 +6,7 @@ This folder contains all deep documentation for the extension.
 
 - [README (project entry)](../README.md)
 - [CHANGELOG](../CHANGELOG.md)
-- [0.2.1 release delta](releases/0.2.1.md)
+- [0.2.2 release delta](releases/0.2.2.md)
 - [0.2.0 release delta](releases/0.2.0.md)
 - [Architecture overview](architecture/overview.md)
 - [Dispatch and runtime flow](architecture/dispatch-flow.md)
@@ -15,6 +15,7 @@ This folder contains all deep documentation for the extension.
 - [UNO APIs used](reference/uno-apis.md)
 - [Output modes](reference/output-modes.md)
 - [OCR presets and engine tuning](reference/ocr-options-and-engine-tuning.md)
+- [UI localization](reference/ui-localization.md)
 - [Build and release](dev/build-release.md)
 - [OCR hardening checklist](dev/ocr-hardening-checklist.md)
 - [UI alignment plan](dev/tejocr-ui-alignment-plan.md)

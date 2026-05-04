@@ -6,7 +6,7 @@
   <p>OCR inside Writer, with predictable output behavior</p>
 
   [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/varshneydevansh/TejOCR)
-  [![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
+  [![Version](https://img.shields.io/badge/version-0.2.2-blue.svg)](https://github.com/varshneydevansh/TejOCR/releases)
   [![License](https://img.shields.io/badge/license-MPL%202.0-green.svg)](LICENSE)
   [![LibreOffice](https://img.shields.io/badge/libreoffice-4.0+-7f52ff.svg)](https://www.libreoffice.org/)
   [![Repository Size](https://img.shields.io/github/repo-size/varshneydevansh/TejOCR?color=orange)](https://github.com/varshneydevansh/TejOCR)
@@ -19,7 +19,7 @@ TejOCR is a **LibreOffice Writer extension** that performs OCR from:
 
 The extension inserts recognized text based on the selected output mode with fallbacks for UI or session capability differences.
 
-## What's New In 0.2.1
+## What's New In 0.2.2
 
 - `Setup & Diagnostics` is more robust and more honest about what is actually required:
   - LibreOffice Python is called out explicitly,
@@ -30,6 +30,10 @@ The extension inserts recognized text based on the selected output mode with fal
   - OCR/PDF subprocess output is decoded as UTF-8 with replacement,
   - non-ASCII stderr/stdout no longer breaks PDF OCR with ASCII decode crashes.
 - Platform docs were tightened, especially for Windows LibreOffice Python and PDF renderer setup.
+- Extension UI language support now has a real selector:
+  - `Auto` follows the LibreOffice UI language first, then the system locale,
+  - manual selection is available for validated catalogs,
+  - bundled UI catalogs now cover English, Spanish, Hindi, French, German, Simplified Chinese, Portuguese (Brazil), Arabic, Bengali, Russian, Japanese, Korean, Indonesian, Turkish, Vietnamese, Italian, Polish, Dutch, Ukrainian, Persian, Urdu, Tamil, Telugu, Marathi, Punjabi, and Swahili.
 - Prior UI work from `0.2.0` remains intact:
   - structured `OCR Complete`,
   - polished Settings/Help/Setup surfaces,
@@ -61,6 +65,25 @@ The extension inserts recognized text based on the selected output mode with fal
   </a>
 </p>
 
+
+---
+
+## Extension UI Language
+
+TejOCR can now load translated extension text through gettext catalogs.
+
+- **Auto** is the default and resolves language in this order:
+  - LibreOffice UI locale,
+  - system locale,
+  - English fallback.
+- **Manual selection** is available in **Settings > Extension UI**.
+- **Ready catalogs** are shown in the selector. Current catalogs cover:
+  - English, Spanish, Hindi, French, German, Simplified Chinese,
+  - Portuguese (Brazil), Arabic, Bengali, Russian, Japanese, Korean,
+  - Indonesian, Turkish, Vietnamese, Italian, Polish, Dutch, Ukrainian,
+  - Persian, Urdu, Tamil, Telugu, Marathi, Punjabi, and Swahili.
+
+The Spanish catalog came from a community contribution. The additional newly added catalogs are initial generated translations with gettext and placeholder validation; native-speaker improvements are welcome.
 
 ---
 
@@ -197,7 +220,7 @@ flowchart LR
 
 ## Install
 
-1. Install `TejOCR-0.2.1.oxt` from extension manager.
+1. Install `TejOCR-0.2.2.oxt` from extension manager.
 2. Restart LibreOffice.
 3. Open **TejOCR → Settings** and verify dependency status.
 

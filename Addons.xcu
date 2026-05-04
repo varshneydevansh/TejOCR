@@ -90,6 +90,33 @@
                              <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
                         </prop>
                     </node>
+                    <node oor:name="Separator2" oor:op="replace">
+                        <prop oor:name="Type" oor:type="xs:string">
+                            <value>separator</value>
+                        </prop>
+                    </node>
+                    <node oor:name="Item4_FilterTube" oor:op="replace">
+                    <prop oor:name="URL" oor:type="xs:string">
+                        <value>uno:org.libreoffice.TejOCR.FilterTube</value>
+                    </prop>
+                    <prop oor:name="Title" oor:type="xs:string">
+                        <value xml:lang="en-US">FilterTube.in (Free Open Source)</value>
+                        <value xml:lang="hi-IN">FilterTube.in (निःशुल्क मुक्त-स्रोत)</value>
+                        <value xml:lang="es-ES">FilterTube.in (código abierto libre)</value>
+                        <value xml:lang="fr-FR">FilterTube.in (libre et open source)</value>
+                        <value xml:lang="de-DE">FilterTube.in (frei und Open Source)</value>
+                        <value xml:lang="zh-CN">FilterTube.in（自由开源）</value>
+                    </prop>
+                    <prop oor:name="Target" oor:type="xs:string">
+                        <value>_self</value>
+                    </prop>
+                    <prop oor:name="Context" oor:type="xs:string">
+                        <value>com.sun.star.text.TextDocument</value>
+                    </prop>
+                         <prop oor:name="ImageIdentifier" oor:type="xs:string">
+                             <value>vnd.sun.star.extension://org.libreoffice.TejOCR/icons/tejocr_16.png</value>
+                        </prop>
+                    </node>
                 </node>
             </node>
         </node>

@@ -5,108 +5,307 @@
 #
 # © 2025 Devansh (Author of TejOCR)
 
-"""Basic internationalization setup."""
+"""Internationalization setup for TejOCR."""
 
 import gettext
+import locale
 import os
+
 from tejocr import constants
 
-# Dummy translator class that just returns the original string
+
 class NullTranslator:
     def gettext(self, message):
         return message
-    
+
     def ngettext(self, singular, plural, n):
-        if n == 1:
-            return singular
-        else:
-            return plural
+        return singular if n == 1 else plural
 
-_translator_instance = None
 
-def get_translator(locale_dir=None, language_code=None):
-    """
-    Initializes and returns a translator instance.
-    For now, it returns a NullTranslator that doesn't actually translate,
-    allowing the _() calls to work without .mo files.
-    """
-    global _translator_instance
-    if _translator_instance is None:
-        # In a full i18n setup, this would try to find .mo files
-        # based on language_code and locale_dir.
-        # For now, we always use the NullTranslator.
-        # print(f"Locale setup: Using NullTranslator. Real translations not yet implemented.")
-        _translator_instance = NullTranslator()
-        
-        # Example of how it might look with actual gettext:
-        # try:
-        #     if locale_dir is None:
-        #         # Assuming l10n is in the parent directory of the 'python' package directory
-        #         base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        #         locale_dir = os.path.join(base_path, 'l10n')
+class TranslationProxy:
+    """Stable proxy so modules that cached `_` still see language changes."""
 
-        #     if language_code is None:
-        #         # Attempt to get language from LibreOffice settings or system locale
-        #         # This is complex and needs UNO access, which might not be available at this point.
-        #         # For simplicity, could fall back to a configured default or 'en'.
-        #         language_code = 'en' # Or get from constants.DEFAULT_UI_LANG if defined
+    def gettext(self, message):
+        return _active_translator.gettext(message)
 
-        #     # Define TEXT_DOMAIN, ideally from constants.py
-        #     TEXT_DOMAIN = getattr(constants, "TEXT_DOMAIN", "TejOCR") # Fallback to "TejOCR" if not in constants
+    def ngettext(self, singular, plural, n):
+        return _active_translator.ngettext(singular, plural, n)
 
-        #     if os.path.isdir(locale_dir):
-        #         lang = gettext.translation(
-        #             TEXT_DOMAIN,  # Use the defined TEXT_DOMAIN
-        #             localedir=locale_dir,
-        #             languages=[language_code],
-        #             fallback=True  # Fallback to parent language (e.g., 'en' if 'en_US' not found)
-        #         )
-        #         # To make _() available globally in the extension:
-        #         # lang.install() 
-        #         # Or, for more controlled usage (preferred in libraries):
-        #         # _translator_instance = lang.gettext 
-        #         # _n_translator_instance = lang.ngettext
-        #         # For simplicity with lang.install(), it sets the global _
-        #         # If lang.install(names=(\"gettext\", \"ngettext\")) is used, then it doesn\'t override \'_\'
-        #         # The default gettext.install() installs _, gettext, ngettext, pgettext, npgettext globally.
-        #         # If using it, ensure it\'s for the correct domain.
-        #         # If just retrieving the translation object:
-        # _translator_instance = lang # This line causes NameError if 'lang' is not defined
-        #         # print(f\"Locale setup: Loaded translations for \'{language_code}\' from \'{locale_dir}\' for domain \'{TEXT_DOMAIN}\'\")
-        #     else:
-        #         # print(f\"Locale setup: Locale directory \'{locale_dir}\' not found. Using NullTranslator.\")
-        #         _translator_instance = NullTranslator()
-        # except FileNotFoundError:
-        #     # print(f"Locale setup: No translations found for domain '{TEXT_DOMAIN}' and language '{language_code}'. Using NullTranslator.")
-        #     _translator_instance = NullTranslator()
-        # except Exception as e:
-        #     # print(f"Locale setup: Error initializing gettext: {e}. Using NullTranslator.")
-        #     _translator_instance = NullTranslator()
-            
-    return _translator_instance
 
-# Make a default _ function available for direct import if desired,
-# though it's generally better for modules to call get_translator().gettext explicitly.
-# _ = get_translator().gettext # This might be problematic if _translator_instance is not a full gettext object
+_proxy = TranslationProxy()
+_active_translator = NullTranslator()
+_configured_language = constants.DEFAULT_UI_LANGUAGE
+_effective_language = "en"
+_locale_dir = None
 
-# Correct way to get _ for global use IF gettext.translation().install() was used:
-# import builtins
-# _ = builtins.__dict__.get('_', get_translator().gettext) # Fallback to NullTranslator's gettext if _ not installed
+LANGUAGE_DISPLAY_NAMES = {
+    "auto": "Auto (LibreOffice/system)",
+    "ar": "العربية",
+    "bn": "বাংলা",
+    "de": "Deutsch",
+    "en": "English",
+    "es": "Español",
+    "fa": "فارسی",
+    "fr": "Français",
+    "hi": "हिन्दी",
+    "id": "Bahasa Indonesia",
+    "it": "Italiano",
+    # Use Latin fallback here because LibreOffice dialog fonts on some systems
+    # render Japanese UI-language names as tofu boxes.
+    "ja": "Japanese (ja)",
+    "ko": "한국어",
+    "mr": "मराठी",
+    "nl": "Nederlands",
+    "pa": "ਪੰਜਾਬੀ",
+    "pl": "Polski",
+    "pt_BR": "Português (Brasil)",
+    "ru": "Русский",
+    "sw": "Kiswahili",
+    "ta": "தமிழ்",
+    "te": "తెలుగు",
+    "tr": "Türkçe",
+    "uk": "Українська",
+    "ur": "اردو",
+    "vi": "Tiếng Việt",
+    "zh_CN": "简体中文",
+}
 
-# If lang.install() is not used, then _ needs to be explicitly set:
-# translator = get_translator()
-# if hasattr(translator, 'gettext'):
-#     _ = translator.gettext
-# else: # Assuming NullTranslator or similar direct object
-#     _ = translator 
 
-# For now, keep the simple assignment for NullTranslator case
-_ = get_translator().gettext
+def _default_locale_dir():
+    return os.path.abspath(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "l10n")
+    )
+
+
+def _normalise_language_code(language_code):
+    code = str(language_code or "").strip()
+    if not code:
+        return ""
+    code = code.replace("-", "_")
+    parts = [part for part in code.split("_") if part]
+    if not parts:
+        return ""
+    language = parts[0].lower()
+    if len(parts) == 1:
+        return language
+    return language + "_" + parts[1].upper()
+
+
+def _candidate_language_codes(language_code):
+    normalised = _normalise_language_code(language_code)
+    if not normalised:
+        return []
+    candidates = [normalised]
+    if "_" in normalised:
+        parent = normalised.split("_", 1)[0]
+        if parent not in candidates:
+            candidates.append(parent)
+    return candidates
+
+
+def _catalog_path(locale_dir, language_code):
+    return os.path.join(locale_dir, language_code, "LC_MESSAGES", constants.TEXT_DOMAIN + ".mo")
+
+
+def _po_path(locale_dir, language_code):
+    return os.path.join(locale_dir, language_code, "LC_MESSAGES", constants.TEXT_DOMAIN + ".po")
+
+
+def _po_header_fields(content):
+    fields = {}
+    in_header = False
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if line == 'msgid ""':
+            in_header = True
+            continue
+        if not in_header:
+            continue
+        if line == 'msgstr ""':
+            continue
+        if line.startswith('"'):
+            text = line[1:-1]
+            if ":" in text:
+                key, value = text.split(":", 1)
+                fields[key.strip()] = value.strip().rstrip("\\n")
+            continue
+        if line:
+            break
+    return fields
+
+
+def _po_catalog_has_reviewed_translations(po_path):
+    if not os.path.exists(po_path):
+        return False
+    try:
+        with open(po_path, "r", encoding="utf-8", errors="replace") as po_file:
+            content = po_file.read()
+    except Exception:
+        return False
+
+    if "nplurals=INTEGER" in content or "plural=EXPRESSION" in content:
+        return False
+    if _po_header_fields(content).get("X-TejOCR-Status", "").lower() != "reviewed":
+        return False
+
+    in_header = False
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if line == 'msgid ""':
+            in_header = True
+            continue
+        if in_header and line.startswith('"'):
+            continue
+        if in_header and line:
+            in_header = False
+        if not in_header and (line.startswith('msgstr "') or line.startswith('msgstr[0] "')):
+            value = line.split('"', 1)[1].rsplit('"', 1)[0]
+            if value:
+                return True
+    return False
+
+
+def get_available_ui_languages(locale_dir=None):
+    """Return languages with usable, reviewed catalogs."""
+    locale_dir = locale_dir or _default_locale_dir()
+    available = {"en": LANGUAGE_DISPLAY_NAMES["en"]}
+    if not os.path.isdir(locale_dir):
+        return available
+
+    for entry in sorted(os.listdir(locale_dir)):
+        code = _normalise_language_code(entry)
+        if not code or code == "en":
+            continue
+        mo_path = _catalog_path(locale_dir, entry)
+        if not os.path.exists(mo_path):
+            continue
+        if not _po_catalog_has_reviewed_translations(_po_path(locale_dir, entry)):
+            continue
+        try:
+            gettext.translation(constants.TEXT_DOMAIN, localedir=locale_dir, languages=[entry])
+        except Exception:
+            continue
+        available[code] = LANGUAGE_DISPLAY_NAMES.get(code, code)
+    return available
+
+
+def _detect_libreoffice_language(ctx=None):
+    if ctx is None:
+        return ""
+
+    try:
+        import uno
+
+        service_manager = getattr(ctx, "ServiceManager", None)
+        if service_manager is None:
+            return ""
+        provider = service_manager.createInstanceWithContext(
+            "com.sun.star.configuration.ConfigurationProvider",
+            ctx,
+        )
+        node_prop = uno.createUnoStruct("com.sun.star.beans.PropertyValue")
+        node_prop.Name = "nodepath"
+        node_prop.Value = "/org.openoffice.Setup/L10N"
+        access = provider.createInstanceWithArguments(
+            "com.sun.star.configuration.ConfigurationAccess",
+            (node_prop,),
+        )
+        for name in ("ooLocale", "Locale"):
+            try:
+                value = access.getByName(name)
+            except Exception:
+                value = getattr(access, name, "")
+            if value:
+                return str(value)
+    except Exception:
+        return ""
+    return ""
+
+
+def _detect_system_language():
+    candidates = []
+    for env_name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(env_name)
+        if value:
+            candidates.append(value.split(":", 1)[0])
+    try:
+        loc = locale.getlocale()[0]
+        if loc:
+            candidates.append(loc)
+    except Exception:
+        pass
+    for candidate in candidates:
+        normalised = _normalise_language_code(candidate.split(".", 1)[0])
+        if normalised:
+            return normalised
+    return "en"
+
+
+def resolve_language(language_code=None, ctx=None, locale_dir=None):
+    locale_dir = locale_dir or _default_locale_dir()
+    requested = _normalise_language_code(language_code or constants.DEFAULT_UI_LANGUAGE)
+    if requested in ("", "auto"):
+        detected = _detect_libreoffice_language(ctx) or _detect_system_language()
+        candidates = _candidate_language_codes(detected)
+    else:
+        candidates = _candidate_language_codes(requested)
+
+    available = get_available_ui_languages(locale_dir)
+    for candidate in candidates:
+        if candidate in available:
+            return candidate
+    return "en"
+
+
+def configure(language_code=None, ctx=None, locale_dir=None):
+    """Configure the active translation catalog and return the proxy translator."""
+    global _active_translator, _configured_language, _effective_language, _locale_dir
+
+    _locale_dir = locale_dir or _default_locale_dir()
+    configured = _normalise_language_code(language_code or constants.DEFAULT_UI_LANGUAGE) or constants.DEFAULT_UI_LANGUAGE
+    effective = resolve_language(configured, ctx=ctx, locale_dir=_locale_dir)
+
+    if effective == "en":
+        translator = NullTranslator()
+    else:
+        try:
+            translator = gettext.translation(
+                constants.TEXT_DOMAIN,
+                localedir=_locale_dir,
+                languages=[effective],
+                fallback=False,
+            )
+        except Exception:
+            translator = NullTranslator()
+            effective = "en"
+
+    _configured_language = configured
+    _effective_language = effective
+    _active_translator = translator
+    return _proxy
+
+
+def get_translator(locale_dir=None, language_code=None, ctx=None):
+    if locale_dir is not None or language_code is not None or ctx is not None:
+        configure(language_code or _configured_language, ctx=ctx, locale_dir=locale_dir)
+    return _proxy
+
 
 def get_translation_function():
-    """Returns the translation function for use in other modules."""
-    return get_translator().gettext
+    return _proxy.gettext
+
+
+def get_configured_language():
+    return _configured_language
+
+
+def get_effective_language():
+    return _effective_language
+
+
+_ = get_translator().gettext
+
 
 if __name__ == "__main__":
-    # Test the dummy translator
     t = get_translator()
+    print(t.gettext("Hello"))

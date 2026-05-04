@@ -1,0 +1,767 @@
+# Portuguese (Brazil) translations for TejOCR package.
+msgid ""
+msgstr ""
+"Project-Id-Version: TejOCR 0.2.2\n"
+"Report-Msgid-Bugs-To: https://github.com/varshneydevansh/TejOCR/issues\n"
+"POT-Creation-Date: 2025-05-18 11:53+0530\n"
+"PO-Revision-Date: 2026-05-04 00:00+0000\n"
+"Last-Translator: Generated initial translation\n"
+"Language-Team: Portuguese (Brazil) <community-review-welcome>\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-TejOCR-Status: reviewed\n"
+"X-TejOCR-Translation-Origin: generated-initial\n"
+
+#: python/tejocr/tejocr_output.py:53 python/tejocr/tejocr_output.py:75
+#: python/tejocr/tejocr_output.py:86 python/tejocr/tejocr_output.py:119
+#: python/tejocr/tejocr_output.py:154 python/tejocr/tejocr_output.py:169
+#: python/tejocr/tejocr_output.py:199 python/tejocr/tejocr_service.py:217
+#: python/tejocr/tejocr_service.py:323 python/tejocr/tejocr_service.py:348
+#: python/tejocr/tejocr_service.py:363 python/tejocr/tejocr_service.py:373
+msgid "Error"
+msgstr "Erro"
+
+#: python/tejocr/tejocr_output.py:53
+msgid "Cannot insert text: Active document is not a text document."
+msgstr ""
+"Não é possível inserir texto: o documento ativo não é um documento de texto."
+
+#: python/tejocr/tejocr_output.py:68
+msgid "Insert Text Error"
+msgstr "Erro ao inserir texto"
+
+#: python/tejocr/tejocr_output.py:68
+#, python-brace-format
+msgid "Could not insert text at cursor: {error}"
+msgstr "Não foi possível inserir texto no cursor: {error}"
+
+#: python/tejocr/tejocr_output.py:75
+msgid "Cannot insert text box: Active document is not a text document."
+msgstr ""
+"Não é possível inserir caixa de texto: o documento ativo não é um documento "
+"de texto."
+
+#: python/tejocr/tejocr_output.py:86
+msgid "Could not create text frame object."
+msgstr "Não foi possível criar o objeto de quadro de texto."
+
+#: python/tejocr/tejocr_output.py:108
+msgid "Text Box Error"
+msgstr "Erro na caixa de texto"
+
+#: python/tejocr/tejocr_output.py:108
+#, python-brace-format
+msgid "Could not insert text into new text box: {error}"
+msgstr "Não foi possível inserir texto na nova caixa de texto: {error}"
+
+#: python/tejocr/tejocr_output.py:119
+msgid "No suitable object selected to replace. Select an image or shape."
+msgstr ""
+"Nenhum objeto adequado selecionado para substituição. Selecione uma imagem "
+"ou forma."
+
+#: python/tejocr/tejocr_output.py:149
+msgid "Not Implemented"
+msgstr "Não implementado"
+
+#: python/tejocr/tejocr_output.py:149
+msgid ""
+"Replacing general drawing shapes is not fully implemented yet. Try with "
+"directly embedded images."
+msgstr ""
+"A substituição de formas gerais de desenho ainda não está totalmente "
+"implementada. Experimente com imagens incorporadas diretamente."
+
+#: python/tejocr/tejocr_output.py:154
+msgid "Selected object cannot be directly replaced this way."
+msgstr ""
+"O objeto selecionado não pode ser substituído diretamente desta forma."
+
+#: python/tejocr/tejocr_output.py:161
+msgid "Replace Image Error"
+msgstr "Erro de substituição de imagem"
+
+#: python/tejocr/tejocr_output.py:161
+#, python-brace-format
+msgid "Could not replace image with text: {error}"
+msgstr "Não foi possível substituir a imagem pelo texto: {error}"
+
+#: python/tejocr/tejocr_output.py:169
+msgid "Could not access system clipboard service."
+msgstr ""
+"Não foi possível acessar o serviço da área de transferência do sistema."
+
+#: python/tejocr/tejocr_output.py:175
+msgid "Copied to Clipboard"
+msgstr "Copiado para a área de transferência"
+
+#: python/tejocr/tejocr_output.py:175
+msgid "Recognized text has been copied to the clipboard."
+msgstr "O texto reconhecido foi copiado para a área de transferência."
+
+#: python/tejocr/tejocr_output.py:179
+msgid "Clipboard Error"
+msgstr "Erro na área de transferência"
+
+#: python/tejocr/tejocr_output.py:179
+#, python-brace-format
+msgid "Could not copy text to clipboard: {error}"
+msgstr "Não foi possível copiar o texto para a área de transferência: {error}"
+
+#: python/tejocr/tejocr_output.py:199
+#, python-brace-format
+msgid "Unknown output mode specified: {mode}"
+msgstr "Modo de saída desconhecido especificado: {mode}"
+
+#: python/tejocr/tejocr_engine.py:72
+msgid "Image Export Error"
+msgstr "Erro ao exportar imagem"
+
+#: python/tejocr/tejocr_engine.py:72
+#, python-brace-format
+msgid "Failed to export image for OCR: {e}"
+msgstr "Falha ao exportar imagem para OCR: {e}"
+
+#: python/tejocr/tejocr_engine.py:101
+msgid "No Image"
+msgstr "Sem imagem"
+
+#: python/tejocr/tejocr_engine.py:101
+msgid "Could not identify a valid graphic object in the selection."
+msgstr "Não foi possível identificar um objeto gráfico válido na seleção."
+
+#: python/tejocr/tejocr_engine.py:111
+msgid "No Image Data"
+msgstr "Sem dados de imagem"
+
+#: python/tejocr/tejocr_engine.py:111
+msgid "Could not extract usable image data from the selected object."
+msgstr ""
+"Não foi possível extrair dados de imagem utilizáveis do objeto selecionado."
+
+#: python/tejocr/tejocr_engine.py:177
+msgid "Pytesseract Missing"
+msgstr "Pytesseract Ausente"
+
+#: python/tejocr/tejocr_engine.py:178
+msgid ""
+"The 'pytesseract' Python library is not installed. TejOCR cannot function "
+"without it."
+msgstr ""
+"A biblioteca Python 'pytesseract' não está instalada. TejOCR não pode "
+"funcionar sem ele."
+
+#: python/tejocr/tejocr_engine.py:189 python/tejocr/tejocr_engine.py:213
+msgid "Tesseract Not Found"
+msgstr "Tesseract não encontrado"
+
+#: python/tejocr/tejocr_engine.py:190
+msgid ""
+"Tesseract OCR executable was not found at the specified path or in system "
+"PATH. Please configure the path in TejOCR Settings."
+msgstr ""
+"O executável Tesseract OCR não foi encontrado no caminho especificado ou no "
+"sistema PATH. Por favor configure o caminho em TejOCR Configurações."
+
+#: python/tejocr/tejocr_engine.py:204
+msgid "Tesseract Found"
+msgstr "Tesseract Encontrado"
+
+#: python/tejocr/tejocr_engine.py:205
+#, python-brace-format
+msgid ""
+"Tesseract OCR (Version {version}) found and working at:\n"
+"{path}"
+msgstr ""
+"Tesseract OCR (Versão {version}) encontrado e funcionando em:\n"
+"{path}"
+
+#: python/tejocr/tejocr_engine.py:214
+#, python-brace-format
+msgid ""
+"Pytesseract could not find Tesseract at {path} despite the file existing. "
+"Check permissions or Tesseract installation."
+msgstr ""
+"Pytesseract não conseguiu encontrar Tesseract em {path} apesar do arquivo "
+"existir. Verifique as permissões ou instalação do Tesseract."
+
+#: python/tejocr/tejocr_engine.py:222
+msgid "Tesseract Error"
+msgstr "Tesseract Erro"
+
+#: python/tejocr/tejocr_engine.py:223
+#, python-brace-format
+msgid ""
+"An unexpected error occurred while verifying Tesseract at {path}: {error}"
+msgstr "Ocorreu um erro inesperado ao verificar Tesseract em {path}: {error}"
+
+#: python/tejocr/tejocr_engine.py:241
+msgid "Pytesseract library not installed."
+msgstr "Biblioteca Pytesseract não instalada."
+
+#: python/tejocr/tejocr_engine.py:243
+msgid "Initializing OCR..."
+msgstr "Inicializando OCR..."
+
+#: python/tejocr/tejocr_engine.py:249
+msgid "Tesseract not found or not working. Please check settings."
+msgstr ""
+"Tesseract não encontrado ou não está funcionando. Por favor, verifique as "
+"configurações."
+
+#: python/tejocr/tejocr_engine.py:255
+msgid "Critical error: Tesseract path inconsistency."
+msgstr "Erro crítico: inconsistência de caminho Tesseract."
+
+#: python/tejocr/tejocr_engine.py:266
+msgid "Invalid image file path provided."
+msgstr "Caminho de arquivo de imagem inválido fornecido."
+
+#: python/tejocr/tejocr_engine.py:270
+msgid "Extracting selected image..."
+msgstr "Extraindo imagem selecionada..."
+
+#: python/tejocr/tejocr_engine.py:275
+msgid "Failed to extract image from selection."
+msgstr "Falha ao extrair a imagem da seleção."
+
+#: python/tejocr/tejocr_engine.py:280
+msgid "Invalid OCR source type."
+msgstr "Tipo de origem OCR inválido."
+
+#: python/tejocr/tejocr_engine.py:282
+msgid "Preprocessing image (if enabled)..."
+msgstr "Pré-processando imagem (se ativado)..."
+
+#: python/tejocr/tejocr_engine.py:300
+#, python-brace-format
+msgid "Performing OCR (Lang: {lang_code})..."
+msgstr "Executando OCR (Lang: {lang_code})..."
+
+#: python/tejocr/tejocr_engine.py:317
+msgid "OCR Complete."
+msgstr "OCR Concluído."
+
+#: python/tejocr/tejocr_engine.py:318
+msgid "OCR successful."
+msgstr "OCR bem sucedido."
+
+#: python/tejocr/tejocr_engine.py:321
+msgid "Tesseract is not installed or not in your PATH. Please check settings."
+msgstr ""
+"Tesseract não está instalado ou não está em seu PATH. Por favor, verifique "
+"as configurações."
+
+#: python/tejocr/tejocr_engine.py:323 python/tejocr/tejocr_engine.py:328
+#: python/tejocr/tejocr_engine.py:333 python/tejocr/tejocr_engine.py:340
+#, python-brace-format
+msgid "Error: {message}"
+msgstr "Erro: {message}"
+
+#: python/tejocr/tejocr_engine.py:326
+#, python-brace-format
+msgid "Tesseract error: {error_details}"
+msgstr "Tesseract erro: {error_details}"
+
+#: python/tejocr/tejocr_engine.py:331
+msgid ""
+"Image file not found for OCR (it may have been a temporary file that was "
+"removed prematurely)."
+msgstr ""
+"Arquivo de imagem não encontrado para OCR (pode ter sido um arquivo "
+"temporário que foi removido prematuramente)."
+
+#: python/tejocr/tejocr_engine.py:339
+#, python-brace-format
+msgid "An unexpected error occurred during OCR: {error_details}"
+msgstr "Ocorreu um erro inesperado durante OCR: {error_details}"
+
+#: python/tejocr/tejocr_service.py:153
+msgid ""
+"On macOS, a common way to install Tesseract is using Homebrew: brew install "
+"tesseract"
+msgstr ""
+"No macOS, uma forma comum de instalar Tesseract é usando Homebrew: brew "
+"install tesseract"
+
+#: python/tejocr/tejocr_service.py:155
+msgid ""
+"On Windows, you can find installers on the Tesseract GitHub page (search for"
+" 'UB Mannheim Tesseract')."
+msgstr ""
+"No Windows, você pode encontrar instaladores na página Tesseract GitHub "
+"(procure por 'UB Mannheim Tesseract')."
+
+#: python/tejocr/tejocr_service.py:157
+msgid ""
+"On Linux, you can usually install Tesseract using your distribution's "
+"package manager (e.g., sudo apt install tesseract-ocr)."
+msgstr ""
+"No Linux, normalmente você pode instalar Tesseract usando o gerenciador de "
+"pacotes da sua distribuição (por exemplo, sudo apt install tesseract-ocr)."
+
+#: python/tejocr/tejocr_service.py:159
+msgid ""
+"Please refer to the Tesseract OCR documentation for installation "
+"instructions specific to your operating system."
+msgstr ""
+"Consulte a documentação Tesseract OCR para obter instruções de instalação "
+"específicas para seu sistema operacional."
+
+#: python/tejocr/tejocr_service.py:161
+msgid "TejOCR - Tesseract OCR Required"
+msgstr "TejOCR - Tesseract OCR Obrigatório"
+
+#: python/tejocr/tejocr_service.py:164
+msgid "TejOCR requires Tesseract OCR to function."
+msgstr "TejOCR requer Tesseract OCR para funcionar."
+
+#: python/tejocr/tejocr_service.py:165
+msgid ""
+"Tesseract was not found at the configured path or in your system's PATH."
+msgstr ""
+"Tesseract não foi encontrado no caminho configurado ou no PATH do seu "
+"sistema."
+
+#: python/tejocr/tejocr_service.py:167
+msgid "What would you like to do?"
+msgstr "O que você gostaria de fazer?"
+
+#: python/tejocr/tejocr_service.py:184
+#, python-brace-format
+msgid ""
+"Tesseract OCR is required but not found or not "
+"configured.\\n\\n{os_install_hint}\\n\\nOpen TejOCR Settings to specify the "
+"Tesseract path? (Choose Yes)\\nOpen the Tesseract installation guide in your"
+" browser? (Choose No)\\nCancel the current operation? (Choose Cancel)"
+msgstr ""
+"Tesseract OCR é necessário, mas não foi encontrado ou não está "
+"configurado.\\n\\n{os_install_hint}\\n\\nAbrir TejOCR Configurações para "
+"especificar o caminho Tesseract? (Escolha Sim)\\nAbrir o guia de instalação "
+"do Tesseract em seu navegador? (Escolha Não)\\nCancelar a operação atual? "
+"(Escolha Cancelar)"
+
+#: python/tejocr/tejocr_service.py:218
+#, python-brace-format
+msgid "Could not open the web browser. Please manually visit: {url}"
+msgstr ""
+"Não foi possível abrir o navegador da web. Por favor visite manualmente: "
+"{url}"
+
+#: python/tejocr/tejocr_service.py:323
+msgid "Could not create file picker service."
+msgstr "Não foi possível criar o serviço de seleção de arquivos."
+
+#: python/tejocr/tejocr_service.py:327 python/tejocr/tejocr_service.py:329
+msgid "All Supported Image Files"
+msgstr "Todos os arquivos de imagem suportados"
+
+#: python/tejocr/tejocr_service.py:331
+msgid "All Files"
+msgstr "Todos os arquivos"
+
+#: python/tejocr/tejocr_service.py:334
+msgid "Select Image File for OCR"
+msgstr "Selecione o arquivo de imagem para OCR"
+
+#: python/tejocr/tejocr_service.py:348
+msgid "Dialog module not loaded."
+msgstr "Módulo de diálogo não carregado."
+
+#: python/tejocr/tejocr_service.py:363
+msgid "Output module not loaded."
+msgstr "Módulo de saída não carregado."
+
+#: python/tejocr/tejocr_service.py:373
+#, python-brace-format
+msgid ""
+"An unexpected error occurred while selecting image for OCR: {error_message}"
+msgstr ""
+"Ocorreu um erro inesperado ao selecionar a imagem para OCR: {error_message}"
+
+#: python/tejocr/locale_setup.py:109
+msgid "Hello"
+msgstr "Olá"
+
+#: python/tejocr/locale_setup.py:110
+msgid "Test"
+msgstr "Teste"
+
+#: python/tejocr/locale_setup.py:111 python/tejocr/locale_setup.py:112
+msgid "One item"
+msgid_plural "Multiple items"
+msgstr[0] "Um item"
+msgstr[1] "Vários itens"
+
+#: python/tejocr/uno_utils.py:215 python/tejocr/uno_utils.py:225
+#: python/tejocr/uno_utils.py:250
+msgid "Configuration Error"
+msgstr "Erro de configuração"
+
+#: python/tejocr/uno_utils.py:215
+msgid "Cannot access ConfigurationProvider."
+msgstr "Não é possível acessar o ConfigurationProvider."
+
+#: python/tejocr/uno_utils.py:225
+#, python-brace-format
+msgid "Cannot access configuration node {node_path}: {e}"
+msgstr "Não é possível acessar o nó de configuração {node_path}: {e}"
+
+#: python/tejocr/uno_utils.py:250
+#, python-brace-format
+msgid "Cannot write setting '{key}' to '{full_node_path}': {e}"
+msgstr ""
+"Não é possível gravar a configuração '{key}' em '{full_node_path}': {e}"
+
+#: python/tejocr/uno_utils.py:296
+#, python-brace-format
+msgid "Configured Tesseract path is not a valid executable: {path}"
+msgstr "O caminho Tesseract configurado não é um executável válido: {path}"
+
+#: python/tejocr/uno_utils.py:297
+msgid "Tesseract Path"
+msgstr "Tesseract Caminho"
+
+#: python/tejocr/uno_utils.py:401
+msgid "uno_utils.py: For testing non-UNO functions or with mock UNO context."
+msgstr ""
+"uno_utils.py: Para testar funções não-UNO ou com contexto UNO simulado."
+
+#: python/tejocr/uno_utils.py:404
+msgid ""
+"\n"
+"Testing Tesseract executable finder:"
+msgstr ""
+"\n"
+"Testando o localizador executável Tesseract:"
+
+#: python/tejocr/uno_utils.py:409
+msgid "  Tesseract not found in PATH or common locations."
+msgstr "Tesseract não encontrado em PATH ou locais comuns."
+
+#: python/tejocr/uno_utils.py:414
+msgid ""
+"\n"
+"Testing temp file creation:"
+msgstr ""
+"\n"
+"Testando a criação do arquivo temporário:"
+
+#: python/tejocr/uno_utils.py:424
+msgid ""
+"\n"
+"Testing logger initialization (will log to a file in temp dir):"
+msgstr ""
+"\n"
+"Testando a inicialização do logger (registrará em um arquivo no diretório temporário):"
+
+#: python/tejocr/uno_utils.py:429
+msgid ""
+"  Logger test messages sent. Check log file for 'TejOCR.TestUtil' entries."
+msgstr ""
+"Mensagens de teste do registrador enviadas. Verifique o arquivo de log para "
+"entradas 'TejOCR.TestUtil'."
+
+#: python/tejocr/uno_utils.py:433
+msgid ""
+"\n"
+"UNO-dependent functions require a LibreOffice environment to test."
+msgstr ""
+"\n"
+"Funções dependentes de UNO requerem um ambiente LibreOffice para serem testadas."
+
+# Runtime-translated Settings dialog labels.
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "TejOCR Settings"
+msgstr "TejOCR Settings"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "System Readiness"
+msgstr "System Readiness"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Setup & Diagnostics..."
+msgstr "Setup & Diagnostics..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Open TejOCR Wiki"
+msgstr "Open TejOCR Wiki"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "FilterTube.in (Free Open Source)"
+msgstr "FilterTube.in (Free Open Source)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "  Block/ WHITELIST Anything on YouTube"
+msgstr "  Block/ WHITELIST Anything on YouTube"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract Engine Path"
+msgstr "Tesseract Engine Path"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Executable path (leave blank for automatic detection):"
+msgstr "Executable path (leave blank for automatic detection):"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "..."
+msgstr "..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Extension UI:"
+msgstr "Extension UI:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "OCR Languages (Cmd/Ctrl + click to combine multiple)"
+msgstr "OCR Languages (Cmd/Ctrl + click to combine multiple)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Search:"
+msgstr "Search:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Search"
+msgstr "Search"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Refresh List"
+msgstr "Refresh List"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Selected: (none)"
+msgstr "Selected: (none)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Selected: {languages}"
+msgstr "Selected: {languages}"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Default Quality & Insertion Settings"
+msgstr "Default Quality & Insertion Settings"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Preset:"
+msgstr "Preset:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Output:"
+msgstr "Output:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Insert at cursor"
+msgstr "Insert at cursor"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Create text box"
+msgstr "Create text box"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Replace image"
+msgstr "Replace image"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Copy to clipboard"
+msgstr "Copy to clipboard"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Grayscale filter"
+msgstr "Grayscale filter"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Binarize (BW)"
+msgstr "Binarize (BW)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Preview OCR text before insert"
+msgstr "Preview OCR text before insert"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Merge bulk/PDF into single output"
+msgstr "Merge bulk/PDF into single output"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Engine Performance Tuning"
+msgstr "Engine Performance Tuning"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Advanced Engine Parameters (Custom Preset Only)..."
+msgstr "Advanced Engine Parameters (Custom Preset Only)..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Ready"
+msgstr "Ready"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Help..."
+msgstr "Help..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "A Message"
+msgstr "A Message"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Cancel"
+msgstr "Cancel"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Save"
+msgstr "Save"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Fast"
+msgstr "Fast"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Balanced"
+msgstr "Balanced"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Accuracy"
+msgstr "Accuracy"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Custom"
+msgstr "Custom"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract: Available"
+msgstr "Tesseract: Available"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract: Not found"
+msgstr "Tesseract: Not found"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract: Check failed"
+msgstr "Tesseract: Check failed"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Python: Check failed"
+msgstr "Python: Check failed"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Extras: {count}/3"
+msgstr "Extras: {count}/3"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "PDF: ok"
+msgstr "PDF: ok"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "PDF: missing"
+msgstr "PDF: missing"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "{extras_status} (optional)"
+msgstr "{extras_status} (optional)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "{extras_status} (optional) | {pdf_status}"
+msgstr "{extras_status} (optional) | {pdf_status}"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Dependency status refreshed"
+msgstr "Dependency status refreshed"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Settings loaded successfully"
+msgstr "Settings loaded successfully"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Warning: Could not load some settings"
+msgstr "Warning: Could not load some settings"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening wiki..."
+msgstr "Opening wiki..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening TejOCR wiki..."
+msgstr "Opening TejOCR wiki..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Wiki opened in browser."
+msgstr "Wiki opened in browser."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening FilterTube..."
+msgstr "Opening FilterTube..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening FilterTube site..."
+msgstr "Opening FilterTube site..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "FilterTube opened in browser."
+msgstr "FilterTube opened in browser."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Filter"
+msgstr "Filter"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Filtering languages..."
+msgstr "Filtering languages..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Language filter applied."
+msgstr "Language filter applied."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)"
+msgstr "Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)"
+msgstr "Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)"
+msgstr "Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Custom: Uses your exact PSM/OEM and scaling overrides below."
+msgstr "Custom: Uses your exact PSM/OEM and scaling overrides below."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Outputs multi-page PDFs as a single consolidated block."
+msgstr "Outputs multi-page PDFs as a single consolidated block."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Outputs each file and PDF page as a separate insertion."
+msgstr "Outputs each file and PDF page as a separate insertion."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Settings saved successfully"
+msgstr "Settings saved successfully"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "No changes to save"
+msgstr "No changes to save"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Error saving settings"
+msgstr "Error saving settings"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Save Error"
+msgstr "Save Error"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Could not save settings: {error}"
+msgstr "Could not save settings: {error}"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Image + PDF OCR ready."
+msgstr "Image + PDF OCR ready."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Image OCR ready; PDF OCR still needs runtime support."
+msgstr "Image OCR ready; PDF OCR still needs runtime support."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Setup required: Tesseract OCR is missing."
+msgstr "Setup required: Tesseract OCR is missing."

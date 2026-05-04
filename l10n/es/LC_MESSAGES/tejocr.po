@@ -17,6 +17,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Poedit 3.9\n"
+"X-TejOCR-Status: reviewed\n"
 
 #: python/tejocr/tejocr_output.py:53 python/tejocr/tejocr_output.py:75
 #: python/tejocr/tejocr_output.py:86 python/tejocr/tejocr_output.py:119
@@ -288,11 +289,11 @@ msgstr ""
 
 #: python/tejocr/tejocr_service.py:155
 msgid ""
-"On Windows, you can find installers on the Tesseract GitHub page (search for "
-"'UB Mannheim Tesseract')."
+"On Windows, you can find installers on the Tesseract GitHub page (search for"
+" 'UB Mannheim Tesseract')."
 msgstr ""
-"En Windows, puede encontrar instaladores en la página de GitHub de Tesseract "
-"(busque «UB Mannheim Tesseract»)."
+"En Windows, puede encontrar instaladores en la página de GitHub de Tesseract"
+" (busque «UB Mannheim Tesseract»)."
 
 #: python/tejocr/tejocr_service.py:157
 msgid ""
@@ -331,16 +332,16 @@ msgstr "¿Qué le gustaría hacer?"
 #: python/tejocr/tejocr_service.py:184
 #, python-brace-format
 msgid ""
-"Tesseract OCR is required but not found or not configured."
-"\\n\\n{os_install_hint}\\n\\nOpen TejOCR Settings to specify the Tesseract "
-"path? (Choose Yes)\\nOpen the Tesseract installation guide in your browser? "
-"(Choose No)\\nCancel the current operation? (Choose Cancel)"
+"Tesseract OCR is required but not found or not "
+"configured.\\n\\n{os_install_hint}\\n\\nOpen TejOCR Settings to specify the "
+"Tesseract path? (Choose Yes)\\nOpen the Tesseract installation guide in your"
+" browser? (Choose No)\\nCancel the current operation? (Choose Cancel)"
 msgstr ""
-"Se requiere Tesseract OCR, pero no se ha encontrado o no está configurado."
-"\\n\\n{os_install_hint}\\n\\n¿Quiere abrir la configuración de TejOCR para "
-"especificar la ruta de Tesseract? (Elija Sí)\\n¿Quiere abrir la guía de "
-"instalación de Tesseract en su navegador? (Elija No)\\n¿Quiere cancelar la "
-"operación actual? (Elija Cancelar)"
+"Se requiere Tesseract OCR, pero no se ha encontrado o no está "
+"configurado.\\n\\n{os_install_hint}\\n\\n¿Quiere abrir la configuración de "
+"TejOCR para especificar la ruta de Tesseract? (Elija Sí)\\n¿Quiere abrir la "
+"guía de instalación de Tesseract en su navegador? (Elija No)\\n¿Quiere "
+"cancelar la operación actual? (Elija Cancelar)"
 
 #: python/tejocr/tejocr_service.py:218
 #, python-brace-format
@@ -455,8 +456,7 @@ msgid ""
 "Testing logger initialization (will log to a file in temp dir):"
 msgstr ""
 "\n"
-"Probando la inicialización del registrador (se guardará en un archivo en el "
-"directorio temporal):"
+"Probando la inicialización del registrador (se guardará en un archivo en el directorio temporal):"
 
 #: python/tejocr/uno_utils.py:429
 msgid ""
@@ -471,5 +471,297 @@ msgid ""
 "UNO-dependent functions require a LibreOffice environment to test."
 msgstr ""
 "\n"
-"Las funciones que dependen de UNO requieren un entorno LibreOffice para su "
-"prueba."
+"Las funciones que dependen de UNO requieren un entorno LibreOffice para su prueba."
+
+# Runtime-translated Settings dialog labels.
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "TejOCR Settings"
+msgstr "Configuración de TejOCR"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "System Readiness"
+msgstr "Estado del sistema"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Setup & Diagnostics..."
+msgstr "Configuración y diagnóstico..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Open TejOCR Wiki"
+msgstr "Abrir wiki de TejOCR"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "FilterTube.in (Free Open Source)"
+msgstr "FilterTube.in (libre y de código abierto)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "  Block/ WHITELIST Anything on YouTube"
+msgstr "  Bloquea/permite cualquier cosa en YouTube"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract Engine Path"
+msgstr "Ruta del motor Tesseract"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Executable path (leave blank for automatic detection):"
+msgstr "Ruta del ejecutable (dejar vacío para detección automática):"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "..."
+msgstr "..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Extension UI:"
+msgstr "Interfaz de la extensión:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "OCR Languages (Cmd/Ctrl + click to combine multiple)"
+msgstr "Idiomas OCR (Cmd/Ctrl + clic para combinar varios)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Search:"
+msgstr "Buscar:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Search"
+msgstr "Buscar"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Refresh List"
+msgstr "Actualizar lista"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Selected: (none)"
+msgstr "Seleccionado: (ninguno)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Selected: {languages}"
+msgstr "Seleccionado: {languages}"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Default Quality & Insertion Settings"
+msgstr "Calidad e inserción predeterminadas"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Preset:"
+msgstr "Preajuste:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Output:"
+msgstr "Salida:"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Insert at cursor"
+msgstr "Insertar en el cursor"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Create text box"
+msgstr "Crear cuadro de texto"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Replace image"
+msgstr "Reemplazar imagen"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Copy to clipboard"
+msgstr "Copiar al portapapeles"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Grayscale filter"
+msgstr "Filtro de escala de grises"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Binarize (BW)"
+msgstr "Binarizar (B/N)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Preview OCR text before insert"
+msgstr "Vista previa del texto OCR antes de insertar"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Merge bulk/PDF into single output"
+msgstr "Fusionar lote/PDF en una sola salida"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Engine Performance Tuning"
+msgstr "Ajuste de rendimiento del motor"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Advanced Engine Parameters (Custom Preset Only)..."
+msgstr "Parámetros avanzados del motor (solo preajuste personalizado)..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Ready"
+msgstr "Listo"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Help..."
+msgstr "Ayuda..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "A Message"
+msgstr "Un mensaje"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Save"
+msgstr "Guardar"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Fast"
+msgstr "Rápido"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Balanced"
+msgstr "Equilibrado"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Accuracy"
+msgstr "Precisión"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Custom"
+msgstr "Personalizado"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract: Available"
+msgstr "Tesseract: disponible"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract: Not found"
+msgstr "Tesseract: no encontrado"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Tesseract: Check failed"
+msgstr "Tesseract: Check failed"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Python: Check failed"
+msgstr "Python: Check failed"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Extras: {count}/3"
+msgstr "Extras: {count}/3"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "PDF: ok"
+msgstr "PDF: correcto"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "PDF: missing"
+msgstr "PDF: falta"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "{extras_status} (optional)"
+msgstr "{extras_status} (opcional)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "{extras_status} (optional) | {pdf_status}"
+msgstr "{extras_status} (opcional) | {pdf_status}"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Dependency status refreshed"
+msgstr "Estado de dependencias actualizado"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Settings loaded successfully"
+msgstr "Configuración cargada correctamente"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Warning: Could not load some settings"
+msgstr "Warning: Could not load some settings"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening wiki..."
+msgstr "Opening wiki..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening TejOCR wiki..."
+msgstr "Opening TejOCR wiki..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Wiki opened in browser."
+msgstr "Wiki opened in browser."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening FilterTube..."
+msgstr "Opening FilterTube..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Opening FilterTube site..."
+msgstr "Opening FilterTube site..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "FilterTube opened in browser."
+msgstr "FilterTube opened in browser."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Filter"
+msgstr "Filter"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Filtering languages..."
+msgstr "Filtering languages..."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Language filter applied."
+msgstr "Filtro de idioma aplicado."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)"
+msgstr "Fast: Single pass. Best for clean text. (PDFs rendered at 200 DPI)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)"
+msgstr "Balanced: Retries if output is weak. (PDFs rendered at 200 DPI)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)"
+msgstr "Accurate: Fallbacks + enhanced preprocessing. (PDFs rendered at 300 DPI)"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Custom: Uses your exact PSM/OEM and scaling overrides below."
+msgstr "Custom: Uses your exact PSM/OEM and scaling overrides below."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Outputs multi-page PDFs as a single consolidated block."
+msgstr "Outputs multi-page PDFs as a single consolidated block."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Outputs each file and PDF page as a separate insertion."
+msgstr "Outputs each file and PDF page as a separate insertion."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Settings saved successfully"
+msgstr "Settings saved successfully"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "No changes to save"
+msgstr "No changes to save"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Error saving settings"
+msgstr "Error saving settings"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Save Error"
+msgstr "Save Error"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Could not save settings: {error}"
+msgstr "Could not save settings: {error}"
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Image + PDF OCR ready."
+msgstr "OCR de imagen + PDF listo."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Image OCR ready; PDF OCR still needs runtime support."
+msgstr "OCR de imagen listo; OCR de PDF aún necesita soporte de ejecución."
+
+#: python/tejocr/tejocr_dialogs.py:settings-runtime
+msgid "Setup required: Tesseract OCR is missing."
+msgstr "Configuración requerida: falta Tesseract OCR."
